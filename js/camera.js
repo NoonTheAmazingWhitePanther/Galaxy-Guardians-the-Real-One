@@ -4,8 +4,7 @@
 // We need 'H.clamp' from utils.js to handle zoom limits
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-
-//const { H.clamp } = window.Sim;
+const H = window.Sim;
 
 // ── Shared State ─────────────────────────────────────
 // Expose 'panning' so input-ui.js can check if we are dragging
@@ -74,20 +73,5 @@ window.Sim.frameBodies = () => {
   }
   window.Sim.cam.x = (minX + maxX) / 2; 
   window.Sim.cam.y = (minY + maxY) / 2;
-  window.Sim.cam.targetZoom = H.clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
-};    window.Sim.cam.x = camStart.x - (e.clientX - panStart.x) / window.Sim.cam.zoom;
-    window.Sim.cam.y = camStart.y - (e.clientY - panStart.y) / window.Sim.cam.zoom;
-
-window.addEventListener("mouseup", e => { if (e.button === 1 || e.button === 2) panning = false; });
-window.addEventListener("contextmenu", e => e.preventDefault());
-
-window.Sim.frameBodies = () => {
-  const pad = 300;
-  let minX = -window.Sim.SUN.radius * 6, maxX = window.Sim.SUN.radius * 6, minY = -window.Sim.SUN.radius * 6, maxY = window.Sim.SUN.radius * 6;
-  for (const b of window.Sim.state.bodies) {
-    minX = Math.min(minX, b.cx - b.radius); maxX = Math.max(maxX, b.cx + b.radius);
-    minY = Math.min(minY, b.cy - b.radius); maxY = Math.max(maxY, b.cy + b.radius);
-  }
-  window.Sim.cam.x = (minX + maxX) / 2; window.Sim.cam.y = (minY + maxY) / 2;
   window.Sim.cam.targetZoom = H.clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
 };
