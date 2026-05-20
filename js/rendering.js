@@ -106,7 +106,7 @@ window.Sim.drawBody = body => {
   window.Sim.ctx.save(); window.Sim.ctx.beginPath(); window.Sim.ctx.moveTo(hull[0].x, hull[0].y); for (let i = 1; i < hull.length; i++) window.Sim.ctx.lineTo(hull[i].x, hull[i].y); window.Sim.ctx.closePath();
   const gr = window.Sim.ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius); gr.addColorStop(0, pal.hi + "dd"); gr.addColorStop(0.35, pal.mid + "cc"); gr.addColorStop(0.75, pal.lo + "bb"); gr.addColorStop(1, pal.lo + "44"); window.Sim.ctx.fillStyle = gr; window.Sim.ctx.fill(); window.Sim.ctx.strokeStyle = `rgba(${pal.gc},.35)`; window.Sim.ctx.lineWidth = 1.5 / window.Sim.cam.zoom; window.Sim.ctx.stroke(); window.Sim.ctx.restore();
   window.Sim.ctx.save(); window.Sim.ctx.globalAlpha = 0.08; window.Sim.ctx.strokeStyle = `rgba(${pal.gc},.9)`; window.Sim.ctx.lineWidth = 0.8 / window.Sim.cam.zoom; window.Sim.ctx.beginPath();
-  for (const sp of ss) { if (sp.broken) continue; const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue; if (H.Hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue; window.Sim.ctx.moveTo(pa.x, pa.y); window.Sim.ctx.lineTo(pb.x, pb.y); }
+  for (const sp of ss) { if (sp.broken) continue; const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue; if (H.hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue; window.Sim.ctx.moveTo(pa.x, pa.y); window.Sim.ctx.lineTo(pb.x, pb.y); }
   window.Sim.ctx.stroke(); window.Sim.ctx.restore();
   window.Sim.ctx.fillStyle = `rgba(${pal.gc},.75)`; window.Sim.ctx.beginPath(); for (const p of alive) { if (p.heat > 0.05) continue; const r = p.isCore ? window.Sim.config.PARTICLE_R * 1.3 : window.Sim.config.PARTICLE_R; window.Sim.ctx.moveTo(p.x + r, p.y); window.Sim.ctx.arc(p.x, p.y, r, 0, H.PI2); p.heat = Math.max(0, p.heat - 0.012); } window.Sim.ctx.fill();
   for (const p of alive) { if (p.heat <= 0.05) continue; const r = p.isCore ? window.Sim.config.PARTICLE_R * 1.3 : window.Sim.config.PARTICLE_R; window.Sim.ctx.fillStyle = `rgba(255,${Math.floor(H.lerp(60, 220, p.heat))},30,${p.heat * 0.9})`; window.Sim.ctx.beginPath(); window.Sim.ctx.arc(p.x, p.y, r, 0, H.PI2); window.Sim.ctx.fill(); p.heat = Math.max(0, p.heat - 0.012); }
@@ -124,14 +124,14 @@ window.Sim.drawCharge = () => {
 
 window.Sim.orbitalSpeed = (dist, nP, grav) => { const g = (grav != null) ? grav : window.Sim.sunGravMult; return Math.sqrt(window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * g / Math.max(nP, 1) / Math.max(dist, 1)); };
 window.Sim.orbitalPeriod = (dist, nP, grav) => { const v = window.Sim.orbitalSpeed(dist, nP, grav); return v > 0 ? (2 * Math.PI * dist / v) : 99999; };
-window.Sim.getSpawnVelocity = (x, y, nP, grav) => { const g = (grav != null) ? grav : window.Sim.sunGravMult; const dx = x - window.Sim.SUN.x, dy = y - window.Sim.SUN.y, dist = H.Hypot(dx, dy) || 1; const v = window.Sim.orbitalSpeed(dist, nP, g); return { vx: -dy / dist * v, vy: dx / dist * v, dist }; };
+window.Sim.getSpawnVelocity = (x, y, nP, grav) => { const g = (grav != null) ? grav : window.Sim.sunGravMult; const dx = x - window.Sim.SUN.x, dy = y - window.Sim.SUN.y, dist = H.hypot(dx, dy) || 1; const v = window.Sim.orbitalSpeed(dist, nP, g); return { vx: -dy / dist * v, vy: dx / dist * v, dist }; };
 window.Sim.computePreviewDamping = periodSub => Math.pow(0.88, 1 / Math.max(periodSub, 1));
 
 window.Sim.predictOrbit = (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recordEvery, grav) => {
   const pts = []; let px = spawnX, py = spawnY, vx = vx0, vy = vy0;
   const g = (grav != null) ? grav : window.Sim.sunGravMult, gm = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * g / Math.max(nP, 1);
   const burnR2 = window.Sim.SUN.burnRadius * window.Sim.SUN.burnRadius; recordEvery = recordEvery || 1;
-  const periodSub = window.Sim.orbitalPeriod(H.Hypot(spawnX - window.Sim.SUN.x, spawnY - window.Sim.SUN.y) || 1, nP, g) / dtPerStep;
+  const periodSub = window.Sim.orbitalPeriod(H.hypot(spawnX - window.Sim.SUN.x, spawnY - window.Sim.SUN.y) || 1, nP, g) / dtPerStep;
   const vDamp = window.Sim.computePreviewDamping(periodSub);
   for (let i = 0; i < steps; i++) {
     const sdx = window.Sim.SUN.x - px, sdy = window.Sim.SUN.y - py; const sd2 = sdx * sdx + sdy * sdy; if (sd2 < burnR2) break;
@@ -146,7 +146,7 @@ window.Sim.predictOrbit = (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recor
 let _previewCache = null;
 window.Sim.getPreviewPath = (wx, wy) => {
   if (_previewCache && Math.abs(_previewCache.wx - wx) < 2 && Math.abs(_previewCache.wy - wy) < 2 && _previewCache.mult === window.Sim.sunGravMult) return _previewCache.pts;
-  const dist = H.Hypot(wx - window.Sim.SUN.x, wy - window.Sim.SUN.y) || 1, dtPerStep = 1 / window.Sim.config.SUBSTEPS;
+  const dist = H.hypot(wx - window.Sim.SUN.x, wy - window.Sim.SUN.y) || 1, dtPerStep = 1 / window.Sim.config.SUBSTEPS;
   const periodSub = window.Sim.orbitalPeriod(dist, 100, window.Sim.sunGravMult) / dtPerStep;
   const totalSteps = Math.min(Math.ceil(periodSub * (5 + 2)), 120000);
   const { vx, vy } = window.Sim.getSpawnVelocity(wx, wy, 100, window.Sim.sunGravMult);
@@ -157,7 +157,7 @@ window.Sim.getPreviewPath = (wx, wy) => {
 window.Sim.drawOrbitPreview = t => {
   if (!window.Sim.holding) return;
   const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1), alpha = H.clamp(charge * 1.6, 0, 0.9);
-  const w = window.Sim.screenToWorld(window.Sim.tx, window.Sim.ty), dx = w.x - window.Sim.SUN.x, dy = w.y - window.Sim.SUN.y, dist = H.Hypot(dx, dy) || 1;
+  const w = window.Sim.screenToWorld(window.Sim.tx, window.Sim.ty), dx = w.x - window.Sim.SUN.x, dy = w.y - window.Sim.SUN.y, dist = H.hypot(dx, dy) || 1;
   const pts = window.Sim.getPreviewPath(w.x, w.y); if (pts.length < 4) return;
   const total = pts.length, lw = 1.8 / window.Sim.cam.zoom;
   window.Sim.ctx.save(); window.Sim.ctx.lineCap = "round"; window.Sim.ctx.lineJoin = "round";
@@ -205,7 +205,7 @@ window.Sim.renderPlanetsToBuffer = () => {
   for (const b of window.Sim.state.bodies) {
     const { particles: ps, pal } = b; const alive = []; for (const p of ps) if (!p.dead) alive.push(p); if (alive.length < 3) continue; const hull = window.Sim.convexHull(alive); if (hull.length < 3) continue;
     ox.save(); ox.beginPath(); ox.moveTo(hull[0].x, hull[0].y); for (let i = 1; i < hull.length; i++) ox.lineTo(hull[i].x, hull[i].y); ox.closePath(); const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius); gr.addColorStop(0, pal.hi + "ff"); gr.addColorStop(0.35, pal.mid + "ee"); gr.addColorStop(0.75, pal.lo + "cc"); gr.addColorStop(1, pal.lo + "44"); ox.fillStyle = gr; ox.fill(); ox.strokeStyle = `rgba(${pal.gc},.4)`; ox.lineWidth = 1.5 / window.Sim.cam.zoom; ox.stroke(); ox.restore();
-    ox.save(); ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / window.Sim.cam.zoom; ox.beginPath(); for (const sp of b.springs) { if (sp.broken) continue; const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue; if (H.Hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue; ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y); } ox.stroke(); ox.restore();
+    ox.save(); ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / window.Sim.cam.zoom; ox.beginPath(); for (const sp of b.springs) { if (sp.broken) continue; const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue; if (H.hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue; ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y); } ox.stroke(); ox.restore();
     ox.fillStyle = `rgba(${pal.gc},.75)`; ox.beginPath(); for (const p of alive) { if (p.heat > 0.05) continue; const r = p.isCore ? window.Sim.config.PARTICLE_R * 1.3 : window.Sim.config.PARTICLE_R; ox.moveTo(p.x + r, p.y); ox.arc(p.x, p.y, r, 0, H.PI2); } ox.fill(); for (const p of alive) { if (p.heat <= 0.05) continue; const r = p.isCore ? window.Sim.config.PARTICLE_R * 1.3 : window.Sim.config.PARTICLE_R; ox.fillStyle = `rgba(255,${Math.floor(H.lerp(60, 220, p.heat))},30,${p.heat * 0.9})`; ox.beginPath(); ox.arc(p.x, p.y, r, 0, H.PI2); ox.fill(); }
     const atm = ox.createRadialGradient(b.cx, b.cy, b.radius * 0.7, b.cx, b.cy, b.radius * 1.8); atm.addColorStop(0, `rgba(${pal.gc},.07)`); atm.addColorStop(1, `rgba(${pal.gc},0)`); ox.fillStyle = atm; ox.beginPath(); ox.arc(b.cx, b.cy, b.radius * 1.8, 0, H.PI2); ox.fill();
   }
@@ -244,4 +244,29 @@ window.Sim.updateCount = () => {
   let n = 0; 
   for (const b of window.Sim.state.bodies) if (!b.dead) n++; 
   window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} WORLD${n !== 1 ? "S" : ""}`; 
+};
+
+// ── FPS Counter (called from main.js) ─────────────────
+window.Sim.updateFPS = (rawDt) => {
+  if (!window.Sim.fpsSamples) window.Sim.fpsSamples = [];
+  if (!window.Sim.fpsDisplay) window.Sim.fpsDisplay = 0;
+  
+  if (rawDt > 0) {
+    window.Sim.fpsSamples.push(1 / rawDt);
+    if (window.Sim.fpsSamples.length > 30) window.Sim.fpsSamples.shift();
+  }
+  if (window.Sim.fpsSamples.length > 0) {
+    window.Sim.fpsDisplay = Math.round(
+      window.Sim.fpsSamples.reduce((a, b) => a + b) / window.Sim.fpsSamples.length
+    );
+  }
+};
+
+window.Sim.drawFPS = () => {
+  window.Sim.ctx.save();
+  window.Sim.ctx.font = '10px "Space Mono",monospace';
+  window.Sim.ctx.fillStyle = 'rgba(100,255,160,0.55)';
+  window.Sim.ctx.letterSpacing = '.05em';
+  window.Sim.ctx.fillText(`${window.Sim.fpsDisplay || 0} FPS`, 16, 20);
+  window.Sim.ctx.restore();
 };
