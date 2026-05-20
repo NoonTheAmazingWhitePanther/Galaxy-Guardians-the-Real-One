@@ -2,7 +2,15 @@
 
 // ── Import helpers ───────────────────────────────────
 // We need 'clamp' from utils.js to handle zoom limits
-const { clamp } = window.Sim;
+// ── At the TOP of each file (after "use strict") ─────
+// Cache helpers from window.Sim for performance
+const hypot = window.Sim.hypot;
+const clamp = window.Sim.clamp;
+const lerp = window.Sim.lerp;
+const rnd = window.Sim.rnd;
+const rndR = window.Sim.rndR;
+const PI2 = window.Sim.PI2;
+//const { clamp } = window.Sim;
 
 // ── Shared State ─────────────────────────────────────
 // Expose 'panning' so input-ui.js can check if we are dragging
