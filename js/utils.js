@@ -64,3 +64,12 @@ window.Sim.convexHull = function(pts) {
   }
   return hull;
 };
+
+// ── At the VERY END of utils.js ──────────────────────
+// Export helpers to global namespace so other files can import them
+window.Sim.hypot = hypot;
+window.Sim.clamp = clamp;
+window.Sim.lerp = lerp;
+window.Sim.rnd = rnd;
+window.Sim.rndR = rndR;
+window.Sim.PI2 = PI2;
