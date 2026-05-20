@@ -2,7 +2,14 @@
 
 // ── Import helpers from utils.js ─────────────────────
 // We need 'clamp' for UI limits and 'hypot' for pinch/touch distance
-const { clamp, hypot } = window.Sim;
+// ── At the TOP of each file (after "use strict") ─────
+// Cache helpers from window.Sim for performance
+const hypot = window.Sim.hypot;
+const clamp = window.Sim.clamp;
+const lerp = window.Sim.lerp;
+const rnd = window.Sim.rnd;
+const rndR = window.Sim.rndR;
+const PI2 = window.Sim.PI2;
 
 // ── Gravity Slider ───────────────────────────────────
 window.Sim.gravSlider.addEventListener("input", () => { 
