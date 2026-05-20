@@ -1,16 +1,11 @@
 "use strict";
 
 // ── Import helpers ───────────────────────────────────
-// We need 'clamp' from utils.js to handle zoom limits
+// We need 'H.clamp' from utils.js to handle zoom limits
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-const hypot = window.Sim.hypot;
-const clamp = window.Sim.clamp;
-const lerp = window.Sim.lerp;
-const rnd = window.Sim.rnd;
-const rndR = window.Sim.rndR;
-const PI2 = window.Sim.PI2;
-//const { clamp } = window.Sim;
+
+//const { H.clamp } = window.Sim;
 
 // ── Shared State ─────────────────────────────────────
 // Expose 'panning' so input-ui.js can check if we are dragging
@@ -36,7 +31,7 @@ window.Sim.tickCam = () => { window.Sim.cam.zoom += (window.Sim.cam.targetZoom -
 window.addEventListener("wheel", e => {
   e.preventDefault();
   const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-  const newZoom = clamp(window.Sim.cam.targetZoom * factor, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+  const newZoom = H.clamp(window.Sim.cam.targetZoom * factor, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
   const wb = window.Sim.screenToWorld(e.clientX, e.clientY);
   window.Sim.cam.targetZoom = newZoom;
   window.Sim.cam.x = wb.x - (e.clientX - window.Sim.W / 2) / newZoom;
@@ -79,11 +74,10 @@ window.Sim.frameBodies = () => {
   }
   window.Sim.cam.x = (minX + maxX) / 2; 
   window.Sim.cam.y = (minY + maxY) / 2;
-  window.Sim.cam.targetZoom = clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+  window.Sim.cam.targetZoom = H.clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
 };    window.Sim.cam.x = camStart.x - (e.clientX - panStart.x) / window.Sim.cam.zoom;
     window.Sim.cam.y = camStart.y - (e.clientY - panStart.y) / window.Sim.cam.zoom;
-  }
-});
+
 window.addEventListener("mouseup", e => { if (e.button === 1 || e.button === 2) panning = false; });
 window.addEventListener("contextmenu", e => e.preventDefault());
 
@@ -95,5 +89,5 @@ window.Sim.frameBodies = () => {
     minY = Math.min(minY, b.cy - b.radius); maxY = Math.max(maxY, b.cy + b.radius);
   }
   window.Sim.cam.x = (minX + maxX) / 2; window.Sim.cam.y = (minY + maxY) / 2;
-  window.Sim.cam.targetZoom = clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+  window.Sim.cam.targetZoom = H.clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
 };

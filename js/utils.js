@@ -73,3 +73,5 @@ window.Sim.lerp = lerp;
 window.Sim.rnd = rnd;
 window.Sim.rndR = rndR;
 window.Sim.PI2 = PI2;
+
+const H = window.sim

@@ -3,12 +3,6 @@
 // ── Import helpers from utils.js ─────────────────────
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-const hypot = window.Sim.hypot;
-const clamp = window.Sim.clamp;
-const lerp = window.Sim.lerp;
-const rnd = window.Sim.rnd;
-const rndR = window.Sim.rndR;
-const PI2 = window.Sim.PI2;
 
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
@@ -27,8 +21,8 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
     for (let col = 0; col < cols; col++) {
       const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
       const dx = px - cx, dy = py - cy;
-      if (hypot(dx, dy) > radius + spacing * 0.3) continue;
-      const p = window.Sim.makeParticle(px, py, 1, pal, hypot(dx, dy) < radius * 0.3);
+      if (H.hypot(dx, dy) > radius + spacing * 0.3) continue;
+      const p = window.Sim.makeParticle(px, py, 1, pal, H.hypot(dx, dy) < radius * 0.3);
       grid[`${col},${row}`] = particles.length;
       particles.push(p);
     }
@@ -42,13 +36,13 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
         const key = ai < bi ? `${ai}-${bi}` : `${bi}-${ai}`;
         if (seen.has(key)) continue; seen.add(key);
         const pa = particles[ai], pb = particles[bi];
-        const len = hypot(pb.x - pa.x, pb.y - pa.y);
+        const len = H.hypot(pb.x - pa.x, pb.y - pa.y);
         const isDirect = len < spacing * 1.2;
         springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT * 0.8));
       }
     }
   }
-  for (const p of particles) p.mass = lerp(2.0, 0.6, hypot(p.x - cx, p.y - cy) / radius);
+  for (const p of particles) p.mass = H.lerp(2.0, 0.6, H.hypot(p.x - cx, p.y - cy) / radius);
   const body = { particles, springs, pal, cx, cy, mass: 0, radius, dead: false, gravMult: window.Sim.sunGravMult };
   let tm = 0; for (const p of particles) { p.body = body; tm += p.mass; }
   body.mass = tm; return body;
@@ -76,7 +70,7 @@ window.Sim.solveSprings = (body, dt) => {
     const pa = ps[sp.a], pb = ps[sp.b];
     if (pa.dead || pb.dead) { sp.broken = true; continue; }
     const dx = pb.x - pa.x, dy = pb.y - pa.y;
-    const len = hypot(dx, dy) || 0.001;
+    const len = H.hypot(dx, dy) || 0.001;
     if (len > sp.breakAt) { sp.broken = true; continue; }
     const f = sp.stiff * (len - sp.restLen), nx = dx / len, ny = dy / len;
     const tm = pa.mass + pb.mass;
@@ -140,8 +134,8 @@ window.Sim.interBodyCollisions = () => {
               const j = -(1 + 0.45) * vn / (1 / ma + 1 / mb);
               pa.vx += j * nx / ma; pa.vy += j * ny / ma;
               pb.vx -= j * nx / mb; pb.vy -= j * ny / mb;
-              pa.heat = clamp(pa.heat + Math.abs(vn) * 0.15, 0, 1);
-              pb.heat = clamp(pb.heat + Math.abs(vn) * 0.15, 0, 1);
+              pa.heat = H.clamp(pa.heat + Math.abs(vn) * 0.15, 0, 1);
+              pb.heat = H.clamp(pb.heat + Math.abs(vn) * 0.15, 0, 1);
             }
           }
         }
@@ -152,18 +146,18 @@ window.Sim.interBodyCollisions = () => {
 
 window.Sim.spawnRing = body => {
   const rx = body.cx, ry = body.cy;
-  const dist = hypot(rx - window.Sim.SUN.x, ry - window.Sim.SUN.y) || 1;
+  const dist = H.hypot(rx - window.Sim.SUN.x, ry - window.Sim.SUN.y) || 1;
   const ringW = body.radius * 0.6;
   window.Sim.addFlash(rx, ry, body.radius * 4, body.pal.gc);
   window.Sim.addNova(rx, ry, body.radius * 3, body.pal.gc);
   for (let i = 0; i < window.Sim.RING_PARTICLES; i++) {
-    const angle = (PI2 / window.Sim.RING_PARTICLES) * i + rndR(-0.05, 0.05);
-    const r = dist + rndR(-ringW, ringW);
+    const angle = (H.PI2 / window.Sim.RING_PARTICLES) * i + H.rndR(-0.05, 0.05);
+    const r = dist + H.rndR(-ringW, ringW);
     const px = window.Sim.SUN.x + Math.cos(angle) * r, py = window.Sim.SUN.y + Math.sin(angle) * r;
     const gmLocal = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * (body.gravMult || window.Sim.sunGravMult);
     const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
-    const scatter = rndR(0.96, 1.04);
-    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: rndR(0.4, 1.2), pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(0.7, 1.0), decay: rndR(0.0005, 0.002), isRing: true });
+    const scatter = H.rndR(0.96, 1.04);
+    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: H.rndR(0.7, 1.0), decay: H.rndR(0.0005, 0.002), isRing: true });
   }
 };
 
@@ -180,11 +174,11 @@ window.Sim.splitDeadParticles = body => {
   let alive = 0;
   for (let i = 0; i < n; i++) {
     const p = ps[i]; if (p.dead) continue;
-    if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: rndR(0.004, 0.008) }); p.dead = true; }
+    if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) }); p.dead = true; }
     else alive++;
   }
   if (alive < Math.max(3, n * 0.08)) {
-    for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: rndR(0.005, 0.01) });
+    for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: H.rndR(0.005, 0.01) });
     if (body.radius >= window.Sim.RING_MIN_RADIUS) window.Sim.spawnRing(body);
     body.dead = true;
   }
@@ -202,7 +196,7 @@ window.Sim.looseVsPlanets = () => {
       for (const bp of body.particles) { if (bp.dead) continue; const d2 = (bp.x - lp.x) ** 2 + (bp.y - lp.y) ** 2; if (d2 < nearD2) { nearD2 = d2; nearP = bp; } }
       const nearD = Math.sqrt(nearD2);
       if (!nearP || nearD > window.Sim.config.LOOSE_HIT_R) continue;
-      const dx = nearP.x - lp.x, dy = nearP.y - lp.y, d = hypot(dx, dy) || 0.001;
+      const dx = nearP.x - lp.x, dy = nearP.y - lp.y, d = H.hypot(dx, dy) || 0.001;
       const nx = dx / d, ny = dy / d;
       const vn = (lp.vx - nearP.vx) * nx + (lp.vy - nearP.vy) * ny;
       if (Math.abs(vn) < 0.8) { nearP.vx += lp.vx * lp.mass / nearP.mass * 0.3; nearP.vy += lp.vy * lp.mass / nearP.mass * 0.3; nearP.heat = Math.min(1, nearP.heat + 0.25); lp.life = 0; }
@@ -212,13 +206,13 @@ window.Sim.looseVsPlanets = () => {
         const j = -(1 + 0.55) * vn / (1 / ma + 1 / mb);
         lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
         nearP.vx += j * nx / mb; nearP.vy += j * ny / mb;
-        const h = clamp(Math.abs(vn) * 0.12, 0, 1);
+        const h = H.clamp(Math.abs(vn) * 0.12, 0, 1);
         lp.heat = Math.min(1, lp.heat + h); nearP.heat = Math.min(1, nearP.heat + h * 1.5);
         if (Math.abs(vn) > 2) {
           for (let k = 0; k < 3; k++) {
-            const a = Math.atan2(-ny, -nx) + (rnd() - 0.5) * 1.2;
-            const s = rnd() * Math.abs(vn) * 0.4 + 0.5;
-            window.Sim.state.loose.push({ x: lp.x, y: lp.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, mass: lp.mass * 0.15, pal: lp.pal, heat: 0.8, life: 0.6, decay: rndR(0.02, 0.04) });
+            const a = Math.atan2(-ny, -nx) + (H.rnd() - 0.5) * 1.2;
+            const s = H.rnd() * Math.abs(vn) * 0.4 + 0.5;
+            window.Sim.state.loose.push({ x: lp.x, y: lp.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, mass: lp.mass * 0.15, pal: lp.pal, heat: 0.8, life: 0.6, decay: H.rndR(0.02, 0.04) });
           }
         }
       }
