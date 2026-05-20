@@ -4,7 +4,6 @@
 // We need 'H.clamp' from utils.js to handle zoom limits
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-const H = window.Sim;
 
 // ── Shared State ─────────────────────────────────────
 // Expose 'panning' so input-ui.js can check if we are dragging

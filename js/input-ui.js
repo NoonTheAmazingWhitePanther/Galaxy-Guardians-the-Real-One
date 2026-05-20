@@ -4,7 +4,6 @@
 // We need 'H.clamp' for UI limits and 'H.hypot' for pinch/touch distance
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-const H = window.Sim;
 
 // ── Gravity Slider ───────────────────────────────────
 window.Sim.gravSlider.addEventListener("input", () => { 

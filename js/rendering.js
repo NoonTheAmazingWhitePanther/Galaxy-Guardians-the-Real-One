@@ -5,7 +5,7 @@
 // Cache helpers from window.Sim for performance
 
 window.Sim.initStars = () => {
-  window.Sim.state.stars = Array.from({ length: 180 }, () => ({ x: H.rnd() * window.Sim.W, y: H.rnd() * window.Sim.H, r: H.rnd() * 1.2 + 0.2, bri: H.rnd() * 0.5 + 0.5, ts: H.rnd() * 0.012 + 0.003, to: H.rnd() * H.PI2, hue: 200 + H.rnd() * 60 }));
+  window.Sim.state.stars = Array.from({ length: 90 }, () => ({ x: H.rnd() * window.Sim.W, y: H.rnd() * window.Sim.H, r: H.rnd() * 1.2 + 0.2, bri: H.rnd() * 0.5 + 0.5, ts: H.rnd() * 0.012 + 0.003, to: H.rnd() * H.PI2, hue: 200 + H.rnd() * 60 }));
 };
 
 window.Sim.drawStars = t => {

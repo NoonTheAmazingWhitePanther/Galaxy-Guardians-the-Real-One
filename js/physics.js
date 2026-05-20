@@ -3,7 +3,6 @@
 // ── Import helpers from utils.js ─────────────────────
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-const H = window.Sim;
 
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0

@@ -19,6 +19,8 @@ window.Sim.clamp = clamp;
 window.Sim.lerp = lerp;
 window.Sim.hypot = hypot;
 
+const H = window.Sim;
+
 // ============================================================================
 // 2. DOM REFERENCES
 // ============================================================================
