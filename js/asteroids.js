@@ -1,8 +1,15 @@
 "use strict";
 
 // ── Import helpers from utils.js ─────────────────────
-const { hypot, rnd, rndR, PI2 } = window.Sim;
-
+//const { hypot, rnd, rndR, PI2 } = window.Sim;
+// ── At the TOP of each file (after "use strict") ─────
+// Cache helpers from window.Sim for performance
+const hypot = window.Sim.hypot;
+const clamp = window.Sim.clamp;
+const lerp = window.Sim.lerp;
+const rnd = window.Sim.rnd;
+const rndR = window.Sim.rndR;
+const PI2 = window.Sim.PI2;
 window.Sim.spawnAsteroid = () => {
   if (window.Sim.state.asteroids.length >= window.Sim.AST_MAX) return;
   const spawnR = 10000 + rndR(4000, 10000);
