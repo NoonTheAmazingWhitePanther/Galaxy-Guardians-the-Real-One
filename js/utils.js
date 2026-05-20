@@ -1,5 +1,9 @@
 "use strict";
 
+// ============================================================================
+// 1. MATH & HELPERS
+// Defined locally for speed, then exported to window.Sim for other files
+// ============================================================================
 const PI2 = Math.PI * 2;
 const rnd = Math.random.bind(Math);
 const rndR = (a, b) => a + (b - a) * rnd();
@@ -7,6 +11,17 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const hypot = Math.hypot;
 
+// Export to global Sim namespace
+window.Sim.PI2 = PI2;
+window.Sim.rnd = rnd;
+window.Sim.rndR = rndR;
+window.Sim.clamp = clamp;
+window.Sim.lerp = lerp;
+window.Sim.hypot = hypot;
+
+// ============================================================================
+// 2. DOM REFERENCES
+// ============================================================================
 window.Sim.canvas = document.getElementById("c");
 window.Sim.ctx = window.Sim.canvas.getContext("2d", { alpha: false, desynchronized: true });
 window.Sim.cursorEl = document.getElementById("cursor");
@@ -19,6 +34,9 @@ window.Sim.gravVal = document.getElementById("grav-val");
 window.Sim.W = window.Sim.canvas.width = window.innerWidth;
 window.Sim.H = window.Sim.canvas.height = window.innerHeight;
 
+// ============================================================================
+// 3. UTILITY FUNCTIONS
+// ============================================================================
 window.Sim.makeRockShape = function(r) {
   const n = Math.floor(rndR(5, 9));
   return Array.from({ length: n }, (_, i) => {
