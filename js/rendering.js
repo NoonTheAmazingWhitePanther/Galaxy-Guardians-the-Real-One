@@ -1,5 +1,10 @@
 "use strict";
 
+"use strict";
+
+// ── Import helpers from utils.js ─────────────────────
+const { hypot, clamp, lerp, rnd, rndR, PI2 } = window.Sim;
+
 window.Sim.initStars = () => {
   window.Sim.state.stars = Array.from({ length: 180 }, () => ({ x: rnd() * window.Sim.W, y: rnd() * window.Sim.H, r: rnd() * 1.2 + 0.2, bri: rnd() * 0.5 + 0.5, ts: rnd() * 0.012 + 0.003, to: rnd() * PI2, hue: 200 + rnd() * 60 }));
 };
