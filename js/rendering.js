@@ -220,3 +220,27 @@ window.Sim.drawTrail = () => {
   }
   window.Sim.ctx.globalCompositeOperation = "source-over";
 };
+
+// ============================================================================
+// SPAWN & UI HELPERS (Missing from your current file)
+// ============================================================================
+
+window.Sim.spawnPlanet = (x, y, size) => {
+  if (window.Sim.state.bodies.length >= 8) return;
+  const radius = clamp(size * 8, 16, 110);
+  const pal = window.Sim.PALS[Math.floor(rnd() * window.Sim.PALS.length)];
+  const body = window.Sim.makeBody(x, y, radius, pal);
+  const nP = body.particles.length;
+  body.gravMult = window.Sim.sunGravMult;
+  const { vx, vy } = window.Sim.getSpawnVelocity(x, y, nP, window.Sim.sunGravMult);
+  for (const p of body.particles) { p.vx = vx; p.vy = vy; }
+  window.Sim.state.bodies.push(body);
+  window.Sim.addFlash(x, y, radius * 2, pal.gc);
+  window.Sim.updateCount();
+};
+
+window.Sim.updateCount = () => { 
+  let n = 0; 
+  for (const b of window.Sim.state.bodies) if (!b.dead) n++; 
+  window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} WORLD${n !== 1 ? "S" : ""}`; 
+};
