@@ -1,17 +1,16 @@
 "use strict";
-const Sim = window.Sim;
 
-Sim.makeParticle = (x, y, mass, pal, isCore) => ({
+window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
 });
 
-Sim.makeSpring = (a, b, restLen, stiff, breakAt) => ({
-  a, b, restLen, stiff: stiff || Sim.config.SPRING_K, breakAt: breakAt || (restLen * Sim.config.BREAK_MULT), broken: false
+window.Sim.makeSpring = (a, b, restLen, stiff, breakAt) => ({
+  a, b, restLen, stiff: stiff || window.Sim.config.SPRING_K, breakAt: breakAt || (restLen * window.Sim.config.BREAK_MULT), broken: false
 });
 
-Sim.makeBody = (cx, cy, radius, pal) => {
+window.Sim.makeBody = (cx, cy, radius, pal) => {
   const particles = [], springs = [], grid = {};
-  const spacing = Sim.config.PARTICLE_R * 1.82;
+  const spacing = window.Sim.config.PARTICLE_R * 1.82;
   const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
   const ox = cx - (cols - 1) * spacing * 0.5, oy = cy - (rows - 1) * spacing * 0.5;
   for (let row = 0; row < rows; row++) {
@@ -19,7 +18,7 @@ Sim.makeBody = (cx, cy, radius, pal) => {
       const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
       const dx = px - cx, dy = py - cy;
       if (hypot(dx, dy) > radius + spacing * 0.3) continue;
-      const p = Sim.makeParticle(px, py, 1, pal, hypot(dx, dy) < radius * 0.3);
+      const p = window.Sim.makeParticle(px, py, 1, pal, hypot(dx, dy) < radius * 0.3);
       grid[`${col},${row}`] = particles.length;
       particles.push(p);
     }
@@ -35,32 +34,32 @@ Sim.makeBody = (cx, cy, radius, pal) => {
         const pa = particles[ai], pb = particles[bi];
         const len = hypot(pb.x - pa.x, pb.y - pa.y);
         const isDirect = len < spacing * 1.2;
-        springs.push(Sim.makeSpring(ai, bi, len, isDirect ? Sim.config.SPRING_K : Sim.config.SPRING_K * 0.6, isDirect ? len * Sim.config.BREAK_MULT : len * Sim.config.BREAK_MULT * 0.8));
+        springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT * 0.8));
       }
     }
   }
   for (const p of particles) p.mass = lerp(2.0, 0.6, hypot(p.x - cx, p.y - cy) / radius);
-  const body = { particles, springs, pal, cx, cy, mass: 0, radius, dead: false, gravMult: Sim.sunGravMult };
+  const body = { particles, springs, pal, cx, cy, mass: 0, radius, dead: false, gravMult: window.Sim.sunGravMult };
   let tm = 0; for (const p of particles) { p.body = body; tm += p.mass; }
   body.mass = tm; return body;
 };
 
-Sim.updateCOM = body => {
+window.Sim.updateCOM = body => {
   let sx = 0, sy = 0, sm = 0;
   for (const p of body.particles) { if (p.dead) continue; sx += p.x * p.mass; sy += p.y * p.mass; sm += p.mass; }
   if (sm > 0) { body.cx = sx / sm; body.cy = sy / sm; body.mass = sm; }
 };
 
-Sim.integrateParticle = (p, dt) => {
+window.Sim.integrateParticle = (p, dt) => {
   if (p.dead) return;
-  const damp = Sim.config.DAMPING;
+  const damp = window.Sim.config.DAMPING;
   p.vx = (p.vx + (p.fx / p.mass) * dt) * damp;
   p.vy = (p.vy + (p.fy / p.mass) * dt) * damp;
   p.x += p.vx * dt; p.y += p.vy * dt;
   p.fx = 0; p.fy = 0;
 };
 
-Sim.solveSprings = (body, dt) => {
+window.Sim.solveSprings = (body, dt) => {
   const { particles: ps, springs: ss } = body;
   for (const sp of ss) {
     if (sp.broken) continue;
@@ -76,30 +75,30 @@ Sim.solveSprings = (body, dt) => {
   }
 };
 
-Sim.applyGravity = (p, nParticles) => {
-  const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : Sim.sunGravMult;
-  const sdx = Sim.SUN.x - p.x, sdy = Sim.SUN.y - p.y;
+window.Sim.applyGravity = (p, nParticles) => {
+  const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : window.Sim.sunGravMult;
+  const sdx = window.Sim.SUN.x - p.x, sdy = window.Sim.SUN.y - p.y;
   const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
-  const sf = (Sim.config.GRAV_CONST * Sim.SUN.mass * gm / (sd2 + 500)) / nParticles;
+  const sf = (window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * gm / (sd2 + 500)) / nParticles;
   p.fx += (sdx / sd) * sf * p.mass; p.fy += (sdy / sd) * sf * p.mass;
-  for (const b of Sim.state.bodies) {
+  for (const b of window.Sim.state.bodies) {
     if (p.body === b) continue;
     const dx = b.cx - p.x, dy = b.cy - p.y;
     const d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
-    const f = (Sim.config.GRAV_CONST * b.mass / (d2 + 300)) / nParticles;
+    const f = (window.Sim.config.GRAV_CONST * b.mass / (d2 + 300)) / nParticles;
     p.fx += (dx / d) * f * p.mass; p.fy += (dy / d) * f * p.mass;
   }
 };
 
-Sim.interBodyCollisions = () => {
-  for (let bi = 0; bi < Sim.state.bodies.length; bi++) {
-    for (let bj = bi + 1; bj < Sim.state.bodies.length; bj++) {
-      const A = Sim.state.bodies[bi], B = Sim.state.bodies[bj];
+window.Sim.interBodyCollisions = () => {
+  for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) {
+    for (let bj = bi + 1; bj < window.Sim.state.bodies.length; bj++) {
+      const A = window.Sim.state.bodies[bi], B = window.Sim.state.bodies[bj];
       const cdx = A.cx - B.cx, cdy = A.cy - B.cy;
       const cd2 = cdx * cdx + cdy * cdy;
-      const thresh = A.radius + B.radius + Sim.config.COLLISION_R * 4;
+      const thresh = A.radius + B.radius + window.Sim.config.COLLISION_R * 4;
       if (cd2 > thresh * thresh) continue;
-      const cellSize = Sim.config.COLLISION_R * 2;
+      const cellSize = window.Sim.config.COLLISION_R * 2;
       const grid = new Map();
       const addCell = (p, tag) => {
         const cx = Math.floor(p.x / cellSize), cy = Math.floor(p.y / cellSize);
@@ -121,9 +120,9 @@ Sim.interBodyCollisions = () => {
             const pb = eb.p;
             const dx = pb.x - pa.x, dy = pb.y - pa.y;
             const d2 = dx * dx + dy * dy;
-            if (d2 >= Sim.config.COLLISION_R * Sim.config.COLLISION_R) continue;
+            if (d2 >= window.Sim.config.COLLISION_R * window.Sim.config.COLLISION_R) continue;
             const d = Math.sqrt(d2) || 0.001, nx = dx / d, ny = dy / d;
-            const ov = Sim.config.COLLISION_R - d, ma = pa.mass, mb = pb.mass, mt = ma + mb;
+            const ov = window.Sim.config.COLLISION_R - d, ma = pa.mass, mb = pb.mass, mt = ma + mb;
             pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
             pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
             const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
@@ -141,24 +140,24 @@ Sim.interBodyCollisions = () => {
   }
 };
 
-Sim.spawnRing = body => {
+window.Sim.spawnRing = body => {
   const rx = body.cx, ry = body.cy;
-  const dist = hypot(rx - Sim.SUN.x, ry - Sim.SUN.y) || 1;
+  const dist = hypot(rx - window.Sim.SUN.x, ry - window.Sim.SUN.y) || 1;
   const ringW = body.radius * 0.6;
-  Sim.addFlash(rx, ry, body.radius * 4, body.pal.gc);
-  Sim.addNova(rx, ry, body.radius * 3, body.pal.gc);
-  for (let i = 0; i < Sim.RING_PARTICLES; i++) {
-    const angle = (PI2 / Sim.RING_PARTICLES) * i + rndR(-0.05, 0.05);
+  window.Sim.addFlash(rx, ry, body.radius * 4, body.pal.gc);
+  window.Sim.addNova(rx, ry, body.radius * 3, body.pal.gc);
+  for (let i = 0; i < window.Sim.RING_PARTICLES; i++) {
+    const angle = (PI2 / window.Sim.RING_PARTICLES) * i + rndR(-0.05, 0.05);
     const r = dist + rndR(-ringW, ringW);
-    const px = Sim.SUN.x + Math.cos(angle) * r, py = Sim.SUN.y + Math.sin(angle) * r;
-    const gmLocal = Sim.config.GRAV_CONST * Sim.SUN.mass * (body.gravMult || Sim.sunGravMult);
+    const px = window.Sim.SUN.x + Math.cos(angle) * r, py = window.Sim.SUN.y + Math.sin(angle) * r;
+    const gmLocal = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * (body.gravMult || window.Sim.sunGravMult);
     const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
     const scatter = rndR(0.96, 1.04);
-    Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: rndR(0.4, 1.2), pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(0.7, 1.0), decay: rndR(0.0005, 0.002), isRing: true });
+    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: rndR(0.4, 1.2), pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(0.7, 1.0), decay: rndR(0.0005, 0.002), isRing: true });
   }
 };
 
-Sim.splitDeadParticles = body => {
+window.Sim.splitDeadParticles = body => {
   const { particles: ps, springs: ss } = body;
   const n = ps.length; if (!n) return;
   const adj = Array.from({ length: n }, () => []);
@@ -171,34 +170,34 @@ Sim.splitDeadParticles = body => {
   let alive = 0;
   for (let i = 0; i < n; i++) {
     const p = ps[i]; if (p.dead) continue;
-    if (!vis[i]) { Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: rndR(0.004, 0.008) }); p.dead = true; }
+    if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: rndR(0.004, 0.008) }); p.dead = true; }
     else alive++;
   }
   if (alive < Math.max(3, n * 0.08)) {
-    for (const p of ps) if (!p.dead) Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: rndR(0.005, 0.01) });
-    if (body.radius >= Sim.RING_MIN_RADIUS) Sim.spawnRing(body);
+    for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: rndR(0.005, 0.01) });
+    if (body.radius >= window.Sim.RING_MIN_RADIUS) window.Sim.spawnRing(body);
     body.dead = true;
   }
 };
 
-Sim.looseVsPlanets = () => {
-  const MAX = 200, step = Sim.state.loose.length > MAX ? Math.floor(Sim.state.loose.length / MAX) : 1;
-  for (let li = Sim.state.loose.length - 1; li >= 0; li -= step) {
-    const lp = Sim.state.loose[li]; if (lp.life <= 0) continue;
-    for (const body of Sim.state.bodies) {
+window.Sim.looseVsPlanets = () => {
+  const MAX = 200, step = window.Sim.state.loose.length > MAX ? Math.floor(window.Sim.state.loose.length / MAX) : 1;
+  for (let li = window.Sim.state.loose.length - 1; li >= 0; li -= step) {
+    const lp = window.Sim.state.loose[li]; if (lp.life <= 0) continue;
+    for (const body of window.Sim.state.bodies) {
       const bdx = body.cx - lp.x, bdy = body.cy - lp.y;
       const bd2 = bdx * bdx + bdy * bdy;
-      if (bd2 > (body.radius + Sim.config.LOOSE_HIT_R * 2) ** 2) continue;
+      if (bd2 > (body.radius + window.Sim.config.LOOSE_HIT_R * 2) ** 2) continue;
       let nearP = null, nearD2 = Infinity;
       for (const bp of body.particles) { if (bp.dead) continue; const d2 = (bp.x - lp.x) ** 2 + (bp.y - lp.y) ** 2; if (d2 < nearD2) { nearD2 = d2; nearP = bp; } }
       const nearD = Math.sqrt(nearD2);
-      if (!nearP || nearD > Sim.config.LOOSE_HIT_R) continue;
+      if (!nearP || nearD > window.Sim.config.LOOSE_HIT_R) continue;
       const dx = nearP.x - lp.x, dy = nearP.y - lp.y, d = hypot(dx, dy) || 0.001;
       const nx = dx / d, ny = dy / d;
       const vn = (lp.vx - nearP.vx) * nx + (lp.vy - nearP.vy) * ny;
       if (Math.abs(vn) < 0.8) { nearP.vx += lp.vx * lp.mass / nearP.mass * 0.3; nearP.vy += lp.vy * lp.mass / nearP.mass * 0.3; nearP.heat = Math.min(1, nearP.heat + 0.25); lp.life = 0; }
       else if (vn > 0) {
-        lp.x -= nx * (Sim.config.LOOSE_HIT_R - nearD) * 0.9; lp.y -= ny * (Sim.config.LOOSE_HIT_R - nearD) * 0.9;
+        lp.x -= nx * (window.Sim.config.LOOSE_HIT_R - nearD) * 0.9; lp.y -= ny * (window.Sim.config.LOOSE_HIT_R - nearD) * 0.9;
         const ma = lp.mass, mb = nearP.mass;
         const j = -(1 + 0.55) * vn / (1 / ma + 1 / mb);
         lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
@@ -209,7 +208,7 @@ Sim.looseVsPlanets = () => {
           for (let k = 0; k < 3; k++) {
             const a = Math.atan2(-ny, -nx) + (rnd() - 0.5) * 1.2;
             const s = rnd() * Math.abs(vn) * 0.4 + 0.5;
-            Sim.state.loose.push({ x: lp.x, y: lp.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, mass: lp.mass * 0.15, pal: lp.pal, heat: 0.8, life: 0.6, decay: rndR(0.02, 0.04) });
+            window.Sim.state.loose.push({ x: lp.x, y: lp.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, mass: lp.mass * 0.15, pal: lp.pal, heat: 0.8, life: 0.6, decay: rndR(0.02, 0.04) });
           }
         }
       }
@@ -218,41 +217,41 @@ Sim.looseVsPlanets = () => {
   }
 };
 
-Sim.tickLoose = dt => {
-  if (Sim.state.loose.length > 400) Sim.state.loose = Sim.state.loose.slice(Sim.state.loose.length - 400);
-  Sim.state.loose = Sim.state.loose.filter(p => p.life > 0);
-  const gmScale = Sim.sunGravMult * 0.04;
-  for (const p of Sim.state.loose) {
-    const sdx = Sim.SUN.x - p.x, sdy = Sim.SUN.y - p.y;
+window.Sim.tickLoose = dt => {
+  if (window.Sim.state.loose.length > 400) window.Sim.state.loose = window.Sim.state.loose.slice(window.Sim.state.loose.length - 400);
+  window.Sim.state.loose = window.Sim.state.loose.filter(p => p.life > 0);
+  const gmScale = window.Sim.sunGravMult * 0.04;
+  for (const p of window.Sim.state.loose) {
+    const sdx = window.Sim.SUN.x - p.x, sdy = window.Sim.SUN.y - p.y;
     const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
-    if (sd < Sim.SUN.burnRadius) { p.life = 0; continue; }
-    const sf = Sim.config.GRAV_CONST * Sim.SUN.mass * gmScale / (sd2 + 500);
+    if (sd < window.Sim.SUN.burnRadius) { p.life = 0; continue; }
+    const sf = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * gmScale / (sd2 + 500);
     p.vx += (sdx / sd) * sf * dt; p.vy += (sdy / sd) * sf * dt;
-    for (const b of Sim.state.bodies) {
+    for (const b of window.Sim.state.bodies) {
       const dx = b.cx - p.x, dy = b.cy - p.y, d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
-      const f = Sim.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
+      const f = window.Sim.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
       p.vx += (dx / d) * f * dt; p.vy += (dy / d) * f * dt;
     }
     p.vx *= 0.997; p.vy *= 0.997;
     p.x += p.vx * dt; p.y += p.vy * dt;
-    p.heat = sd < Sim.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
+    p.heat = sd < window.Sim.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
     p.life -= p.decay * dt;
   }
 };
 
-Sim.tickBodies = scaledDt => {
-  const dt = scaledDt / Sim.config.SUBSTEPS;
-  const nAlives = Sim.state.bodies.map(b => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; });
-  for (let sub = 0; sub < Sim.config.SUBSTEPS; sub++) {
-    for (let bi = 0; bi < Sim.state.bodies.length; bi++) { const body = Sim.state.bodies[bi], na = nAlives[bi]; for (const p of body.particles) if (!p.dead) Sim.applyGravity(p, na); }
-    for (const body of Sim.state.bodies) for (const p of body.particles) Sim.integrateParticle(p, dt);
-    for (const body of Sim.state.bodies) Sim.solveSprings(body, dt);
-    const burnSq = Sim.SUN.burnRadius * Sim.SUN.burnRadius;
-    for (const body of Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = Sim.SUN.x - p.x, dy = Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.dead = true; p.heat = 1; } else if (sd2 < burnSq * 6.25) p.heat = Math.min(1, p.heat + 0.04); }
-    if (sub === Sim.config.SUBSTEPS - 1) Sim.interBodyCollisions();
+window.Sim.tickBodies = scaledDt => {
+  const dt = scaledDt / window.Sim.config.SUBSTEPS;
+  const nAlives = window.Sim.state.bodies.map(b => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; });
+  for (let sub = 0; sub < window.Sim.config.SUBSTEPS; sub++) {
+    for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) { const body = window.Sim.state.bodies[bi], na = nAlives[bi]; for (const p of body.particles) if (!p.dead) window.Sim.applyGravity(p, na); }
+    for (const body of window.Sim.state.bodies) for (const p of body.particles) window.Sim.integrateParticle(p, dt);
+    for (const body of window.Sim.state.bodies) window.Sim.solveSprings(body, dt);
+    const burnSq = window.Sim.SUN.burnRadius * window.Sim.SUN.burnRadius;
+    for (const body of window.Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = window.Sim.SUN.x - p.x, dy = window.Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.dead = true; p.heat = 1; } else if (sd2 < burnSq * 6.25) p.heat = Math.min(1, p.heat + 0.04); }
+    if (sub === window.Sim.config.SUBSTEPS - 1) window.Sim.interBodyCollisions();
   }
-  for (const body of Sim.state.bodies) Sim.updateCOM(body);
-  for (const body of Sim.state.bodies) Sim.splitDeadParticles(body);
-  Sim.state.bodies = Sim.state.bodies.filter(b => !b.dead);
-  Sim.looseVsPlanets();
+  for (const body of window.Sim.state.bodies) window.Sim.updateCOM(body);
+  for (const body of window.Sim.state.bodies) window.Sim.splitDeadParticles(body);
+  window.Sim.state.bodies = window.Sim.state.bodies.filter(b => !b.dead);
+  window.Sim.looseVsPlanets();
 };

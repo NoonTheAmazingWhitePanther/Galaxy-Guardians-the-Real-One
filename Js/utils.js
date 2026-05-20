@@ -1,5 +1,4 @@
 "use strict";
-const Sim = window.Sim;
 
 const PI2 = Math.PI * 2;
 const rnd = Math.random.bind(Math);
@@ -8,19 +7,19 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const hypot = Math.hypot;
 
-Sim.canvas = document.getElementById("c");
-Sim.ctx = Sim.canvas.getContext("2d", { alpha: false, desynchronized: true });
-Sim.cursorEl = document.getElementById("cursor");
-Sim.slider = document.getElementById("size-slider");
-Sim.pcountEl = document.getElementById("pcount");
-Sim.uiEl = document.getElementById("ui");
-Sim.gravSlider = document.getElementById("grav-slider");
-Sim.gravVal = document.getElementById("grav-val");
+window.Sim.canvas = document.getElementById("c");
+window.Sim.ctx = window.Sim.canvas.getContext("2d", { alpha: false, desynchronized: true });
+window.Sim.cursorEl = document.getElementById("cursor");
+window.Sim.slider = document.getElementById("size-slider");
+window.Sim.pcountEl = document.getElementById("pcount");
+window.Sim.uiEl = document.getElementById("ui");
+window.Sim.gravSlider = document.getElementById("grav-slider");
+window.Sim.gravVal = document.getElementById("grav-val");
 
-Sim.W = Sim.canvas.width = window.innerWidth;
-Sim.H = Sim.canvas.height = window.innerHeight;
+window.Sim.W = window.Sim.canvas.width = window.innerWidth;
+window.Sim.H = window.Sim.canvas.height = window.innerHeight;
 
-Sim.makeRockShape = function(r) {
+window.Sim.makeRockShape = function(r) {
   const n = Math.floor(rndR(5, 9));
   return Array.from({ length: n }, (_, i) => {
     const baseA = (PI2 / n) * i + (rnd() - 0.5) * (PI2 / n) * 0.55;
@@ -29,7 +28,7 @@ Sim.makeRockShape = function(r) {
   });
 };
 
-Sim.convexHull = function(pts) {
+window.Sim.convexHull = function(pts) {
   if (pts.length < 3) return pts;
   let lo = pts[0];
   for (const p of pts) if (p.y > lo.y || (p.y === lo.y && p.x < lo.x)) lo = p;
