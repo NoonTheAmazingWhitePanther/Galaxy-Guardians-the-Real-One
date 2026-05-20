@@ -1,7 +1,14 @@
 "use strict";
 
 // ── Import helpers from utils.js ─────────────────────
-const { hypot, clamp, lerp, rnd, rndR, PI2 } = window.Sim;
+// ── At the TOP of each file (after "use strict") ─────
+// Cache helpers from window.Sim for performance
+const hypot = window.Sim.hypot;
+const clamp = window.Sim.clamp;
+const lerp = window.Sim.lerp;
+const rnd = window.Sim.rnd;
+const rndR = window.Sim.rndR;
+const PI2 = window.Sim.PI2;
 
 window.Sim.initStars = () => {
   window.Sim.state.stars = Array.from({ length: 180 }, () => ({ x: rnd() * window.Sim.W, y: rnd() * window.Sim.H, r: rnd() * 1.2 + 0.2, bri: rnd() * 0.5 + 0.5, ts: rnd() * 0.012 + 0.003, to: rnd() * PI2, hue: 200 + rnd() * 60 }));
