@@ -1,7 +1,14 @@
 "use strict";
 
 // ── Import helpers from utils.js ─────────────────────
-const { hypot, clamp, lerp, rndR, rnd, PI2 } = window.Sim;
+// ── At the TOP of each file (after "use strict") ─────
+// Cache helpers from window.Sim for performance
+const hypot = window.Sim.hypot;
+const clamp = window.Sim.clamp;
+const lerp = window.Sim.lerp;
+const rnd = window.Sim.rnd;
+const rndR = window.Sim.rndR;
+const PI2 = window.Sim.PI2;
 
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
