@@ -1,5 +1,8 @@
 "use strict";
 
+// ── Import helpers from utils.js ─────────────────────
+const { hypot, rnd, rndR, PI2 } = window.Sim;
+
 window.Sim.spawnAsteroid = () => {
   if (window.Sim.state.asteroids.length >= window.Sim.AST_MAX) return;
   const spawnR = 10000 + rndR(4000, 10000);
