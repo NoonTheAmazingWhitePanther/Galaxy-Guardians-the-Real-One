@@ -1,0 +1,52 @@
+"use strict";
+
+window.Sim = window.Sim || {};
+const Sim = window.Sim;
+
+Sim.config = {
+  GRAV_CONST: 120,
+  SPRING_K: 0.40,
+  DAMPING: 1.0,
+  SUBSTEPS: 8,
+  PARTICLE_R: 2.8,
+  BREAK_MULT: 2.8,
+  PHYS_SCALE: 60,
+  get COLLISION_R() { return this.PARTICLE_R * 1.15; },
+  get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
+};
+
+Sim.state = {
+  bodies: [],
+  loose: [],
+  flashes: [],
+  stars: [],
+  asteroids: [],
+  astTimer: 0
+};
+
+Sim.SUN = { x: 0, y: 0, radius: 180, burnRadius: 220, mass: 182784, coronaTime: 0 };
+
+Sim.PALS = [
+  { hi: "#ffeeaa", mid: "#ff8800", lo: "#5a1800", gc: "255,140,50" },
+  { hi: "#cceeff", mid: "#0088ff", lo: "#001a44", gc: "60,180,255" },
+  { hi: "#eeccff", mid: "#aa00ff", lo: "#1a0033", gc: "160,60,255" },
+  { hi: "#aaffcc", mid: "#00cc66", lo: "#003322", gc: "40,200,120" },
+  { hi: "#ffccee", mid: "#ff0077", lo: "#330011", gc: "255,60,140" },
+  { hi: "#ffffaa", mid: "#ddcc00", lo: "#332200", gc: "220,200,60" },
+];
+
+Sim.AST_PALETTE = [
+  { fill: "#9c8e7a", outline: "#6b5e50", dot: "#c4b49a" },
+  { fill: "#7a8490", outline: "#505860", dot: "#a8b4bc" },
+  { fill: "#9a8840", outline: "#605420", dot: "#d4c870" },
+  { fill: "#6a8890", outline: "#384858", dot: "#90b8c0" }
+];
+
+Sim.sunGravMult = 1.0;
+Sim.physSpeed = 1;
+Sim.paused = false;
+Sim.SPEED_MAX = 8;
+Sim.RING_MIN_RADIUS = 40;
+Sim.RING_PARTICLES = 80;
+Sim.AST_SPAWN_INTERVAL = 600;
+Sim.AST_MAX = 6;
