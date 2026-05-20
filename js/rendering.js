@@ -1,7 +1,5 @@
 "use strict";
 
-"use strict";
-
 // ── Import helpers from utils.js ─────────────────────
 const { hypot, clamp, lerp, rnd, rndR, PI2 } = window.Sim;
 
