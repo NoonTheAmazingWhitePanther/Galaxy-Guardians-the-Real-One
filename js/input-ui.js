@@ -1,10 +1,10 @@
 "use strict";
 
 // ── Import helpers from utils.js ─────────────────────
-// We need 'H.Clamp' for UI limits and 'H.hypot' for pinch/touch distance
+// We need 'H.clamp' for UI limits and 'H.hypot' for pinch/touch distance
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
-
+const H = window.Sim;
 
 // ── Gravity Slider ───────────────────────────────────
 window.Sim.gravSlider.addEventListener("input", () => { 
@@ -29,7 +29,7 @@ window.Sim.updateSpeedBar = () => {
 };
 
 window.Sim.setSpeed = v => { 
-  window.Sim.physSpeed = H.Clamp(v, 0, window.Sim.SPEED_MAX); 
+  window.Sim.physSpeed = H.clamp(v, 0, window.Sim.SPEED_MAX); 
   if (window.Sim.physSpeed > 0 && window.Sim.paused) window.Sim.paused = false; 
 };
 
@@ -41,7 +41,7 @@ window.Sim.togglePause = () => {
 
 const spTrackPos = clientY => { 
   const rect = spTrack.getBoundingClientRect(); 
-  window.Sim.setSpeed(H.Clamp(1 - (clientY - rect.top) / rect.height, 0, 1) * window.Sim.SPEED_MAX); 
+  window.Sim.setSpeed(H.clamp(1 - (clientY - rect.top) / rect.height, 0, 1) * window.Sim.SPEED_MAX); 
 };
 
 let spDrag = false;
@@ -60,7 +60,7 @@ const zmLabel = document.getElementById("zm-label");
 
 window.Sim.updateZoomBar = () => { 
   const logMin = Math.log(window.Sim.cam.minZoom), logMax = Math.log(window.Sim.cam.maxZoom); 
-  const frac = H.Clamp((Math.log(window.Sim.cam.targetZoom) - logMin) / (logMax - logMin), 0, 1); 
+  const frac = H.clamp((Math.log(window.Sim.cam.targetZoom) - logMin) / (logMax - logMin), 0, 1); 
   zmFill.style.height = (frac * 100) + "%"; 
   zmThumb.style.top = ((1 - frac) * 100) + "%"; 
   zmLabel.textContent = (window.Sim.cam.targetZoom * 100).toFixed(0) + "%"; 
@@ -68,14 +68,14 @@ window.Sim.updateZoomBar = () => {
 
 const zmTrackPos = clientY => { 
   const rect = zmTrack.getBoundingClientRect(); 
-  const frac = H.Clamp(1 - (clientY - rect.top) / rect.height, 0, 1); 
+  const frac = H.clamp(1 - (clientY - rect.top) / rect.height, 0, 1); 
   const logMin = Math.log(window.Sim.cam.minZoom), logMax = Math.log(window.Sim.cam.maxZoom); 
   window.Sim.cam.targetZoom = Math.exp(logMin + frac * (logMax - logMin)); 
 };
 
 let zmDrag = false;
-document.getElementById("zm-in").addEventListener("pointerdown", e => { e.preventDefault(); window.Sim.cam.targetZoom = H.Clamp(window.Sim.cam.targetZoom * 1.3, window.Sim.cam.minZoom, window.Sim.cam.maxZoom); });
-document.getElementById("zm-out").addEventListener("pointerdown", e => { e.preventDefault(); window.Sim.cam.targetZoom = H.Clamp(window.Sim.cam.targetZoom / 1.3, window.Sim.cam.minZoom, window.Sim.cam.maxZoom); });
+document.getElementById("zm-in").addEventListener("pointerdown", e => { e.preventDefault(); window.Sim.cam.targetZoom = H.clamp(window.Sim.cam.targetZoom * 1.3, window.Sim.cam.minZoom, window.Sim.cam.maxZoom); });
+document.getElementById("zm-out").addEventListener("pointerdown", e => { e.preventDefault(); window.Sim.cam.targetZoom = H.clamp(window.Sim.cam.targetZoom / 1.3, window.Sim.cam.minZoom, window.Sim.cam.maxZoom); });
 document.getElementById("zm-fit").addEventListener("pointerdown", e => { e.preventDefault(); window.Sim.frameBodies(); });
 zmTrack.addEventListener("pointerdown", e => { zmDrag = true; zmTrackPos(e.clientY); e.preventDefault(); });
 window.addEventListener("pointermove", e => { if (zmDrag) zmTrackPos(e.clientY); });
@@ -140,7 +140,7 @@ window.Sim.canvas.addEventListener("touchmove", e => {
   if (e.touches.length === 2) { 
     const a = e.touches[0], b = e.touches[1];
     const dist = H.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
-    const newZoom = H.Clamp(pinchZoom0 * dist / pinchDist0, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+    const newZoom = H.clamp(pinchZoom0 * dist / pinchDist0, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
     const wb = window.Sim.screenToWorld(pinchMidX, pinchMidY); 
     window.Sim.cam.targetZoom = newZoom; 
     window.Sim.cam.x = wb.x - (pinchMidX - window.Sim.W / 2) / newZoom; 
@@ -166,8 +166,8 @@ window.Sim.canvas.addEventListener("touchend", e => {
 
 // ── Keyboard Shortcuts ───────────────────────────────
 window.addEventListener("keydown", e => {
-  if (e.key === "=" || e.key === "+") window.Sim.cam.targetZoom = H.Clamp(window.Sim.cam.targetZoom * 1.2, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
-  if (e.key === "-") window.Sim.cam.targetZoom = H.Clamp(window.Sim.cam.targetZoom / 1.2, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+  if (e.key === "=" || e.key === "+") window.Sim.cam.targetZoom = H.clamp(window.Sim.cam.targetZoom * 1.2, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
+  if (e.key === "-") window.Sim.cam.targetZoom = H.clamp(window.Sim.cam.targetZoom / 1.2, window.Sim.cam.minZoom, window.Sim.cam.maxZoom);
   if (e.key === "0" || e.key === "r") { window.Sim.cam.targetZoom = 1; window.Sim.cam.x = 0; window.Sim.cam.y = 0; }
   if (e.key === "f") window.Sim.frameBodies();
   if (e.key === " " || e.key === "p") { e.preventDefault(); window.Sim.togglePause(); }
