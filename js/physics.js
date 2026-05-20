@@ -3,6 +3,7 @@
 // ── Import helpers from utils.js ─────────────────────
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
+const H = window.Sim;
 
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
@@ -38,7 +39,7 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
         const pa = particles[ai], pb = particles[bi];
         const len = H.hypot(pb.x - pa.x, pb.y - pa.y);
         const isDirect = len < spacing * 1.2;
-        springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT * 0.8));
+        springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT));
       }
     }
   }
@@ -157,7 +158,7 @@ window.Sim.spawnRing = body => {
     const gmLocal = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * (body.gravMult || window.Sim.sunGravMult);
     const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
     const scatter = H.rndR(0.96, 1.04);
-    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: H.rndR(0.7, 1.0), decay: H.rndR(0.0005, 0.002), isRing: true });
+    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: 1, decay: H.rndR(0.006, 0.012), isRing: true });
   }
 };
 
@@ -251,7 +252,7 @@ window.Sim.tickBodies = scaledDt => {
     for (const body of window.Sim.state.bodies) for (const p of body.particles) window.Sim.integrateParticle(p, dt);
     for (const body of window.Sim.state.bodies) window.Sim.solveSprings(body, dt);
     const burnSq = window.Sim.SUN.burnRadius * window.Sim.SUN.burnRadius;
-    for (const body of window.Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = window.Sim.SUN.x - p.x, dy = window.Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.dead = true; p.heat = 1; } else if (sd2 < burnSq * 6.25) p.heat = Math.min(1, p.heat + 0.04); }
+    for (const body of window.Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = window.Sim.SUN.x - p.x, dy = window.Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.heat = 1; p.dead = true; window.Sim.addFlash(p.x, p.y, 15, p.pal.gc); } }
     if (sub === window.Sim.config.SUBSTEPS - 1) window.Sim.interBodyCollisions();
   }
   for (const body of window.Sim.state.bodies) window.Sim.updateCOM(body);
