@@ -1,5 +1,8 @@
 "use strict";
 
+// ── Import helpers from utils.js ─────────────────────
+const { hypot, clamp, lerp, rndR, rnd, PI2 } = window.Sim;
+
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
 });
