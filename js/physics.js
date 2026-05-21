@@ -1,22 +1,44 @@
 "use strict";
 
-// ── Import helpers from utils.js ─────────────────────
-// ── At the TOP of each file (after "use strict") ─────
-// Cache helpers from window.Sim for performance
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// PHYSICS.JS - Physics Engine & Body Dynamics
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// Purpose: Manage planet creation, spring physics, gravity, collisions, and destruction.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
+// ──────────────────────────────────────────────────────────────────────────────────��───────────────────────────────────
+// Particle & Spring Factories
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a single particle with physics state.
+ */
 window.Sim.makeParticle = (x, y, mass, pal, isCore) => ({
   x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
 });
 
+/**
+ * Create a spring constraint between two particles.
+ */
 window.Sim.makeSpring = (a, b, restLen, stiff, breakAt) => ({
   a, b, restLen, stiff: stiff || window.Sim.config.SPRING_K, breakAt: breakAt || (restLen * window.Sim.config.BREAK_MULT), broken: false
 });
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────────��────────────
+// Planet Construction
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Create a planet body from scratch.
+ * Arranges particles in hexagonal grid, connects with springs, calculates mass.
+ */
 window.Sim.makeBody = (cx, cy, radius, pal) => {
   const particles = [], springs = [], grid = {};
   const spacing = window.Sim.config.PARTICLE_R * 1.82;
   const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
   const ox = cx - (cols - 1) * spacing * 0.5, oy = cy - (rows - 1) * spacing * 0.5;
+  
+  // Create particles in hexagonal pattern
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
@@ -27,6 +49,8 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
       particles.push(p);
     }
   }
+  
+  // Connect particles with springs
   const dirs = [[1, 0], [0, 1], [1, 1], [-1, 1], [2, 0], [0, 2]], seen = new Set();
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -38,22 +62,34 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
         const pa = particles[ai], pb = particles[bi];
         const len = H.hypot(pb.x - pa.x, pb.y - pa.y);
         const isDirect = len < spacing * 1.2;
-        springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT));
+        springs.push(window.Sim.makeSpring(ai, bi, len, isDirect ? window.Sim.config.SPRING_K : window.Sim.config.SPRING_K * 0.6, isDirect ? len * window.Sim.config.BREAK_MULT : len * window.Sim.config.BREAK_MULT * 0.8));
       }
     }
   }
+  
+  // Mass distribution: heavier at core, lighter at edges
   for (const p of particles) p.mass = H.lerp(2.0, 0.6, H.hypot(p.x - cx, p.y - cy) / radius);
   const body = { particles, springs, pal, cx, cy, mass: 0, radius, dead: false, gravMult: window.Sim.sunGravMult };
   let tm = 0; for (const p of particles) { p.body = body; tm += p.mass; }
   body.mass = tm; return body;
 };
 
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Physics Calculations
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Update body center of mass from particle positions.
+ */
 window.Sim.updateCOM = body => {
   let sx = 0, sy = 0, sm = 0;
   for (const p of body.particles) { if (p.dead) continue; sx += p.x * p.mass; sy += p.y * p.mass; sm += p.mass; }
   if (sm > 0) { body.cx = sx / sm; body.cy = sy / sm; body.mass = sm; }
 };
 
+/**
+ * Apply velocity and position update to particle.
+ */
 window.Sim.integrateParticle = (p, dt) => {
   if (p.dead) return;
   const damp = window.Sim.config.DAMPING;
@@ -63,6 +99,9 @@ window.Sim.integrateParticle = (p, dt) => {
   p.fx = 0; p.fy = 0;
 };
 
+/**
+ * Apply spring forces between particles.
+ */
 window.Sim.solveSprings = (body, dt) => {
   const { particles: ps, springs: ss } = body;
   for (const sp of ss) {
@@ -79,6 +118,9 @@ window.Sim.solveSprings = (body, dt) => {
   }
 };
 
+/**
+ * Apply gravitational forces from sun and other bodies.
+ */
 window.Sim.applyGravity = (p, nParticles) => {
   const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : window.Sim.sunGravMult;
   const sdx = window.Sim.SUN.x - p.x, sdy = window.Sim.SUN.y - p.y;
@@ -94,7 +136,14 @@ window.Sim.applyGravity = (p, nParticles) => {
   }
 };
 
-// newer version
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Inter-Body Collisions (Optimized with Spatial Hash)
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Detect and respond to collisions between two bodies.
+ * Uses spatial hash grid for O(n) performance instead of O(n²).
+ */
 window.Sim.interBodyCollisions = () => {
   const H = window.Sim;
   const bodies = H.state.bodies;
@@ -159,59 +208,13 @@ window.Sim.interBodyCollisions = () => {
   }
 };
 
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Planet Destruction & Ring Formation
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/*
-window.Sim.interBodyCollisions = () => {
-  for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) {
-    for (let bj = bi + 1; bj < window.Sim.state.bodies.length; bj++) {
-      const A = window.Sim.state.bodies[bi], B = window.Sim.state.bodies[bj];
-      const cdx = A.cx - B.cx, cdy = A.cy - B.cy;
-      const cd2 = cdx * cdx + cdy * cdy;
-      const thresh = A.radius + B.radius + window.Sim.config.COLLISION_R * 4;
-      if (cd2 > thresh * thresh) continue;
-      const cellSize = window.Sim.config.COLLISION_R * 2;
-      const grid = new Map();
-      const addCell = (p, tag) => {
-        const cx = Math.floor(p.x / cellSize), cy = Math.floor(p.y / cellSize);
-        const key = cx + "," + cy;
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push({ p, tag });
-      };
-      for (const p of A.particles) if (!p.dead) addCell(p, 0);
-      for (const p of B.particles) if (!p.dead) addCell(p, 1);
-      for (const cell of grid.values()) {
-        let hasA = false, hasB = false;
-        for (const e of cell) { if (e.tag === 0) hasA = true; else hasB = true; if (hasA && hasB) break; }
-        if (!hasA || !hasB) continue;
-        for (const ea of cell) {
-          if (ea.tag !== 0) continue;
-          const pa = ea.p;
-          for (const eb of cell) {
-            if (eb.tag !== 1) continue;
-            const pb = eb.p;
-            const dx = pb.x - pa.x, dy = pb.y - pa.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 >= window.Sim.config.COLLISION_R * window.Sim.config.COLLISION_R) continue;
-            const d = Math.sqrt(d2) || 0.001, nx = dx / d, ny = dy / d;
-            const ov = window.Sim.config.COLLISION_R - d, ma = pa.mass, mb = pb.mass, mt = ma + mb;
-            pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
-            pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
-            const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
-            if (vn < 0) {
-              const j = -(1 + 0.45) * vn / (1 / ma + 1 / mb);
-              pa.vx += j * nx / ma; pa.vy += j * ny / ma;
-              pb.vx -= j * nx / mb; pb.vy -= j * ny / mb;
-              pa.heat = H.clamp(pa.heat + Math.abs(vn) * 0.15, 0, 1);
-              pb.heat = H.clamp(pb.heat + Math.abs(vn) * 0.15, 0, 1);
-            }
-          }
-        }
-      }
-    }
-  }
-};
-*/
-
+/**
+ * Spawn a ring of debris from a destroyed planet.
+ */
 window.Sim.spawnRing = body => {
   const rx = body.cx, ry = body.cy;
   const dist = H.hypot(rx - window.Sim.SUN.x, ry - window.Sim.SUN.y) || 1;
@@ -225,18 +228,24 @@ window.Sim.spawnRing = body => {
     const gmLocal = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * (body.gravMult || window.Sim.sunGravMult);
     const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
     const scatter = H.rndR(0.96, 1.04);
-    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: 1, decay: H.rndR(0.006, 0.012), isRing: true });
+    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: H.rndR(1.5, 2.5), decay: H.rndR(0.002, 0.005), isRing: true });
   }
 };
 
+/**
+ * Split dead particles into separate fragments or destroy the body.
+ * Uses BFS to find connected components of alive particles.
+ */
 window.Sim.splitDeadParticles = body => {
   const H = window.Sim;
   const { particles: ps, springs: ss } = body;
   const n = ps.length; if (!n) return;
 
+  // Build adjacency list of unbroken springs
   const adj = Array.from({ length: n }, () => []);
   for (const sp of ss) if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) { adj[sp.a].push(sp.b); adj[sp.b].push(sp.a); }
 
+  // BFS to find connected component of alive particles
   const vis = new Uint8Array(n);
   let seed = -1;
   for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
@@ -249,6 +258,7 @@ window.Sim.splitDeadParticles = body => {
   let debrisCount = 0;
   const MAX_DEBRIS = 15; // 🔒 Hard cap: only 15 particles max per breakup event
 
+  // Turn disconnected particles into loose debris
   for (let i = 0; i < n; i++) {
     const p = ps[i]; if (p.dead) continue;
     if (!vis[i]) {
@@ -261,7 +271,6 @@ window.Sim.splitDeadParticles = body => {
     } else alive++;
   }
 
-// newer version
   // 🔒 Prevent full planet vaporization from dumping thousands into loose
   if (alive < Math.max(3, n * 0.08)) {
     const remaining = n - debrisCount;
@@ -277,74 +286,13 @@ window.Sim.splitDeadParticles = body => {
   }
 };
 
-/* old version
-window.Sim.splitDeadParticles = body => {
-  const { particles: ps, springs: ss } = body;
-  const n = ps.length; if (!n) return;
-  const adj = Array.from({ length: n }, () => []);
-  for (const sp of ss) if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) { adj[sp.a].push(sp.b); adj[sp.b].push(sp.a); }
-  const vis = new Uint8Array(n);
-  let seed = -1; for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
-  if (seed === -1) return;
-  const q = [seed]; vis[seed] = 1;
-  while (q.length) { const c = q.shift(); for (const nb of adj[c]) if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
-  let alive = 0;
-  for (let i = 0; i < n; i++) {
-    const p = ps[i]; if (p.dead) continue;
-    if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) }); p.dead = true; }
-    else alive++;
-  }
-  
-  if (alive < Math.max(3, n * 0.08)) {
-    for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: H.rndR(0.005, 0.01) });
-    if (body.radius >= window.Sim.RING_MIN_RADIUS) window.Sim.spawnRing(body);
-    body.dead = true;
-  }
-};
+// ─────────────���────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Loose Particles (Debris) Physics
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-*/
-
-
-/*
-window.Sim.looseVsPlanets = () => {
-  const MAX = 200, step = window.Sim.state.loose.length > MAX ? Math.floor(window.Sim.state.loose.length / MAX) : 1;
-  for (let li = window.Sim.state.loose.length - 1; li >= 0; li -= step) {
-    const lp = window.Sim.state.loose[li]; if (lp.life <= 0) continue;
-    for (const body of window.Sim.state.bodies) {
-      const bdx = body.cx - lp.x, bdy = body.cy - lp.y;
-      const bd2 = bdx * bdx + bdy * bdy;
-      if (bd2 > (body.radius + window.Sim.config.LOOSE_HIT_R * 2) ** 2) continue;
-      let nearP = null, nearD2 = Infinity;
-      for (const bp of body.particles) { if (bp.dead) continue; const d2 = (bp.x - lp.x) ** 2 + (bp.y - lp.y) ** 2; if (d2 < nearD2) { nearD2 = d2; nearP = bp; } }
-      const nearD = Math.sqrt(nearD2);
-      if (!nearP || nearD > window.Sim.config.LOOSE_HIT_R) continue;
-      const dx = nearP.x - lp.x, dy = nearP.y - lp.y, d = H.hypot(dx, dy) || 0.001;
-      const nx = dx / d, ny = dy / d;
-      const vn = (lp.vx - nearP.vx) * nx + (lp.vy - nearP.vy) * ny;
-      if (Math.abs(vn) < 0.8) { nearP.vx += lp.vx * lp.mass / nearP.mass * 0.3; nearP.vy += lp.vy * lp.mass / nearP.mass * 0.3; nearP.heat = Math.min(1, nearP.heat + 0.25); lp.life = 0; }
-      else if (vn > 0) {
-        lp.x -= nx * (window.Sim.config.LOOSE_HIT_R - nearD) * 0.9; lp.y -= ny * (window.Sim.config.LOOSE_HIT_R - nearD) * 0.9;
-        const ma = lp.mass, mb = nearP.mass;
-        const j = -(1 + 0.55) * vn / (1 / ma + 1 / mb);
-        lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
-        nearP.vx += j * nx / mb; nearP.vy += j * ny / mb;
-        const h = H.clamp(Math.abs(vn) * 0.12, 0, 1);
-        lp.heat = Math.min(1, lp.heat + h); nearP.heat = Math.min(1, nearP.heat + h * 1.5);
-        if (Math.abs(vn) > 2) {
-          for (let k = 0; k < 3; k++) {
-            const a = Math.atan2(-ny, -nx) + (H.rnd() - 0.5) * 1.2;
-            const s = H.rnd() * Math.abs(vn) * 0.4 + 0.5;
-            window.Sim.state.loose.push({ x: lp.x, y: lp.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, mass: lp.mass * 0.15, pal: lp.pal, heat: 0.8, life: 0.6, decay: H.rndR(0.02, 0.04) });
-          }
-        }
-      }
-      break;
-    }
-  }
-};
-*/
-
-// ── Optimized Loose Particle vs Planet Collection ──
+/**
+ * Check if loose particles collide with planets and get absorbed.
+ */
 window.Sim.looseVsPlanets = () => {
   const H = window.Sim;
   const MAX_CHECKS = 250;
@@ -411,7 +359,9 @@ window.Sim.looseVsPlanets = () => {
   }
 };
 
-// ── Optimized Loose Physics & Decay ──
+/**
+ * Update all loose particles: apply gravity, decay, remove dead ones.
+ */
 window.Sim.tickLoose = dt => {
   const H = window.Sim;
   const looseArr = H.state.loose;
@@ -453,120 +403,13 @@ window.Sim.tickLoose = dt => {
   }
 };
 
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Main Body Physics Tick
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/*
-window.Sim.tickLoose = dt => {
-  if (window.Sim.state.loose.length > 400) window.Sim.state.loose = window.Sim.state.loose.slice(window.Sim.state.loose.length - 400);
-  window.Sim.state.loose = window.Sim.state.loose.filter(p => p.life > 0);
-  const gmScale = window.Sim.sunGravMult * 0.04;
-  for (const p of window.Sim.state.loose) {
-    const sdx = window.Sim.SUN.x - p.x, sdy = window.Sim.SUN.y - p.y;
-    const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
-    if (sd < window.Sim.SUN.burnRadius) { p.life = 0; continue; }
-    const sf = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * gmScale / (sd2 + 500);
-    p.vx += (sdx / sd) * sf * dt; p.vy += (sdy / sd) * sf * dt;
-    for (const b of window.Sim.state.bodies) {
-      const dx = b.cx - p.x, dy = b.cy - p.y, d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
-      const f = window.Sim.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
-      p.vx += (dx / d) * f * dt; p.vy += (dy / d) * f * dt;
-    }
-    p.vx *= 0.997; p.vy *= 0.997;
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    p.heat = sd < window.Sim.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
-    p.life -= p.decay * dt;
-  }
-};
-*/ // old version.
-
-/*
-window.Sim.tickLoose = dt => {
-  const H = window.Sim;
-
-  // ── NEW: Solar Magma/Lava Emitter ──
-  const SUN_SURFACE = H.SUN.radius;
-  const MAX_SOLAR = 30; // Performance cap for active solar particles
-  let solarCount = 0;
-  for (let i = 0; i < H.state.loose.length; i++) {
-    if (H.state.loose[i].isSolar) solarCount++;
-  }
-
-  if (solarCount < MAX_SOLAR) {
-    for (let i = 0; i < 4; i++) { // 4 particles spawned per frame
-      const angle = H.rnd() * H.PI2;
-      const dist = SUN_SURFACE * (0.92 + H.rnd() * 0.08); // Slightly above surface
-      const sx = H.SUN.x + Math.cos(angle) * dist;
-      const sy = H.SUN.y + Math.sin(angle) * dist;
-      const speed = 1.5 + H.rnd() * 4;
-      
-      H.state.loose.push({
-        x: sx, y: sy,
-        vx: Math.cos(angle) * speed + (H.rnd() - 0.5) * 1.5,
-        vy: Math.sin(angle) * speed + (H.rnd() - 0.5) * 1.5,
-        mass: 0.05,
-        pal: { gc: '255,100,0' },
-        heat: 0.85 + H.rnd() * 0.15, // 🔥 HIGH HEAT → auto-renders as orange/yellow in drawLoose
-        life: 0.5 + H.rnd() * 0.4,
-        decay: 0.015 + H.rnd() * 0.01,
-        isSolar: true, // ✅ Prevents instant burn-radius death
-        isRing: false
-      });
-    }
-  }
-
-  // ── Cap & Cleanup ──
-  if (H.state.loose.length > 500) H.state.loose.splice(0, H.state.loose.length - 500);
-  H.state.loose = H.state.loose.filter(p => p.life > 0);
-
-  // ── Standard Physics Loop ──
-  for (const p of H.state.loose) {
-    const sdx = H.SUN.x - p.x, sdy = H.SUN.y - p.y;
-    const sd2 = sdx * sdx + sdy * sdy, sd = H.hypot(sdx, sdy) + 0.1;
-
-    // ✅ Allow isSolar particles to survive inside the burn radius
-    if (sd < H.SUN.burnRadius && !p.isSolar) { p.life = 0; continue; }
-
-    const sf = H.config.GRAV_CONST * H.SUN.mass * H.sunGravMult / (sd2 + 500) * 0.04;
-    p.vx += sdx / sd * sf * dt; p.vy += sdy / sd * sf * dt;
-
-    for (const b of H.state.bodies) {
-      const dx = b.cx - p.x, dy = b.cy - p.y;
-      const d2 = dx * dx + dy * dy, d = H.hypot(dx, dy) + 0.1;
-      const f = H.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
-      p.vx += dx / d * f * dt; p.vy += dy / d * f * dt;
-    }
-
-    p.vx *= 0.997; p.vy *= 0.997;
-    p.x += p.vx * dt; p.y += p.vy * dt;
-    p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
-    p.life -= p.decay * dt;
-  }
-
-  H.looseVsPlanets();
-};
-
-*/ 
-
-
-/*
-window.Sim.tickBodies = scaledDt => {
-  const dt = scaledDt / window.Sim.config.SUBSTEPS;
-  const nAlives = window.Sim.state.bodies.map(b => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; });
-  for (let sub = 0; sub < window.Sim.config.SUBSTEPS; sub++) {
-    for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) { const body = window.Sim.state.bodies[bi], na = nAlives[bi]; for (const p of body.particles) if (!p.dead) window.Sim.applyGravity(p, na); }
-    for (const body of window.Sim.state.bodies) for (const p of body.particles) window.Sim.integrateParticle(p, dt);
-    for (const body of window.Sim.state.bodies) window.Sim.solveSprings(body, dt);
-    const burnSq = window.Sim.SUN.burnRadius * window.Sim.SUN.burnRadius;
-    for (const body of window.Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = window.Sim.SUN.x - p.x, dy = window.Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.heat = 1; p.dead = true; window.Sim.addFlash(p.x, p.y, 15, p.pal.gc); } }
-    if (sub === window.Sim.config.SUBSTEPS - 1) window.Sim.interBodyCollisions();
-  }
-  for (const body of window.Sim.state.bodies) window.Sim.updateCOM(body);
-  for (const body of window.Sim.state.bodies) window.Sim.splitDeadParticles(body);
-  window.Sim.state.bodies = window.Sim.state.bodies.filter(b => !b.dead);
-  window.Sim.looseVsPlanets();
-};
-*/
-
-// ── Core Physics & Sun Burning Loop ───────────────────
+/**
+ * Main physics loop: apply gravity, integrate, solve springs, handle collisions, burn detection.
+ */
 window.Sim.tickBodies = scaledDt => {
   const H = window.Sim;
   const dt = scaledDt / H.config.SUBSTEPS;
@@ -633,7 +476,7 @@ window.Sim.tickBodies = scaledDt => {
     if (sub === H.config.SUBSTEPS - 1) H.interBodyCollisions();
   }
 
-  // ── Post-Step Updates ──────────────────────────────
+  // ── Post-Step Updates ──────────────────────────────────────────
   for (const body of bodies) H.updateCOM(body);
   for (const body of bodies) H.splitDeadParticles(body);
   
@@ -643,3 +486,125 @@ window.Sim.tickBodies = scaledDt => {
   // Handle loose particles (collision with planets)
   H.looseVsPlanets();
 };
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ARCHIVE - Old implementations (kept for reference, not used)
+// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+/*
+// OLD: interBodyCollisions without spatial hashing (O(n²))
+window.Sim.interBodyCollisions_OLD = () => {
+  for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) {
+    for (let bj = bi + 1; bj < window.Sim.state.bodies.length; bj++) {
+      const A = window.Sim.state.bodies[bi], B = window.Sim.state.bodies[bj];
+      const cdx = A.cx - B.cx, cdy = A.cy - B.cy;
+      const cd2 = cdx * cdx + cdy * cdy;
+      const thresh = A.radius + B.radius + window.Sim.config.COLLISION_R * 4;
+      if (cd2 > thresh * thresh) continue;
+      const cellSize = window.Sim.config.COLLISION_R * 2;
+      const grid = new Map();
+      const addCell = (p, tag) => {
+        const cx = Math.floor(p.x / cellSize), cy = Math.floor(p.y / cellSize);
+        const key = cx + "," + cy;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push({ p, tag });
+      };
+      for (const p of A.particles) if (!p.dead) addCell(p, 0);
+      for (const p of B.particles) if (!p.dead) addCell(p, 1);
+      for (const cell of grid.values()) {
+        let hasA = false, hasB = false;
+        for (const e of cell) { if (e.tag === 0) hasA = true; else hasB = true; if (hasA && hasB) break; }
+        if (!hasA || !hasB) continue;
+        for (const ea of cell) {
+          if (ea.tag !== 0) continue;
+          const pa = ea.p;
+          for (const eb of cell) {
+            if (eb.tag !== 1) continue;
+            const pb = eb.p;
+            const dx = pb.x - pa.x, dy = pb.y - pa.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= window.Sim.config.COLLISION_R * window.Sim.config.COLLISION_R) continue;
+            const d = Math.sqrt(d2) || 0.001, nx = dx / d, ny = dy / d;
+            const ov = window.Sim.config.COLLISION_R - d, ma = pa.mass, mb = pb.mass, mt = ma + mb;
+            pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
+            pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
+            const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
+            if (vn < 0) {
+              const j = -(1 + 0.45) * vn / (1 / ma + 1 / mb);
+              pa.vx += j * nx / ma; pa.vy += j * ny / ma;
+              pb.vx -= j * nx / mb; pb.vy -= j * ny / mb;
+              pa.heat = H.clamp(pa.heat + Math.abs(vn) * 0.15, 0, 1);
+              pb.heat = H.clamp(pb.heat + Math.abs(vn) * 0.15, 0, 1);
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+// OLD: splitDeadParticles with full debris spawning (memory leak risk)
+window.Sim.splitDeadParticles_OLD = body => {
+  const { particles: ps, springs: ss } = body;
+  const n = ps.length; if (!n) return;
+  const adj = Array.from({ length: n }, () => []);
+  for (const sp of ss) if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) { adj[sp.a].push(sp.b); adj[sp.b].push(sp.a); }
+  const vis = new Uint8Array(n);
+  let seed = -1; for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
+  if (seed === -1) return;
+  const q = [seed]; vis[seed] = 1;
+  while (q.length) { const c = q.shift(); for (const nb of adj[c]) if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
+  let alive = 0;
+  for (let i = 0; i < n; i++) {
+    const p = ps[i]; if (p.dead) continue;
+    if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) }); p.dead = true; }
+    else alive++;
+  }
+  if (alive < Math.max(3, n * 0.08)) {
+    for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: H.rndR(0.005, 0.01) });
+    if (body.radius >= window.Sim.RING_MIN_RADIUS) window.Sim.spawnRing(body);
+    body.dead = true;
+  }
+};
+
+// OLD: tickLoose with solar particle emission system (removed for simplicity)
+window.Sim.tickLoose_OLD = dt => {
+  if (window.Sim.state.loose.length > 400) window.Sim.state.loose = window.Sim.state.loose.slice(window.Sim.state.loose.length - 400);
+  window.Sim.state.loose = window.Sim.state.loose.filter(p => p.life > 0);
+  const gmScale = window.Sim.sunGravMult * 0.04;
+  for (const p of window.Sim.state.loose) {
+    const sdx = window.Sim.SUN.x - p.x, sdy = window.Sim.SUN.y - p.y;
+    const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
+    if (sd < window.Sim.SUN.burnRadius) { p.life = 0; continue; }
+    const sf = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * gmScale / (sd2 + 500);
+    p.vx += (sdx / sd) * sf * dt; p.vy += (sdy / sd) * sf * dt;
+    for (const b of window.Sim.state.bodies) {
+      const dx = b.cx - p.x, dy = b.cy - p.y, d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
+      const f = window.Sim.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
+      p.vx += (dx / d) * f * dt; p.vy += (dy / d) * f * dt;
+    }
+    p.vx *= 0.997; p.vy *= 0.997;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.heat = sd < window.Sim.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
+    p.life -= p.decay * dt;
+  }
+};
+
+// OLD: tickBodies with manual particle loop (pre-optimization)
+window.Sim.tickBodies_OLD = scaledDt => {
+  const dt = scaledDt / window.Sim.config.SUBSTEPS;
+  const nAlives = window.Sim.state.bodies.map(b => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; });
+  for (let sub = 0; sub < window.Sim.config.SUBSTEPS; sub++) {
+    for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) { const body = window.Sim.state.bodies[bi], na = nAlives[bi]; for (const p of body.particles) if (!p.dead) window.Sim.applyGravity(p, na); }
+    for (const body of window.Sim.state.bodies) for (const p of body.particles) window.Sim.integrateParticle(p, dt);
+    for (const body of window.Sim.state.bodies) window.Sim.solveSprings(body, dt);
+    const burnSq = window.Sim.SUN.burnRadius * window.Sim.SUN.burnRadius;
+    for (const body of window.Sim.state.bodies) for (const p of body.particles) { if (p.dead) continue; const dx = window.Sim.SUN.x - p.x, dy = window.Sim.SUN.y - p.y, sd2 = dx * dx + dy * dy; if (sd2 < burnSq) { p.dead = true; p.heat = 1; } }
+    if (sub === window.Sim.config.SUBSTEPS - 1) window.Sim.interBodyCollisions();
+  }
+  for (const body of window.Sim.state.bodies) window.Sim.updateCOM(body);
+  for (const body of window.Sim.state.bodies) window.Sim.splitDeadParticles(body);
+  window.Sim.state.bodies = window.Sim.state.bodies.filter(b => !b.dead);
+  window.Sim.looseVsPlanets();
+};
+*/
