@@ -94,6 +94,73 @@ window.Sim.applyGravity = (p, nParticles) => {
   }
 };
 
+// newer version
+window.Sim.interBodyCollisions = () => {
+  const H = window.Sim;
+  const bodies = H.state.bodies;
+
+  for (let bi = 0; bi < bodies.length; bi++) {
+    for (let bj = bi + 1; bj < bodies.length; bj++) {
+      const A = bodies[bi], B = bodies[bj];
+      const cdx = A.cx - B.cx, cdy = A.cy - B.cy;
+      const cd2 = cdx * cdx + cdy * cdy;
+      const thresh = A.radius + B.radius + H.config.COLLISION_R * 4;
+      if (cd2 > thresh * thresh) continue;
+
+      // Fast spatial hash for collision cells
+      const cellSize = H.config.COLLISION_R * 2;
+      const grid = new Map();
+      const addCell = (p, tag) => {
+        const cx = Math.floor(p.x / cellSize), cy = Math.floor(p.y / cellSize);
+        const key = cx + "," + cy;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push({ p, tag });
+      };
+      for (const p of A.particles) if (!p.dead) addCell(p, 0);
+      for (const p of B.particles) if (!p.dead) addCell(p, 1);
+
+      for (const cell of grid.values()) {
+        let hasA = false, hasB = false;
+        for (const e of cell) { if (e.tag === 0) hasA = true; else hasB = true; if (hasA && hasB) break; }
+        if (!hasA || !hasB) continue;
+
+        for (const ea of cell) {
+          if (ea.tag !== 0) continue;
+          const pa = ea.p;
+          for (const eb of cell) {
+            if (eb.tag !== 1) continue;
+            const pb = eb.p;
+            const dx = pb.x - pa.x, dy = pb.y - pa.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= H.config.COLLISION_R * H.config.COLLISION_R) continue;
+
+            const d = Math.sqrt(d2) || 0.001;
+            const nx = dx / d, ny = dy / d;
+            const ov = H.config.COLLISION_R - d;
+            const ma = pa.mass, mb = pb.mass, mt = ma + mb;
+            pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
+            pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
+
+            const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
+            if (vn < 0) {
+              const j = -(1 + 0.35) * vn / (1 / ma + 1 / mb);
+              pa.vx += j * nx / ma; pa.vy += j * ny / ma;
+              pb.vx -= j * nx / mb; pb.vy -= j * ny / mb;
+              
+              // 🔒 CAPPED heat gain to prevent melting chain-reactions
+              const heatGain = Math.min(0.4, Math.abs(vn) * 0.12);
+              pa.heat = H.clamp(pa.heat + heatGain, 0, 1);
+              pb.heat = H.clamp(pb.heat + heatGain, 0, 1);
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+
+/*
 window.Sim.interBodyCollisions = () => {
   for (let bi = 0; bi < window.Sim.state.bodies.length; bi++) {
     for (let bj = bi + 1; bj < window.Sim.state.bodies.length; bj++) {
@@ -143,6 +210,7 @@ window.Sim.interBodyCollisions = () => {
     }
   }
 };
+*/
 
 window.Sim.spawnRing = body => {
   const rx = body.cx, ry = body.cy;
@@ -162,6 +230,55 @@ window.Sim.spawnRing = body => {
 };
 
 window.Sim.splitDeadParticles = body => {
+  const H = window.Sim;
+  const { particles: ps, springs: ss } = body;
+  const n = ps.length; if (!n) return;
+
+  const adj = Array.from({ length: n }, () => []);
+  for (const sp of ss) if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) { adj[sp.a].push(sp.b); adj[sp.b].push(sp.a); }
+
+  const vis = new Uint8Array(n);
+  let seed = -1;
+  for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
+  if (seed === -1) return;
+
+  const q = [seed]; vis[seed] = 1;
+  while (q.length) { const c = q.shift(); for (const nb of adj[c]) if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
+
+  let alive = 0;
+  let debrisCount = 0;
+  const MAX_DEBRIS = 15; // 🔒 Hard cap: only 15 particles max per breakup event
+
+  for (let i = 0; i < n; i++) {
+    const p = ps[i]; if (p.dead) continue;
+    if (!vis[i]) {
+      // 🔒 Only spawn debris if under cap, otherwise just delete silently
+      if (debrisCount < MAX_DEBRIS && H.state.loose.length < 350) {
+        H.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) });
+        debrisCount++;
+      }
+      p.dead = true; // Always remove from planet
+    } else alive++;
+  }
+
+// newer version
+  // 🔒 Prevent full planet vaporization from dumping thousands into loose
+  if (alive < Math.max(3, n * 0.08)) {
+    const remaining = n - debrisCount;
+    if (remaining > 0 && H.state.loose.length < 365) {
+      // Spawn a small visual burst instead of the full mass
+      const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
+      for (let i = 0; i < burst; i++) {
+        H.state.loose.push({ x: ps[i].x, y: ps[i].y, vx: ps[i].vx, vy: ps[i].vy, mass: ps[i].mass, pal: ps[i].pal, heat: 1, life: 0.6, decay: H.rndR(0.005, 0.01) });
+      }
+    }
+    if (body.radius >= H.RING_MIN_RADIUS) H.spawnRing(body);
+    body.dead = true;
+  }
+};
+
+/* old version
+window.Sim.splitDeadParticles = body => {
   const { particles: ps, springs: ss } = body;
   const n = ps.length; if (!n) return;
   const adj = Array.from({ length: n }, () => []);
@@ -177,12 +294,16 @@ window.Sim.splitDeadParticles = body => {
     if (!vis[i]) { window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) }); p.dead = true; }
     else alive++;
   }
+  
   if (alive < Math.max(3, n * 0.08)) {
     for (const p of ps) if (!p.dead) window.Sim.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: 1, life: 1, decay: H.rndR(0.005, 0.01) });
     if (body.radius >= window.Sim.RING_MIN_RADIUS) window.Sim.spawnRing(body);
     body.dead = true;
   }
 };
+
+*/
+
 
 /*
 window.Sim.looseVsPlanets = () => {
@@ -426,6 +547,7 @@ window.Sim.tickLoose = dt => {
 */ 
 
 
+/*
 window.Sim.tickBodies = scaledDt => {
   const dt = scaledDt / window.Sim.config.SUBSTEPS;
   const nAlives = window.Sim.state.bodies.map(b => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; });
@@ -441,4 +563,83 @@ window.Sim.tickBodies = scaledDt => {
   for (const body of window.Sim.state.bodies) window.Sim.splitDeadParticles(body);
   window.Sim.state.bodies = window.Sim.state.bodies.filter(b => !b.dead);
   window.Sim.looseVsPlanets();
+};
+*/
+
+// ── Core Physics & Sun Burning Loop ───────────────────
+window.Sim.tickBodies = scaledDt => {
+  const H = window.Sim;
+  const dt = scaledDt / H.config.SUBSTEPS;
+  const bodies = H.state.bodies;
+
+  // 🔥 Pre-calculate Burn Thresholds
+  const burnR = H.SUN.burnRadius;
+  const burnZoneR = burnR * 4; // Matches the 2.5x visual warning zone exactly
+  const burnSq = burnR * burnR;
+  const burnZoneSq = burnZoneR * burnZoneR;
+
+  // Helper: get alive count for gravity normalization (constant for this frame)
+  const nAlives = bodies.map(b => { 
+      let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; 
+  });
+
+  for (let sub = 0; sub < H.config.SUBSTEPS; sub++) {
+    // 1. Gravity
+    for (let bi = 0; bi < bodies.length; bi++) {
+      const body = bodies[bi];
+      const na = nAlives[bi];
+      for (const p of body.particles) if (!p.dead) H.applyGravity(p, na);
+    }
+    
+    // 2. Integrate
+    for (const body of bodies) for (const p of body.particles) H.integrateParticle(p, dt);
+    
+    // 3. Solve Springs
+    for (const body of bodies) H.solveSprings(body, dt);
+
+    // 🔥 4. BURN LOGIC: Sun Proximity & Destruction
+    // Checks if particles are inside the Burn Radius (Instant Death)
+    // or inside the 2.5x Warning Zone (Rapid Heating & Melting)
+    for (const body of bodies) {
+      for (const p of body.particles) {
+        if (p.dead) continue;
+        const dx = H.SUN.x - p.x, dy = H.SUN.y - p.y;
+        const sd2 = dx * dx + dy * dy;
+
+        if (sd2 < burnSq) {
+          // 🔥 CORE BURN: Instant vaporization
+          p.dead = true; p.heat = 1;
+        } else if (sd2 < burnZoneSq) {
+          // 🔥 BURN ZONE (2.5x): Rapid overheating & melting
+          // Closer to sun = faster burn rate
+          const dist = Math.sqrt(sd2);
+          const proximity = 1 - (dist / burnZoneR); // 0.0 at edge, 1.0 at inner core
+          
+          // Heat accumulates rapidly. If it hits 1.0, particle dies/breaks off.
+          const burnRate = 0.004 + (proximity * 0.000035); 
+          p.heat = Math.min(1, p.heat + burnRate);
+          
+          if (p.heat >= 2.0) {
+            p.dead = true;
+          }
+        } else {
+          // Cool down if safe distance
+          if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005);
+        }
+      }
+    }
+
+    // 5. Inter-body Collisions
+    if (sub === H.config.SUBSTEPS - 1) H.interBodyCollisions();
+  }
+
+  // ── Post-Step Updates ──────────────────────────────
+  for (const body of bodies) H.updateCOM(body);
+  for (const body of bodies) H.splitDeadParticles(body);
+  
+  // Remove fully destroyed bodies
+  H.state.bodies = bodies.filter(b => !b.dead);
+  
+  // Handle loose particles (collision with planets)
+  H.looseVsPlanets();
 };

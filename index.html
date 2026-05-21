@@ -2,45 +2,54 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Verlet Worlds + Config Menu</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Galaxy Guardians</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    
-    <!-- Your HTML content will go here -->
 <canvas id="c"></canvas>
 <div id="cursor"></div>
 <div id="hint">HOLD·CHARGE — RELEASE·SPAWN — SCROLL·ZOOM — RIGHT-DRAG·PAN — F·FIT — SPACE·PAUSE</div>
-<div id="speed-bar">
+
+<!-- TOP LEFT -->
+<div id="speed-bar" role="toolbar" aria-label="Simulation Speed">
   <div class="sp-btn" id="sp-fast">▲</div>
   <div id="sp-track"><div id="sp-fill"></div><div id="sp-thumb"></div></div>
   <div class="sp-btn" id="sp-slow">▼</div>
   <div id="sp-label">1×</div>
-  <div id="sp-pause">▐▐</div>
+  <div id="sp-pause" title="Pause/Resume">▐▐</div>
 </div>
-<div id="zoom-bar">
-  <div class="zm-btn" id="zm-in">+</div>
+
+<!-- TOP RIGHT -->
+<div id="zoom-bar" role="toolbar" aria-label="Camera Zoom">
+  <div class="zm-btn" id="zm-in" title="Zoom In">+</div>
   <div id="zm-track"><div id="zm-fill"></div><div id="zm-thumb"></div></div>
-  <div class="zm-btn" id="zm-out">−</div>
+  <div class="zm-btn" id="zm-out" title="Zoom Out">−</div>
   <div id="zm-label">8%</div>
-  <div id="zm-fit">FIT</div>
+  <div id="zm-fit" title="Fit View">FIT</div>
 </div>
-<div id="grav-bar">
-  <span class="lbl">☀ GRAVITY</span>
+
+<!-- PAN PAD (Below Zoom Bar) -->
+<div id="pan-pad" aria-label="Directional Pan Control">
+  <div class="pan-cell" dir="-1,-1">↖</div><div class="pan-cell" dir="0,-1">↑</div><div class="pan-cell" dir="1,-1">↗</div>
+  <div class="pan-cell" dir="-1,0">←</div><div class="pan-cell center"></div><div class="pan-cell" dir="1,0">→</div>
+  <div class="pan-cell" dir="-1,1">↙</div><div class="pan-cell" dir="0,1">↓</div><div class="pan-cell" dir="1,1">↘</div>
+</div>
+
+<div id="ui" role="toolbar" aria-label="Planet & Gravity Controls">
+  <span class="lbl">SIZE</span>
+  <input type="range" id="size-slider" min="1" max="10" value="5" step=".5">
+  <button id="clear-btn">CLR</button>
+  <button id="config-btn">⚙️</button>
+  <span class="lbl" id="pcount">—</span>
+  <span class="divider"></span>
+  <span class="lbl">☀ GRAV</span>
   <input type="range" id="grav-slider" min="0.05" max="2" value="1" step="0.05">
   <span id="grav-val">1.0×</span>
 </div>
-<div id="ui">
-  <span class="lbl">SIZE</span>
-  <input type="range" id="size-slider" min="1" max="10" value="5" step=".5">
-  <button id="clear-btn">CLEAR</button>
-  <button id="config-btn">⚙️</button>
-  <span class="lbl" id="pcount">—</span>
-</div>
 
-<!-- NEW CONFIG MENU -->
-<div id="config-menu">
+<!-- CONFIG MENU -->
+<div id="config-menu" role="dialog" aria-modal="true">
   <div class="cfg-title">⚙️ PHYSICS TUNING</div>
   <div class="cfg-row"><label>GRAVITY CONST</label><input type="range" id="cfg-grav" min="40" max="240" value="120" step="2"><span id="cfg-grav-val">120</span></div>
   <div class="cfg-row"><label>SPRING STIFFNESS</label><input type="range" id="cfg-spring" min="0.1" max="1.2" value="0.40" step="0.01"><span id="cfg-spring-val">0.40</span></div>
@@ -48,9 +57,10 @@
   <div class="cfg-row"><label>SUBSTEPS</label><input type="range" id="cfg-substeps" min="4" max="16" value="8" step="1"><span id="cfg-substeps-val">8</span></div>
   <div class="cfg-row"><label>COLLISION RADIUS</label><input type="range" id="cfg-collr" min="0.8" max="2.0" value="1.15" step="0.01"><span id="cfg-collr-val">1.15</span></div>
   <div class="cfg-row"><label>PARTICLE RADIUS</label><input type="range" id="cfg-pr" min="1.5" max="5.0" value="2.8" step="0.1"><span id="cfg-pr-val">2.8</span></div>
-  <div class="cfg-reset" id="cfg-reset-btn">⟳ RESET TO DEFAULTS</div>
+  <div class="cfg-reset" id="cfg-reset-btn">⟳ RESET DEFAULTS</div>
 </div>
 
+<!-- SCRIPTS (Exact load order required) -->
 <script src="js/config.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/camera.js"></script>
@@ -59,6 +69,5 @@
 <script src="js/rendering.js"></script>
 <script src="js/input-ui.js"></script>
 <script src="js/main.js"></script>
-    
 </body>
 </html>

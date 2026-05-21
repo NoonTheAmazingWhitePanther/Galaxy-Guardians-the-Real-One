@@ -576,6 +576,134 @@ window.Sim.drawLoose = () => {
   window.Sim.ctx.globalAlpha = 1;
 };
 
+// ── Dynamic Burn & Destruction Visuals ────────────────────
+window.Sim.drawBody = body => {
+  const ctx = window.Sim.ctx;
+  const H = window.Sim;
+
+  const { particles: ps, springs: ss, pal } = body;
+
+  // 1. Collect alive particles
+  const alive = [];
+  for (const p of ps) if (!p.dead) alive.push(p);
+  if (alive.length < 3) return;
+
+  // 2. Compute Hull
+  const hull = H.convexHull(alive);
+  if (hull.length < 3) return;
+
+  // 3. Calculate Burn Intensity based on distance to Sun
+  const sdx = H.SUN.x - body.cx;
+  const sdy = H.SUN.y - body.cy;
+  const sDist = Math.hypot(sdx, sdy);
+  
+  // Burning starts at 2.5x burnRadius, intensifies closer in
+  const burnZoneRadius = H.SUN.burnRadius * 2.5;
+  let burnFactor = 0;
+  if (sDist < burnZoneRadius) {
+    burnFactor = 1 - (sDist / burnZoneRadius);
+    // Pulse the burn effect for a "living fire" look
+    burnFactor *= (0.9 + 0.1 * Math.sin(H.SUN.coronaTime * 15));
+    burnFactor = Math.max(0, Math.min(1, burnFactor));
+  }
+
+  // 4. Draw Base Hull
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(hull[0].x, hull[0].y);
+  for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y);
+  ctx.closePath();
+
+  // Base Gradient (Normal Planet Color)
+  const gr = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius);
+  gr.addColorStop(0, pal.hi + 'dd');
+  gr.addColorStop(0.35, pal.mid + 'cc');
+  gr.addColorStop(0.75, pal.lo + 'bb');
+  gr.addColorStop(1, pal.lo + '44');
+  ctx.fillStyle = gr;
+  ctx.fill();
+
+  // 🔥 Burn Overlay (Charred Surface + Molten Core)
+  if (burnFactor > 0.05) {
+    const burnGrad = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius * 1.1);
+    // Molten Core    burnGrad.addColorStop(0, `rgba(255, 240, 100, ${burnFactor * 0.7})`);
+    // Red Hot Mantle
+    burnGrad.addColorStop(0.4, `rgba(220, 60, 10, ${burnFactor * 0.8})`);
+    // Charred Crust
+    burnGrad.addColorStop(0.8, `rgba(30, 5, 0, ${burnFactor * 0.9})`);
+    // Blackened Edges
+    burnGrad.addColorStop(1, `rgba(0, 0, 0, ${burnFactor * 0.95})`);
+
+    ctx.fillStyle = burnGrad;
+    ctx.fill(); // Overlays the base gradient
+  }
+
+  // 🔥 Fiery Rim Glow
+  if (burnFactor > 0.1) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter'; // Additive blending for glow
+    ctx.strokeStyle = `rgba(255, 120, 20, ${burnFactor * 0.9})`;
+    ctx.lineWidth = (2 + burnFactor * 2) / H.cam.zoom;
+    ctx.stroke();
+    ctx.restore();
+  } else {
+    ctx.strokeStyle = `rgba(${pal.gc}, .35)`;
+    ctx.lineWidth = 1.5 / H.cam.zoom;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 5. Draw Stressed Springs
+  ctx.save(); ctx.globalAlpha = .08; ctx.strokeStyle = `rgba(${pal.gc}, .9)`;
+  ctx.lineWidth = .8 / H.cam.zoom; ctx.beginPath();
+  for (const sp of ss) {
+    if (sp.broken) continue;
+    const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue;
+    if (Math.hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue;
+    ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+  }
+  ctx.stroke(); ctx.restore();
+
+  // 6. Draw Particles
+  // Cool particles
+  ctx.fillStyle = `rgba(${pal.gc}, .75)`;
+  ctx.beginPath();
+  for (const p of alive) {
+    if (p.heat > .05) continue;
+    const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
+    ctx.moveTo(p.x + r, p.y); ctx.arc(p.x, p.y, r, 0, H.PI2);
+    p.heat = Math.max(0, p.heat - .012);
+  }
+  ctx.fill();
+  // Hot particles (Intensified when burning)
+  for (const p of alive) {
+    if (p.heat <= .05) continue;
+    const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
+    
+    // If burning, particles become super-hot yellow/white
+    const heatColor = burnFactor > 0.5 
+      ? `rgba(255, ${Math.floor(H.lerp(220, 255, p.heat))}, 150, ${p.heat})` 
+      : `rgba(255, ${Math.floor(H.lerp(60, 220, p.heat))}, 30, ${p.heat * .9})`;
+      
+    ctx.fillStyle = heatColor;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, H.PI2); ctx.fill();
+    p.heat = Math.max(0, p.heat - .012);
+  }
+
+  // 7. Atmosphere Halo (Burns Orange/Red)
+  ctx.save();
+  const atmColor = burnFactor > 0.1 
+    ? `rgba(255, 100, 20, ${0.15 + burnFactor * 0.4})` 
+    : `rgba(${pal.gc}, .08)`;
+
+  const atm = ctx.createRadialGradient(body.cx, body.cy, body.radius * .7, body.cx, body.cy, body.radius * 1.8);
+  atm.addColorStop(0, atmColor);
+  atm.addColorStop(1, `rgba(${pal.gc}, 0)`);
+  ctx.fillStyle = atm;
+  ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 1.8, 0, H.PI2); ctx.fill();
+  ctx.restore();
+};
+
+/*
 function drawBody(body){
     const {particles:ps, springs:ss, pal} = body;
     
@@ -678,7 +806,7 @@ function drawBody(body){
     atm.addColorStop(1, `rgba(${pal.gc},0)`);
     ctx.fillStyle = atm; ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius*1.8, 0, PI2); ctx.fill();
 }
-
+*/
 /*
 window.Sim.drawBody = body => {
   const { particles: ps, springs: ss, pal } = body;
@@ -922,6 +1050,7 @@ window.Sim.getPreviewPath = (wx, wy) => {
   _previewCache = { wx, wy, pts, mult: window.Sim.sunGravMult }; return pts;
 };
 
+/* older version
 window.Sim.drawOrbitPreview = t => {
   if (!window.Sim.holding) return;
   const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1), alpha = H.clamp(charge * 1.6, 0, 0.9);
@@ -952,6 +1081,108 @@ window.Sim.drawOrbitPreview = t => {
   const m = window.Sim.ctx.getTransform(); window.Sim.ctx.setTransform(1, 0, 0, 1, 0, 0); window.Sim.ctx.save(); window.Sim.ctx.font = '8px "Space Mono",monospace'; const period_frames = Math.round(window.Sim.orbitalPeriod(dist, 100, window.Sim.sunGravMult) / window.Sim.physSpeed); const midSX = ((window.Sim.SUN.x - window.Sim.cam.x) * window.Sim.cam.zoom + window.Sim.W / 2 + (w.x - window.Sim.cam.x) * window.Sim.cam.zoom + window.Sim.W / 2) / 2, midSY = ((window.Sim.SUN.y - window.Sim.cam.y) * window.Sim.cam.zoom + window.Sim.H / 2 + (w.y - window.Sim.cam.y) * window.Sim.cam.zoom + window.Sim.H / 2) / 2; window.Sim.ctx.fillStyle = `rgba(180,215,255,${alpha * 0.65})`; window.Sim.ctx.fillText(`r${Math.round(dist)} ~${period_frames}f`, midSX + 8, midSY - 4); window.Sim.ctx.restore(); window.Sim.ctx.setTransform(m);
 };
 
+*/
+// New DrawOrbitPreview plus warning prozimity to the sun
+window.Sim.drawOrbitPreview = t => {
+  if (!window.Sim.holding) return;
+  const H = window.Sim;
+  
+  const charge = Math.min((performance.now() - H.holdT) / 2000, 1);
+  const alpha = H.clamp(charge * 1.6, 0, 0.9);
+  const w = H.screenToWorld(H.tx, H.ty);
+  const dx = w.x - H.SUN.x, dy = w.y - H.SUN.y;
+  const dist = H.hypot(dx, dy) || 1;
+  const pts = H.getPreviewPath(w.x, w.y);
+  if (pts.length < 4) return;
+
+  const total = pts.length;
+  const lw = 1.8 / H.cam.zoom;
+
+  // 🔥 Shared Burn Zone Radius (Matches drawBody exactly)
+  const BURN_ZONE_R = H.SUN.burnRadius * 4;
+
+  H.ctx.save();
+  H.ctx.lineCap = 'round'; H.ctx.lineJoin = 'round';
+  const SEG = Math.max(2, Math.floor(total / 60));
+
+  // ── Spiral path segments ──
+  for (let i = 0; i < total - SEG; i += SEG) {
+    const f0 = i / total, f1 = (i + SEG) / total, fc = (f0 + f1) / 2;
+    const r = Math.floor(H.lerp(160, 255, Math.min(fc * 1.8, 1)));
+    const g = Math.floor(H.lerp(220, 120, fc)), b = Math.floor(H.lerp(255, 20, Math.min(fc * 1.5, 1)));
+    const a = alpha * (1 - fc * 0.5) * (f0 < 0.12 ? f0 / 0.12 : 1);
+    const w2 = lw * (1.4 - fc * 0.9);
+    H.ctx.beginPath(); H.ctx.moveTo(pts[i].x, pts[i].y);
+    for (let j = i + 1; j <= i + SEG && j < total; j++) H.ctx.lineTo(pts[j].x, pts[j].y);
+    H.ctx.strokeStyle = `rgba(${r},${g},${b},${a})`;
+    H.ctx.lineWidth = Math.max(0.3 / H.cam.zoom, w2); H.ctx.stroke();
+  }
+
+  // ── Flowing travel dots ──
+  const animFrac = (t * 0.00035) % 1, DOT_COUNT = 7;
+  for (let d = 0; d < DOT_COUNT; d++) {
+    const f = ((d / DOT_COUNT) + animFrac) % 1, idx = Math.floor(f * (total - 1)), pt = pts[idx];
+    const r2 = Math.floor(H.lerp(160, 255, Math.min(f * 1.8, 1)));
+    const g2 = Math.floor(H.lerp(220, 120, f)), b2 = Math.floor(H.lerp(255, 20, Math.min(f * 1.5, 1)));
+    const dotR = Math.max(0.8 / H.cam.zoom, (3 - f * 1.5) / H.cam.zoom);
+    const da = alpha * (1 - f * 0.4) * 0.95;
+    H.ctx.beginPath(); H.ctx.arc(pt.x, pt.y, dotR, 0, H.PI2);
+    H.ctx.fillStyle = `rgba(${r2},${g2},${b2},${da})`; H.ctx.fill();
+  }
+  H.ctx.restore();
+
+  // ── Radial line: sun → spawn ──
+  H.ctx.save(); H.ctx.globalAlpha = alpha * 0.28; H.ctx.setLineDash([3 / H.cam.zoom, 4 / H.cam.zoom]);
+  H.ctx.beginPath(); H.ctx.moveTo(H.SUN.x, H.SUN.y); H.ctx.lineTo(w.x, w.y);
+  H.ctx.strokeStyle = "rgba(255,200,80,1)"; H.ctx.lineWidth = 0.6 / H.cam.zoom; H.ctx.stroke(); H.ctx.setLineDash([]); H.ctx.restore();
+
+  // ── Velocity arrow ──
+  const tx_ = -dy / dist, ty_ = dx / dist, alen = Math.min(dist * 0.13, 240 / H.cam.zoom);
+  const ax = w.x + tx_ * alen, ay = w.y + ty_ * alen;
+  H.ctx.save(); H.ctx.globalAlpha = alpha; H.ctx.strokeStyle = "rgba(160,225,255,1)"; H.ctx.fillStyle = "rgba(160,225,255,1)"; H.ctx.lineWidth = lw * 0.85;
+  H.ctx.beginPath(); H.ctx.moveTo(w.x, w.y); H.ctx.lineTo(ax, ay); H.ctx.stroke();
+  const ha = Math.atan2(ty_, tx_), hl = alen * 0.3;
+  H.ctx.beginPath(); H.ctx.moveTo(ax, ay); H.ctx.lineTo(ax - Math.cos(ha - 0.38) * hl, ay - Math.sin(ha - 0.38) * hl);
+  H.ctx.lineTo(ax - Math.cos(ha + 0.38) * hl, ay - Math.sin(ha + 0.38) * hl); H.ctx.closePath(); H.ctx.fill(); H.ctx.restore();
+
+  // ── Spawn dot ──
+  H.ctx.save(); H.ctx.globalAlpha = alpha; H.ctx.beginPath(); H.ctx.arc(w.x, w.y, 3.5 / H.cam.zoom, 0, H.PI2);
+  H.ctx.fillStyle = "rgba(160,225,255,1)"; H.ctx.fill(); H.ctx.restore();
+
+  // 🔥 BURN ZONE RING (Visual warning)
+  H.ctx.save();
+  H.ctx.beginPath(); H.ctx.arc(H.SUN.x, H.SUN.y, BURN_ZONE_R, 0, H.PI2);
+  H.ctx.strokeStyle = `rgba(255, 60, 30, ${alpha * 0.4})`;
+  H.ctx.lineWidth = 1.5 / H.cam.zoom;
+  H.ctx.setLineDash([8 / H.cam.zoom, 5 / H.cam.zoom]);
+  H.ctx.stroke();
+  H.ctx.setLineDash([]);
+  // Subtle warning fill
+  H.ctx.fillStyle = `rgba(255, 40, 20, ${alpha * 0.05})`;
+  H.ctx.fill();
+  H.ctx.restore();
+
+  // 🔥 BURN STATUS LABEL
+  const isBurnZone = dist < BURN_ZONE_R;
+  const m = H.ctx.getTransform();
+  H.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  H.ctx.save();
+  H.ctx.font = '8px "Space Mono",monospace';
+  const period_frames = Math.round(H.orbitalPeriod(dist, 100, H.sunGravMult) / H.physSpeed);
+  const midSX = ((H.SUN.x - H.cam.x) * H.cam.zoom + H.W / 2 + (w.x - H.cam.x) * H.cam.zoom + H.W / 2) / 2;
+  const midSY = ((H.SUN.y - H.cam.y) * H.cam.zoom + H.H / 2 + (w.y - H.cam.y) * H.cam.zoom + H.H / 2) / 2;
+
+  if (isBurnZone) {
+    H.ctx.fillStyle = `rgba(255, 80, 50, ${alpha})`;
+    H.ctx.fillText(`🔥 BURN ZONE — Will disintegrate`, midSX + 8, midSY - 4);
+  } else {
+    H.ctx.fillStyle = `rgba(180,215,255,${alpha * 0.65})`;
+    H.ctx.fillText(`r${Math.round(dist)} ~${period_frames}f`, midSX + 8, midSY - 4);
+  }
+  H.ctx.restore();
+  H.ctx.setTransform(m);
+};
+
 window.Sim.spawnPlanet = (x, y, size) => {
   if (window.Sim.state.bodies.length >= 8) return;
   const radius = H.clamp(size * 8, 16, 110), pal = window.Sim.PALS[Math.floor(H.rnd() * window.Sim.PALS.length)];
@@ -962,7 +1193,7 @@ window.Sim.spawnPlanet = (x, y, size) => {
   window.Sim.state.bodies.push(body); window.Sim.addFlash(x, y, radius * 2, pal.gc); window.Sim.updateCount();
 };
 
-window.Sim.updateCount = () => { let n = 0; for (const b of window.Sim.state.bodies) if (!b.dead) n++; window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} WORLD${n !== 1 ? "S" : ""}`; };
+window.Sim.updateCount = () => { let n = 0; for (const b of window.Sim.state.bodies) if (!b.dead) n++; window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} 🌕$ {n !== 1 ? "" : ""}`; };
 
 const TRAIL_STEPS = 5;
 window.Sim.trailBufs = [], window.Sim.trailHead = 0;
@@ -1011,7 +1242,7 @@ window.Sim.spawnPlanet = (x, y, size) => {
 window.Sim.updateCount = () => { 
   let n = 0; 
   for (const b of window.Sim.state.bodies) if (!b.dead) n++; 
-  window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} WORLD${n !== 1 ? "S" : ""}`; 
+  window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} 🌕${n !== 1 ? "" : ""}`; 
 };
 
 // ── FPS Counter (called from main.js) ─────────────────

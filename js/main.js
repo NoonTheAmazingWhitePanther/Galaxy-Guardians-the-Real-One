@@ -33,6 +33,7 @@ window.Sim.init = () => {
     // UI & Camera updates
     window.Sim.updateFPS(rawDt);
     window.Sim.tickCam();
+    window.Sim.updatePanPad();
     window.Sim.updateSpeedBar();
     window.Sim.updateZoomBar();
 

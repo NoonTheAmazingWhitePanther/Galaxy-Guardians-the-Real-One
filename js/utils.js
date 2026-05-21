@@ -66,3 +66,17 @@ window.Sim.convexHull = function(pts) {
   }
   return hull;
 };
+
+// ── Non-Linear Planet Radius Calculator ──────────────
+// Maps slider [1-10] + charge [0-1] to radius [10-100]
+// Curve: 0.25x at min → 1.0x at mid → 2.5x at max
+window.Sim.getPlanetRadius = (sliderVal, charge = 0) => {
+  const raw = sliderVal * (1 + charge * 4); // Combined input 1..50
+  const t = Math.min(raw / 50, 1);          // Normalize 0..1
+  
+  // Power curve for fine low-end control
+  const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
+  const baseRadius = 40; // Original default size
+  
+  return Math.max(10, Math.min(110, Math.round(baseRadius * multiplier)));
+};

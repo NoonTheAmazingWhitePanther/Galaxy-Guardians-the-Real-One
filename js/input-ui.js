@@ -94,7 +94,20 @@ window.addEventListener("mousedown", e => {
   window.Sim.holdT = performance.now(); 
   window.Sim.cursorEl.classList.add("holding"); 
 });
+// --- Mouse Up ---
+window.addEventListener("mouseup", e => {
+  if (!window.Sim.holding) return;
+  window.Sim.holding = false;
+  window.Sim.cursorEl.classList.remove("holding");
+  
+  const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1);
+  const sliderVal = parseFloat(window.Sim.slider.value);
+  const radius = window.Sim.getPlanetRadius(sliderVal, charge); // 🔥 NEW
+  const w = window.Sim.screenToWorld(window.Sim.tx, window.Sim.ty);
+  window.Sim.spawnPlanet(w.x, w.y, radius);
+});
 
+/*
 window.addEventListener("mouseup", e => {
   if (!window.Sim.holding) return; 
   window.Sim.holding = false; 
@@ -103,7 +116,7 @@ window.addEventListener("mouseup", e => {
   const size = parseFloat(window.Sim.slider.value) * (1 + charge * 4);
   const w = window.Sim.screenToWorld(window.Sim.tx, window.Sim.ty);
   window.Sim.spawnPlanet(w.x, w.y, size);
-});
+});*/ //older version
 
 document.getElementById("clear-btn").addEventListener("click", () => { 
   window.Sim.state.bodies = []; 
@@ -152,6 +165,22 @@ window.Sim.canvas.addEventListener("touchmove", e => {
   }
 }, { passive: false });
 
+// --- Touch End ---
+window.Sim.canvas.addEventListener("touchend", e => {
+  if (e.touches.length < 2 && window.Sim.holding) {
+    window.Sim.holding = false;
+    window.Sim.cursorEl.classList.remove("holding");
+    
+    const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1);
+    const sliderVal = parseFloat(window.Sim.slider.value);
+    const radius = window.Sim.getPlanetRadius(sliderVal, charge); // 🔥 NEW
+    const w = window.Sim.screenToWorld(window.Sim.tx, window.Sim.ty);
+    window.Sim.spawnPlanet(w.x, w.y, radius);
+  }
+}, { passive: false });
+
+/*
+
 window.Sim.canvas.addEventListener("touchend", e => {
   if (e.touches.length < 2 && window.Sim.holding) { 
     window.Sim.holding = false; 
@@ -162,6 +191,8 @@ window.Sim.canvas.addEventListener("touchend", e => {
     window.Sim.spawnPlanet(w.x, w.y, size); 
   }
 }, { passive: false });
+*/
+
 
 // ── Keyboard Shortcuts ───────────────────────────────
 window.addEventListener("keydown", e => {
@@ -173,3 +204,57 @@ window.addEventListener("keydown", e => {
   if (e.key === "]") window.Sim.setSpeed(window.Sim.physSpeed + 0.5);
   if (e.key === "[") window.Sim.setSpeed(window.Sim.physSpeed - 0.5);
 });
+
+// ── Isometric Pan Pad (Minimal Logic) ───────────────
+const panPad = document.getElementById('pan-pad');
+if (panPad) {
+  window.Sim.panPadActive = false;
+  window.Sim.panPadDir = { x: 0, y: 0 };
+  window.Sim.panPadPower = 0;
+  const PAN_ACCEL = 0.7;
+  const PAN_MAX = 3;
+
+  panPad.addEventListener('pointerdown', e => {
+    window.Sim.panPadActive = true;
+    window.Sim.panPadPower = 0;
+    panPad.classList.add('active');
+    panPad.setPointerCapture(e.pointerId);
+    updateDirection(e);
+    e.preventDefault();
+  });
+
+  panPad.addEventListener('pointermove', e => {
+    if (!window.Sim.panPadActive) return;
+    updateDirection(e);
+    e.preventDefault();
+  });
+
+  panPad.addEventListener('pointerup', e => {
+    window.Sim.panPadActive = false;
+    window.Sim.panPadPower = 0;
+    window.Sim.panPadDir = { x: 0, y: 0 };
+    panPad.classList.remove('active');
+  });
+
+  function updateDirection(e) {
+    const rect = panPad.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const dx = e.clientX - cx;
+    const dy = e.clientY - cy;
+    
+    // Snap to 8 directions
+    const angle = Math.atan2(dy, dx);
+    const sector = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    window.Sim.panPadDir.x = Math.cos(sector);
+    window.Sim.panPadDir.y = Math.sin(sector);
+  }
+
+  window.Sim.updatePanPad = () => {
+    if (!window.Sim.panPadActive) return;
+    window.Sim.panPadPower = Math.min(window.Sim.panPadPower + PAN_ACCEL, PAN_MAX);
+    const speed = Math.min(window.Sim.panPadPower / window.Sim.cam.zoom, 100)
+    window.Sim.cam.x += window.Sim.panPadDir.x * speed;
+    window.Sim.cam.y += window.Sim.panPadDir.y * speed;
+  };
+}
