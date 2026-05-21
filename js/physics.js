@@ -184,6 +184,7 @@ window.Sim.splitDeadParticles = body => {
   }
 };
 
+/*
 window.Sim.looseVsPlanets = () => {
   const MAX = 200, step = window.Sim.state.loose.length > MAX ? Math.floor(window.Sim.state.loose.length / MAX) : 1;
   for (let li = window.Sim.state.loose.length - 1; li >= 0; li -= step) {
@@ -220,7 +221,119 @@ window.Sim.looseVsPlanets = () => {
     }
   }
 };
+*/
 
+// ── Optimized Loose Particle vs Planet Collection ──
+window.Sim.looseVsPlanets = () => {
+  const H = window.Sim;
+  const MAX_CHECKS = 250;
+  const looseArr = H.state.loose;
+  const step = looseArr.length > MAX_CHECKS ? Math.floor(looseArr.length / MAX_CHECKS) : 1;
+
+  for(let li = looseArr.length - 1; li >= 0; li -= step){
+    const lp = looseArr[li];
+    if(lp.life <= 0.1) continue;
+
+    for(const body of H.state.bodies){
+      const bdx = body.cx - lp.x, bdy = body.cy - lp.y;
+      const bd2 = bdx*bdx + bdy*bdy;
+      const thresh = body.radius + H.config.LOOSE_HIT_R * 2.5;
+      if(bd2 > thresh*thresh) continue;
+
+      // Find nearest surface particle
+      let nearP = null, nearD2 = Infinity;
+      for(const bp of body.particles){
+        if(bp.dead) continue;
+        const d2 = (bp.x-lp.x)**2 + (bp.y-lp.y)**2;
+        if(d2 < nearD2) { nearD2 = d2; nearP = bp; }
+      }
+      const nearD = Math.sqrt(nearD2);
+      if(!nearP || nearD > H.config.LOOSE_HIT_R * 1.5) continue;
+
+      const dx = nearP.x - lp.x, dy = nearP.y - lp.y;
+      const d = Math.hypot(dx, dy) || 0.001;
+      const nx = dx/d, ny = dy/d;
+      const vn = (lp.vx - nearP.vx)*nx + (lp.vy - nearP.vy)*ny;
+
+      // 🟢 MORE COLLECTABLE: Raised absorption threshold
+      if(Math.abs(vn) < 1.5){
+        nearP.vx += lp.vx * lp.mass / nearP.mass * 0.5;
+        nearP.vy += lp.vy * lp.mass / nearP.mass * 0.5;
+        nearP.heat = Math.min(1, nearP.heat + 0.4);
+        lp.life = 0; // Mark for removal
+        if(lp.heat > 0.4) H.addFlash(lp.x, lp.y, 3, '255,180,80');
+      } else if(vn > 0){
+        lp.x -= nx * (H.config.LOOSE_HIT_R - nearD) * 0.95;
+        lp.y -= ny * (H.config.LOOSE_HIT_R - nearD) * 0.95;
+        const ma = lp.mass, mb = nearP.mass;
+        const j = -(1 + 0.45) * vn / (1/ma + 1/mb);
+        lp.vx -= j*nx/ma; lp.vy -= j*ny/ma;
+        nearP.vx += j*nx/mb; nearP.vy += j*ny/mb;
+        
+        const h = H.clamp(Math.abs(vn)*0.12, 0, 1);
+        lp.heat = Math.min(1, lp.heat + h);
+        nearP.heat = Math.min(1, nearP.heat + h);        
+        // Limited high-impact sparks (prevents lag explosions)
+        if(Math.abs(vn) > 3 && looseArr.length < 380){
+          for(let k=0; k<2; k++){
+            const a = Math.atan2(-ny,-nx) + (H.rnd()-0.5)*1.0;
+            const s = H.rnd() * Math.abs(vn)*0.25 + 0.2;
+            looseArr.push({
+              x:lp.x, y:lp.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+              mass: lp.mass*0.08, pal: lp.pal, heat:0.9, life:0.3, decay:0.06
+            });
+          }
+        }
+      }
+      break; // One collision per loose particle per frame
+    }
+  }
+};
+
+// ── Optimized Loose Physics & Decay ──
+window.Sim.tickLoose = dt => {
+  const H = window.Sim;
+  const looseArr = H.state.loose;
+  
+  // 🟢 SMART CAP: Remove dying particles first, then hard-trim oldest if still over
+  H.state.loose = looseArr.filter(p => p.life > 0.02);
+  if(H.state.loose.length > 400) {
+    H.state.loose.splice(0, H.state.loose.length - 350); // Keep only the 350 longest-lived
+  }
+
+  for(const p of H.state.loose){
+    const sdx = H.SUN.x - p.x, sdy = H.SUN.y - p.y;
+    const sd2 = sdx*sdx + sdy*sdy, sd = Math.sqrt(sd2) + 0.1;
+    if(sd < H.SUN.burnRadius){ p.life = 0; continue; }
+
+    const sf = H.config.GRAV_CONST * H.SUN.mass * H.sunGravMult / (sd2 + 500) * 0.04;
+    p.vx += sdx/sd * sf * dt; 
+    p.vy += sdy/sd * sf * dt;
+
+    for(const b of H.state.bodies){
+      const dx = b.cx - p.x, dy = b.cy - p.y;
+      const d2 = dx*dx + dy*dy, d = Math.sqrt(d2) + 0.1;
+      // Slightly reduced planet pull for debris to prevent orbit clutter
+      const f = H.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.06) / (d2 + 150);
+      p.vx += dx/d * f * dt; 
+      p.vy += dy/d * f * dt;
+    }
+
+    p.vx *= 0.995; p.vy *= 0.995;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.008 * dt);
+
+    // 🟢 FASTER DECAY: Non-ring debris fades 2x faster
+    if(p.isRing){
+      p.life -= p.decay * dt; // Rings live long
+    } else {
+      p.life -= (p.decay + 0.008) * dt; // Debris/sparks vanish quickly
+    }
+  }
+};
+
+
+/*
 window.Sim.tickLoose = dt => {
   if (window.Sim.state.loose.length > 400) window.Sim.state.loose = window.Sim.state.loose.slice(window.Sim.state.loose.length - 400);
   window.Sim.state.loose = window.Sim.state.loose.filter(p => p.life > 0);
@@ -242,6 +355,76 @@ window.Sim.tickLoose = dt => {
     p.life -= p.decay * dt;
   }
 };
+*/ // old version.
+
+/*
+window.Sim.tickLoose = dt => {
+  const H = window.Sim;
+
+  // ── NEW: Solar Magma/Lava Emitter ──
+  const SUN_SURFACE = H.SUN.radius;
+  const MAX_SOLAR = 30; // Performance cap for active solar particles
+  let solarCount = 0;
+  for (let i = 0; i < H.state.loose.length; i++) {
+    if (H.state.loose[i].isSolar) solarCount++;
+  }
+
+  if (solarCount < MAX_SOLAR) {
+    for (let i = 0; i < 4; i++) { // 4 particles spawned per frame
+      const angle = H.rnd() * H.PI2;
+      const dist = SUN_SURFACE * (0.92 + H.rnd() * 0.08); // Slightly above surface
+      const sx = H.SUN.x + Math.cos(angle) * dist;
+      const sy = H.SUN.y + Math.sin(angle) * dist;
+      const speed = 1.5 + H.rnd() * 4;
+      
+      H.state.loose.push({
+        x: sx, y: sy,
+        vx: Math.cos(angle) * speed + (H.rnd() - 0.5) * 1.5,
+        vy: Math.sin(angle) * speed + (H.rnd() - 0.5) * 1.5,
+        mass: 0.05,
+        pal: { gc: '255,100,0' },
+        heat: 0.85 + H.rnd() * 0.15, // 🔥 HIGH HEAT → auto-renders as orange/yellow in drawLoose
+        life: 0.5 + H.rnd() * 0.4,
+        decay: 0.015 + H.rnd() * 0.01,
+        isSolar: true, // ✅ Prevents instant burn-radius death
+        isRing: false
+      });
+    }
+  }
+
+  // ── Cap & Cleanup ──
+  if (H.state.loose.length > 500) H.state.loose.splice(0, H.state.loose.length - 500);
+  H.state.loose = H.state.loose.filter(p => p.life > 0);
+
+  // ── Standard Physics Loop ──
+  for (const p of H.state.loose) {
+    const sdx = H.SUN.x - p.x, sdy = H.SUN.y - p.y;
+    const sd2 = sdx * sdx + sdy * sdy, sd = H.hypot(sdx, sdy) + 0.1;
+
+    // ✅ Allow isSolar particles to survive inside the burn radius
+    if (sd < H.SUN.burnRadius && !p.isSolar) { p.life = 0; continue; }
+
+    const sf = H.config.GRAV_CONST * H.SUN.mass * H.sunGravMult / (sd2 + 500) * 0.04;
+    p.vx += sdx / sd * sf * dt; p.vy += sdy / sd * sf * dt;
+
+    for (const b of H.state.bodies) {
+      const dx = b.cx - p.x, dy = b.cy - p.y;
+      const d2 = dx * dx + dy * dy, d = H.hypot(dx, dy) + 0.1;
+      const f = H.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.12) / (d2 + 150);
+      p.vx += dx / d * f * dt; p.vy += dy / d * f * dt;
+    }
+
+    p.vx *= 0.997; p.vy *= 0.997;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.005 * dt);
+    p.life -= p.decay * dt;
+  }
+
+  H.looseVsPlanets();
+};
+
+*/ 
+
 
 window.Sim.tickBodies = scaledDt => {
   const dt = scaledDt / window.Sim.config.SUBSTEPS;

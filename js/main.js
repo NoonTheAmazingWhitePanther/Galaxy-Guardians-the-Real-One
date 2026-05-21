@@ -59,8 +59,11 @@ window.Sim.init = () => {
       window.Sim.tickAsteroids(rawDt * window.Sim.physSpeed * window.Sim.config.PHYS_SCALE);
     }
 
+    
     window.Sim.drawFlashes();
     window.Sim.drawSun(t);
+    window.Sim.drawSolarTentacles(t);
+    window.Sim.drawSolarRays(t);
     window.Sim.drawLoose();
     window.Sim.drawAsteroids();
     window.Sim.drawOrbitPreview(t);

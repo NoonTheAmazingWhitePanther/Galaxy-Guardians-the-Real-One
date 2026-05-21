@@ -24,6 +24,9 @@ Sim.state = {
   astTimer: 0
 };
 
+// Solar prominence/tentacle animation storage
+Sim.solarTentacles = [];
+
 Sim.SUN = { x: 0, y: 0, radius: 180, burnRadius: 220, mass: 182784, coronaTime: 0 };
 
 Sim.PALS = [
