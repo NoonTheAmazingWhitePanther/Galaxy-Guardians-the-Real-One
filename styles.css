@@ -52,6 +52,30 @@ canvas#c { display: block; width: 100vw; height: 100vh; z-index: 0; }
   font-size: 11px;
 }
 
+/* FPS Counter - matches zoom-bar style */
+#fps-display {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  font-size: 13px;
+  z-index: 100;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  color: var(--ui-text);
+  font-family: 'Space Mono', monospace;
+  pointer-events: none; /* Don't block clicks */
+  transition: opacity 0.2s;
+}
+
+/* Optional: dim when FPS is healthy */
+#fps-display.healthy { color: #7fff7f; }
+#fps-display.warning { color: #ffd700; }
+#fps-display.critical { color: #ff6b6b; }
+
 /* ========================================
    4. BAR POSITIONING
    3 distinct zones: Top-Left, Top-Right, Bottom-Center
