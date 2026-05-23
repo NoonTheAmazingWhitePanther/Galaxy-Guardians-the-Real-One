@@ -24,7 +24,7 @@ window.Sim.init = () => {
   });
 
   // ── Main Animation Loop ───────────────────────
-  
+
   let lastT = 0;
   const loop = (t) => {
     requestAnimationFrame(loop);
@@ -32,7 +32,6 @@ window.Sim.init = () => {
     lastT = t;
 
     // UI & Camera updates
-    window.Sim.updateFPS(rawDt);
     window.Sim.tickCam();
     window.Sim.updatePanPad();
     window.Sim.updateSpeedBar();
@@ -78,7 +77,6 @@ window.Sim.init = () => {
 
     // Screen-space overlays
     window.Sim.drawCharge();
-    window.Sim.drawFPS();
     window.Sim.ctx.fillStyle = 'rgba(180,210,255,.15)';
     window.Sim.ctx.font = '8px "Space Mono",monospace';
     window.Sim.ctx.letterSpacing = '.18em';
@@ -92,31 +90,6 @@ window.Sim.init = () => {
     window.Sim.cursorEl.style.top = window.Sim.ty + 'px';
     window.Sim.updateCount();
 
-
-  // 🔹 FPS CALCULATION (add this near start of tick)
-  /*
-  Sim.frameCount++;
-  if (now - Sim.fpsUpdateTime >= 500) { // Update every 500ms
-    Sim.fps = Math.round((Sim.frameCount * 1000) / (now - Sim.fpsUpdateTime));
-    Sim.frameCount = 0;
-    Sim.fpsUpdateTime = now;
-    
-    // Update DOM (with color coding)
-    const fpsEl = document.getElementById('fps-value');
-    const fpsDisplay = document.getElementById('fps-display');
-    if (fpsEl) fpsEl.textContent = Sim.fps;
-    if (fpsDisplay) {
-      fpsDisplay.classList.remove('healthy', 'warning', 'critical');
-      if (Sim.fps >= 50) fpsDisplay.classList.add('healthy');
-      else if (Sim.fps >= 30) fpsDisplay.classList.add('warning');
-      else fpsDisplay.classList.add('critical');
-    }
-  }
-
-  // ... rest of your existing tick logic ...
-  requestAnimationFrame(tick);
-}
-*/
   }
 
   requestAnimationFrame(loop);
