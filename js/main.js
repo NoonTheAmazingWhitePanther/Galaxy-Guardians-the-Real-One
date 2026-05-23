@@ -23,12 +23,7 @@ window.Sim.init = () => {
     window.Sim.resizeTrailBuffers();
   });
 
-  // ── Main Animation Loop ──────────────────────────
- // === ADD AT TOP OF FILE (with other globals) ===
-Sim.lastFrameTime = performance.now();
-Sim.frameCount = 0;
-Sim.fps = 0;
-Sim.fpsUpdateTime = 0;
+  // ── Main Animation Loop ───────────────────────
   
   let lastT = 0;
   const loop = (t) => {
@@ -99,6 +94,7 @@ Sim.fpsUpdateTime = 0;
 
 
   // 🔹 FPS CALCULATION (add this near start of tick)
+  /*
   Sim.frameCount++;
   if (now - Sim.fpsUpdateTime >= 500) { // Update every 500ms
     Sim.fps = Math.round((Sim.frameCount * 1000) / (now - Sim.fpsUpdateTime));
@@ -120,7 +116,8 @@ Sim.fpsUpdateTime = 0;
   // ... rest of your existing tick logic ...
   requestAnimationFrame(tick);
 }
-  };
+*/
+  }
 
   requestAnimationFrame(loop);
 };
