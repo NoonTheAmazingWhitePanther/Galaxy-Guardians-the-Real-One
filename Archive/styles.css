@@ -226,48 +226,62 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 
 
 /* ========================================
- 11\. FORCE IDENTICAL SIZE: SPEED & ZOOM
+ 11\. FORCED IDENTICAL SIZE: SPEED & ZOOM
  ======================================== */
-
-/* 🔒 Outer Container: Lock width, height & flex behavior */
-.speed-bar, .zoom-bar,
 #speedBar, #zoomBar {
-  width: 128px !important;
+  /* LOCK CONTAINER DIMENSIONS */
+  width: 124px !important;
   height: 32px !important;
+  min-width: 124px !important;
+  max-width: 124px !important;
+  min-height: 32px !important;
   max-height: 32px !important;
-  min-width: 128px !important;
-  max-width: 128px !important;
-  flex: 0 0 128px !important;
   padding: 0 8px !important;
-  gap: 6px !important;
+  margin: 0 !important;
   box-sizing: border-box !important;
-  display: inline-flex !important;
+  
+  /* LOCK LAYOUT BEHAVIOR */
+  display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
   overflow: hidden !important;
 }
 
-/* 🔘 Inner Buttons (+ / -): Fixed square size */
-.speed-bar button, .zoom-bar button,
-.speed-bar .btn, .zoom-bar .btn {
+/* LOCK BUTTONS TO IDENTICAL SQUARES */
+#speedBar button, #zoomBar button,
+#speedBar [class*="btn"], #zoomBar [class*="btn"] {
   width: 22px !important;
   height: 22px !important;
   min-width: 22px !important;
+  max-width: 22px !important;
   min-height: 22px !important;
+  max-height: 22px !important;
+  padding: 0 !important;
+  margin: 0 !important;
   font-size: 13px !important;
   line-height: 1 !important;
-  padding: 0 !important;
-  border-radius: 6px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
 }
 
-/* 🔢 Center Text (x1 / 100%): Prevent flex expansion */
-.speed-bar span, .zoom-bar span,
-.speed-bar .label, .zoom-bar .label {
+/* LOCK CENTER TEXT (x1 / 100%) TO IDENTICAL BASELINE & SIZE */
+#speedBar > span, #zoomBar > span,
+#speedBar [class*="label"], #zoomBar [class*="label"],
+#speedBar [class*="text"], #zoomBar [class*="text"] {
+  font-family: inherit !important;
   font-size: 12px !important;
   font-weight: 600 !important;
   line-height: 1 !important;
   text-align: center !important;
   flex: 1 !important;
-  min-width: 30px !important; /* Stops "100%" from pushing container wider */
+  padding: 0 !important;
+  margin: 0 !important;
   white-space: nowrap !important;
+  overflow: hidden !important;
 }
