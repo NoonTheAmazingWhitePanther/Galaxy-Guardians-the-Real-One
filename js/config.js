@@ -15,6 +15,16 @@ Sim.config = {
   get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
 };
 
+// 🔥 NEW: Burnt particle configuration
+Sim.burntConfig = {
+  BURN_ZONE_RADIUS_MULT: 4,        // 4x burnRadius for burn zone
+  BURNT_MELT_RATE_MULT: 2.5,       // 2.5x faster melt for burnt particles
+  BURNT_COHESION_RANGE: 80,        // Pixel range for group attraction
+  BURNT_COHESION_STRENGTH: 0.15,   // Soft influence factor
+  BURNT_RED_LUMINANCE: 0.7,        // Red channel glow intensity
+  BURNT_MIN_HEAT_GLOW: 0.2         // Minimum heat to show glow
+};
+
 Sim.state = {
   bodies: [],
   loose: [],

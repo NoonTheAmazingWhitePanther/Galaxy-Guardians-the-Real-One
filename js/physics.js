@@ -1,14 +1,14 @@
 "use strict";
 
-// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // PHYSICS.JS - Physics Engine & Body Dynamics
-// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 // Purpose: Manage planet creation, spring physics, gravity, collisions, and destruction.
-// ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
 
-// ──────────────────────────────────────────────────────────────────────────────────��───────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Particle & Spring Factories
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 
 /**
  * Create a single particle with physics state.
@@ -24,9 +24,9 @@ window.Sim.makeSpring = (a, b, restLen, stiff, breakAt) => ({
   a, b, restLen, stiff: stiff || window.Sim.config.SPRING_K, breakAt: breakAt || (restLen * window.Sim.config.BREAK_MULT), broken: false
 });
 
-// ─────────────────────────────────────────────────────────────────────────────────────────────────────────��────────────
+// ────────────────────────────────────────────────────────────────────
 // Planet Construction
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 
 /**
  * Create a planet body from scratch.
@@ -74,9 +74,9 @@ window.Sim.makeBody = (cx, cy, radius, pal) => {
   body.mass = tm; return body;
 };
 
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Physics Calculations
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 
 /**
  * Update body center of mass from particle positions.
@@ -136,9 +136,9 @@ window.Sim.applyGravity = (p, nParticles) => {
   }
 };
 
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Inter-Body Collisions (Optimized with Spatial Hash)
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 
 /**
  * Detect and respond to collisions between two bodies.
@@ -208,12 +208,9 @@ window.Sim.interBodyCollisions = () => {
   }
 };
 
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// Planet Destruction & Ring Formation
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
 /**
  * Spawn a ring of debris from a destroyed planet.
+ * 🔥 NOW: Include burnt particle tracking
  */
 window.Sim.spawnRing = body => {
   const rx = body.cx, ry = body.cy;
@@ -228,13 +225,31 @@ window.Sim.spawnRing = body => {
     const gmLocal = window.Sim.config.GRAV_CONST * window.Sim.SUN.mass * (body.gravMult || window.Sim.sunGravMult);
     const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
     const scatter = H.rndR(0.96, 1.04);
-    window.Sim.state.loose.push({ x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter, mass: H.rndR(0.4, 1.2), pal: body.pal, heat: H.rndR(0.3, 0.8), life: H.rndR(1.5, 2.5), decay: H.rndR(0.002, 0.005), isRing: true });
+    window.Sim.state.loose.push({ 
+      x: px, 
+      y: py, 
+      vx: -Math.sin(angle) * vLocal * scatter, 
+      vy: Math.cos(angle) * vLocal * scatter, 
+      mass: H.rndR(0.4, 1.2), 
+      pal: body.pal, 
+      heat: H.rndR(0.3, 0.8), 
+      life: H.rndR(4, 8), 
+      decay: H.rndR(0.003, 0.006), 
+      isRing: true, 
+      // 🔥 NEW: Burnt tracking
+      isBurnt: false, 
+      burnedAt: 0, 
+      meltRate: H.rndR(0.003, 0.008), 
+      detachSpeed: H.rndR(8, 16), 
+      birthTime: performance.now() 
+    });
   }
 };
 
 /**
  * Split dead particles into separate fragments or destroy the body.
  * Uses BFS to find connected components of alive particles.
+ * 🔥 NOW: Include burnt particle tracking
  */
 window.Sim.splitDeadParticles = body => {
   const H = window.Sim;
@@ -264,7 +279,23 @@ window.Sim.splitDeadParticles = body => {
     if (!vis[i]) {
       // 🔒 Only spawn debris if under cap, otherwise just delete silently
       if (debrisCount < MAX_DEBRIS && H.state.loose.length < 350) {
-        H.state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: H.rndR(0.004, 0.008) });
+        H.state.loose.push({ 
+          x: p.x, 
+          y: p.y, 
+          vx: p.vx, 
+          vy: p.vy, 
+          mass: p.mass, 
+          pal: p.pal, 
+          heat: p.heat, 
+          life: 1, 
+          decay: H.rndR(0.004, 0.008),
+          // 🔥 NEW: Burnt particle tracking
+          isBurnt: false, 
+          burnedAt: 0, 
+          meltRate: H.rndR(0.003, 0.008),
+          detachSpeed: H.rndR(8, 16),
+          birthTime: performance.now()
+        });
         debrisCount++;
       }
       p.dead = true; // Always remove from planet
@@ -278,7 +309,23 @@ window.Sim.splitDeadParticles = body => {
       // Spawn a small visual burst instead of the full mass
       const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
       for (let i = 0; i < burst; i++) {
-        H.state.loose.push({ x: ps[i].x, y: ps[i].y, vx: ps[i].vx, vy: ps[i].vy, mass: ps[i].mass, pal: ps[i].pal, heat: 1, life: 0.6, decay: H.rndR(0.005, 0.01) });
+        H.state.loose.push({ 
+          x: ps[i].x, 
+          y: ps[i].y, 
+          vx: ps[i].vx, 
+          vy: ps[i].vy, 
+          mass: ps[i].mass, 
+          pal: ps[i].pal, 
+          heat: 1, 
+          life: 0.6, 
+          decay: H.rndR(0.005, 0.01),
+          // 🔥 NEW: Burst particles are extra hot
+          isBurnt: false,
+          burnedAt: 0,
+          meltRate: H.rndR(0.005, 0.012),
+          detachSpeed: H.rndR(12, 22),
+          birthTime: performance.now()
+        });
       }
     }
     if (body.radius >= H.RING_MIN_RADIUS) H.spawnRing(body);
@@ -286,12 +333,9 @@ window.Sim.splitDeadParticles = body => {
   }
 };
 
-// ─────────────���────────────────────────────────────────────────────────────────────────────────────────────────────────
-// Loose Particles (Debris) Physics
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-
 /**
  * Check if loose particles collide with planets and get absorbed.
+ * 🔥 NOW: Include burnt particle tracking in spark generation
  */
 window.Sim.looseVsPlanets = () => {
   const H = window.Sim;
@@ -348,8 +392,21 @@ window.Sim.looseVsPlanets = () => {
             const a = Math.atan2(-ny,-nx) + (H.rnd()-0.5)*1.0;
             const s = H.rnd() * Math.abs(vn)*0.25 + 0.2;
             looseArr.push({
-              x:lp.x, y:lp.y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
-              mass: lp.mass*0.08, pal: lp.pal, heat:0.9, life:0.3, decay:0.06
+              x:lp.x, 
+              y:lp.y, 
+              vx:Math.cos(a)*s, 
+              vy:Math.sin(a)*s,
+              mass: lp.mass*0.08, 
+              pal: lp.pal, 
+              heat:0.9, 
+              life:0.3, 
+              decay:0.06,
+              // 🔥 NEW: Spark debris tracking
+              isBurnt: false,
+              burnedAt: 0,
+              meltRate: H.rndR(0.002, 0.006),
+              detachSpeed: H.rndR(6, 12),
+              birthTime: performance.now()
             });
           }
         }
@@ -361,6 +418,7 @@ window.Sim.looseVsPlanets = () => {
 
 /**
  * Update all loose particles: apply gravity, decay, remove dead ones.
+ * 🔥 NEW: Handle burnt particle state, variable melt rates, and group cohesion
  */
 window.Sim.tickLoose = dt => {
   const H = window.Sim;
@@ -375,16 +433,85 @@ window.Sim.tickLoose = dt => {
   for(const p of H.state.loose){
     const sdx = H.SUN.x - p.x, sdy = H.SUN.y - p.y;
     const sd2 = sdx*sdx + sdy*sdy, sd = Math.sqrt(sd2) + 0.1;
-    if(sd < H.SUN.burnRadius){ p.life = 0; continue; }
+    
+    // 🔥 NEW: Track burnt state when escaping burn zone
+    const inBurnZone = sd < H.SUN.burnRadius * 4; // 4x radius burn zone
+    const inCritical = sd < H.SUN.burnRadius;     // Core instant vaporize zone
+    
+    // Mark as burnt when exiting the zone with high heat
+    if (!p.isBurnt && p.heat > 0.7 && inBurnZone === false) {
+      p.isBurnt = true;
+      p.burnedAt = performance.now();
+    }
+    
+    // If in critical zone, accelerate vaporization
+    if (inCritical) {
+      p.life = 0;
+      continue;
+    }
+    
+    // 🔥 NEW: Variable melt rate for burnt particles
+    if (p.isBurnt && inBurnZone) {
+      // Burnt particles melt faster while still in burn zone, at variable rates
+      p.life -= p.meltRate * dt * 2.5; // 2.5x faster melt for burnt particles
+      
+      // Variable detach: some particles escape faster, creating fluid motion
+      const escapeFactor = p.detachSpeed / 15; // normalize to ~1.0
+      p.vx += (sdx / sd) * escapeFactor * 0.3 * dt;
+      p.vy += (sdy / sd) * escapeFactor * 0.3 * dt;
+    } else if (p.heat > 0.7) {
+      // Hot particles (not yet burnt) decay faster
+      p.life -= (p.decay + 0.012) * dt;
+    } else if (p.isBurnt) {
+      // Burnt particles that escaped: normal decay
+      p.life -= p.decay * dt;
+    } else {
+      // Cool particles: standard decay
+      if(p.isRing){
+        p.life -= p.decay * dt; // Rings live long
+      } else {
+        p.life -= (p.decay + 0.008) * dt; // Debris/sparks vanish quickly
+      }
+    }
+    
+    // 🔥 NEW: Group cohesion for burnt debris (fluid absorption effect)
+    // Burnt particles attract each other slightly to stay grouped
+    if (p.isBurnt) {
+      let nearbyX = 0, nearbyY = 0, nearbyCount = 0;
+      const cohesionRange = 80; // pixels
+      
+      for (const other of H.state.loose) {
+        if (other === p || !other.isBurnt) continue;
+        const dx = other.x - p.x, dy = other.y - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d < cohesionRange && d > 0.1) {
+          const influence = (1 - d / cohesionRange) * 0.15; // soft influence
+          nearbyX += (dx / d) * influence;
+          nearbyY += (dy / d) * influence;
+          nearbyCount++;
+        }
+      }
+      
+      if (nearbyCount > 0) {
+        p.vx += (nearbyX / nearbyCount) * dt * 2;
+        p.vy += (nearbyY / nearbyCount) * dt * 2;
+      }
+    }
+
+    // Apply sun gravity
+    if(sd < H.SUN.burnRadius){ 
+      p.life = 0; 
+      continue; 
+    }
 
     const sf = H.config.GRAV_CONST * H.SUN.mass * H.sunGravMult / (sd2 + 500) * 0.04;
     p.vx += sdx/sd * sf * dt; 
     p.vy += sdy/sd * sf * dt;
 
+    // Planet gravity (reduced for debris)
     for(const b of H.state.bodies){
       const dx = b.cx - p.x, dy = b.cy - p.y;
       const d2 = dx*dx + dy*dy, d = Math.sqrt(d2) + 0.1;
-      // Slightly reduced planet pull for debris to prevent orbit clutter
       const f = H.config.GRAV_CONST * b.mass * (p.isRing ? 0.01 : 0.06) / (d2 + 150);
       p.vx += dx/d * f * dt; 
       p.vy += dy/d * f * dt;
@@ -392,23 +519,26 @@ window.Sim.tickLoose = dt => {
 
     p.vx *= 0.995; p.vy *= 0.995;
     p.x += p.vx * dt; p.y += p.vy * dt;
-    p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.008 * dt);
-
-    // 🟢 FASTER DECAY: Non-ring debris fades 2x faster
-    if(p.isRing){
-      p.life -= p.decay * dt; // Rings live long
+    
+    // 🔥 NEW: Heat dynamics for burnt vs. normal particles
+    if (p.isBurnt) {
+      // Burnt particles stay hot longer in burn zone
+      p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.015 * dt) : Math.max(0.5, p.heat - 0.003 * dt);
     } else {
-      p.life -= (p.decay + 0.008) * dt; // Debris/sparks vanish quickly
+      // Normal heat decay
+      p.heat = sd < H.SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.008 * dt);
     }
   }
 };
 
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 // Main Body Physics Tick
-// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ───────────────────
 
 /**
+/**
  * Main physics loop: apply gravity, integrate, solve springs, handle collisions, burn detection.
+ * ✅ COMPLETE: No changes needed for burnt particles (they work at loose particle level)
  */
 window.Sim.tickBodies = scaledDt => {
   const H = window.Sim;
@@ -417,75 +547,105 @@ window.Sim.tickBodies = scaledDt => {
 
   // 🔥 Pre-calculate Burn Thresholds
   const burnR = H.SUN.burnRadius;
-  const burnZoneR = burnR * 4; // Matches the 2.5x visual warning zone exactly
+  const burnZoneR = burnR * 4; // 4x radius for burn zone (matches rendering & loose physics)
   const burnSq = burnR * burnR;
   const burnZoneSq = burnZoneR * burnZoneR;
 
   // Helper: get alive count for gravity normalization (constant for this frame)
   const nAlives = bodies.map(b => { 
-      let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; 
+    let n = 0; 
+    for (const p of b.particles) if (!p.dead) n++; 
+    return n || 1; 
   });
 
+  // ── SUBSTEPS LOOP ──────────────────────────────────────────────────
   for (let sub = 0; sub < H.config.SUBSTEPS; sub++) {
-    // 1. Gravity
+    
+    // 1. GRAVITY: Apply forces from sun & other bodies
     for (let bi = 0; bi < bodies.length; bi++) {
       const body = bodies[bi];
       const na = nAlives[bi];
       for (const p of body.particles) if (!p.dead) H.applyGravity(p, na);
     }
     
-    // 2. Integrate
-    for (const body of bodies) for (const p of body.particles) H.integrateParticle(p, dt);
+    // 2. INTEGRATE: Update velocity & position
+    for (const body of bodies) {
+      for (const p of body.particles) {
+        H.integrateParticle(p, dt);
+      }
+    }
     
-    // 3. Solve Springs
-    for (const body of bodies) H.solveSprings(body, dt);
+    // 3. SOLVE SPRINGS: Apply spring constraints between particles
+    for (const body of bodies) {
+      H.solveSprings(body, dt);
+    }
 
     // 🔥 4. BURN LOGIC: Sun Proximity & Destruction
-    // Checks if particles are inside the Burn Radius (Instant Death)
-    // or inside the 2.5x Warning Zone (Rapid Heating & Melting)
+    // This marks planet particles as dead when they:
+    //   - Enter core burn radius → instant vaporization
+    //   - Enter burn zone (4x) → rapid overheating & melting
+    // These dead particles are later converted to loose debris in splitDeadParticles()
     for (const body of bodies) {
       for (const p of body.particles) {
         if (p.dead) continue;
+        
         const dx = H.SUN.x - p.x, dy = H.SUN.y - p.y;
         const sd2 = dx * dx + dy * dy;
 
         if (sd2 < burnSq) {
           // 🔥 CORE BURN: Instant vaporization
-          p.dead = true; p.heat = 1;
+          p.dead = true; 
+          p.heat = 1;
+          
         } else if (sd2 < burnZoneSq) {
-          // 🔥 BURN ZONE (2.5x): Rapid overheating & melting
-          // Closer to sun = faster burn rate
+          // 🔥 BURN ZONE (4x radius): Rapid overheating & melting
+          // Closer to sun = faster burn rate (proximity gradient)
           const dist = Math.sqrt(sd2);
           const proximity = 1 - (dist / burnZoneR); // 0.0 at edge, 1.0 at inner core
           
-          // Heat accumulates rapidly. If it hits 1.0, particle dies/breaks off.
+          // Heat accumulates rapidly. If it hits 2.0+, particle dies/breaks off.
           const burnRate = 0.004 + (proximity * 0.000035); 
           p.heat = Math.min(1, p.heat + burnRate);
           
           if (p.heat >= 2.0) {
             p.dead = true;
           }
+          
         } else {
-          // Cool down if safe distance
-          if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005);
+          // Cool down if safe distance from burn zone
+          if (p.heat > 0) {
+            p.heat = Math.max(0, p.heat - 0.005);
+          }
         }
       }
     }
 
-    // 5. Inter-body Collisions
-    if (sub === H.config.SUBSTEPS - 1) H.interBodyCollisions();
+    // 5. INTER-BODY COLLISIONS: Handle planet-to-planet collisions (only once per frame)
+    if (sub === H.config.SUBSTEPS - 1) {
+      H.interBodyCollisions();
+    }
   }
 
-  // ── Post-Step Updates ──────────────────────────────────────────
-  for (const body of bodies) H.updateCOM(body);
-  for (const body of bodies) H.splitDeadParticles(body);
+  // ── POST-SUBSTEP UPDATES ────────────────────────────────────────────
+  
+  // Update body center of mass from all alive particles
+  for (const body of bodies) {
+    H.updateCOM(body);
+  }
+  
+  // Split dead particles from planets into loose debris
+  // 🔥 This is where dead planet particles become burnt loose particles
+  for (const body of bodies) {
+    H.splitDeadParticles(body);
+  }
   
   // Remove fully destroyed bodies
   H.state.bodies = bodies.filter(b => !b.dead);
   
-  // Handle loose particles (collision with planets)
+  // Handle collisions between loose particles and planets
   H.looseVsPlanets();
 };
+
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // ARCHIVE - Old implementations (kept for reference, not used)

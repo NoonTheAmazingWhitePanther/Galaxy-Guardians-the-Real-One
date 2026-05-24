@@ -560,23 +560,114 @@ window.Sim.drawSolarTentacles = (t) => {
 };
 */
 
-window.Sim.drawLoose = () => {
-  const hot = [], warm = [], cool = new Map(), ring = new Map();
-  for (const p of window.Sim.state.loose) {
-    const life = Math.min(p.life, 1), r = Math.max(0.01, window.Sim.config.PARTICLE_R * (p.isRing ? 1.4 : 1) * life), a = life;
-    if (p.isRing) { const key = p.pal.gc; if (!ring.has(key)) ring.set(key, []); ring.get(key).push([p.x, p.y, r, a * 0.85]); }
-    else if (p.heat > 0.6) hot.push([p.x, p.y, r, a * 0.9]);
-    else if (p.heat > 0.3) warm.push([p.x, p.y, r, a * 0.85]);
-    else { const key = p.pal.gc; if (!cool.has(key)) cool.set(key, []); cool.get(key).push([p.x, p.y, r, a * 0.8]); }
-  }
-  const drawBatch = (style, arr) => { if (!arr.length) return; window.Sim.ctx.fillStyle = style; for (const [x, y, r, a] of arr) { window.Sim.ctx.globalAlpha = a; window.Sim.ctx.beginPath(); window.Sim.ctx.arc(x, y, r, 0, H.PI2); window.Sim.ctx.fill(); } };
-  for (const [gc, pts] of ring) { window.Sim.ctx.shadowBlur = 3; window.Sim.ctx.shadowColor = `rgba(${gc},.6)`; drawBatch(`rgba(${gc},1)`, pts); window.Sim.ctx.shadowBlur = 0; }
-  drawBatch("rgba(255,220,80,1)", hot); drawBatch("rgba(255,100,30,1)", warm);
-  for (const [gc, pts] of cool) drawBatch(`rgba(${gc},1)`, pts);
-  window.Sim.ctx.globalAlpha = 1;
-};
+"use strict";
+
+// ... (keep all existing code up to line 562) ...
 
 // ── Dynamic Burn & Destruction Visuals ────────────────────
+
+/**
+ * 🔥 NEW: Draw loose particles with burnt state, variable decay, and fluid grouping
+ */
+window.Sim.drawLoose = () => {
+  const H = window.Sim;
+  const hot = [], warm = [], cool = new Map(), ring = new Map();
+  
+  // 🔥 NEW: Separate burnt particles for luminous rendering
+  const burnt = [], burntWarm = [];
+
+  for (const p of H.state.loose) {
+    const life = Math.min(p.life, 1), r = Math.max(0.01, H.config.PARTICLE_R * (p.isRing ? 1.4 : 1) * life), a = life;
+    
+    // 🔥 NEW: Burnt particle sorting (separate from hot/warm/cool)
+    if (p.isBurnt) {
+      if (p.heat > 0.5) {
+        burntWarm.push([p.x, p.y, r, a * 0.95, p.heat]); // Include heat for color intensity
+      } else {
+        burnt.push([p.x, p.y, r, a * 0.9, p.heat]);
+      }
+    } else if (p.isRing) { 
+      const key = p.pal.gc; 
+      if (!ring.has(key)) ring.set(key, []); 
+      ring.get(key).push([p.x, p.y, r, a * 0.85]); 
+    } else if (p.heat > 0.6) {
+      hot.push([p.x, p.y, r, a * 0.9]);
+    } else if (p.heat > 0.3) {
+      warm.push([p.x, p.y, r, a * 0.85]);
+    } else { 
+      const key = p.pal.gc; 
+      if (!cool.has(key)) cool.set(key, []); 
+      cool.get(key).push([p.x, p.y, r, a * 0.8]); 
+    }
+  }
+
+  const drawBatch = (style, arr) => { 
+    if (!arr.length) return; 
+    H.ctx.fillStyle = style; 
+    for (const [x, y, r, a] of arr) { 
+      H.ctx.globalAlpha = a; 
+      H.ctx.beginPath(); 
+      H.ctx.arc(x, y, r, 0, H.PI2); 
+      H.ctx.fill(); 
+    } 
+  };
+
+  // Draw normal particles
+  for (const [gc, pts] of ring) { 
+    H.ctx.shadowBlur = 3; 
+    H.ctx.shadowColor = `rgba(${gc},.6)`; 
+    drawBatch(`rgba(${gc},1)`, pts); 
+    H.ctx.shadowBlur = 0; 
+  }
+  drawBatch("rgba(255,220,80,1)", hot); 
+  drawBatch("rgba(255,100,30,1)", warm);
+  for (const [gc, pts] of cool) drawBatch(`rgba(${gc},1)`, pts);
+
+  // 🔥 NEW: Draw burnt particles with luminous red effect
+  // Black/charcoal burnt particles
+  for (const [x, y, r, a, heat] of burnt) {
+    H.ctx.globalAlpha = a * 0.85;
+    H.ctx.fillStyle = `rgba(30, 15, 8, 1)`;
+    H.ctx.beginPath();
+    H.ctx.arc(x, y, r, 0, H.PI2);
+    H.ctx.fill();
+  }
+
+  // Warm burnt particles with luminous red glow
+  for (const [x, y, r, a, heat] of burntWarm) {
+    const heatIntensity = Math.min(heat, 1);
+    
+    // Red-ash core
+    const redIntensity = H.lerp(80, 180, heatIntensity);
+    const greenIntensity = H.lerp(20, 60, heatIntensity);
+    
+    // Main particle (red-ash color)
+    H.ctx.globalAlpha = a * 0.9;
+    H.ctx.fillStyle = `rgba(${Math.floor(redIntensity)}, ${Math.floor(greenIntensity)}, 15, 1)`;
+    H.ctx.beginPath();
+    H.ctx.arc(x, y, r, 0, H.PI2);
+    H.ctx.fill();
+
+    // 🔥 RED LUMINOUS GLOW (only red channel)
+    // Creates the luminous/blossom effect by adding shadow and glow
+    if (heatIntensity > 0.2) {
+      H.ctx.globalAlpha = a * (heatIntensity * 0.6);
+      H.ctx.shadowBlur = r * (4 + heatIntensity * 3);
+      H.ctx.shadowColor = `rgba(255, 100, 20, ${heatIntensity * 0.8})`; // Red-orange glow
+      H.ctx.fillStyle = `rgba(255, 120, 40, ${heatIntensity * 0.5})`;
+      H.ctx.beginPath();
+      H.ctx.arc(x, y, r * 1.2, 0, H.PI2);
+      H.ctx.fill();
+      H.ctx.shadowBlur = 0;
+    }
+  }
+
+  H.ctx.globalAlpha = 1;
+};
+
+/**
+ * Draw a single body (planet) with burning effects
+ */
 window.Sim.drawBody = body => {
   const ctx = window.Sim.ctx;
   const H = window.Sim;
@@ -597,8 +688,8 @@ window.Sim.drawBody = body => {
   const sdy = H.SUN.y - body.cy;
   const sDist = Math.hypot(sdx, sdy);
   
-  // Burning starts at 2.5x burnRadius, intensifies closer in
-  const burnZoneRadius = H.SUN.burnRadius * 2.5;
+  // Burning starts at 4x burnRadius (matching tickLoose burn zone)
+  const burnZoneRadius = H.SUN.burnRadius * 4;
   let burnFactor = 0;
   if (sDist < burnZoneRadius) {
     burnFactor = 1 - (sDist / burnZoneRadius);
@@ -625,7 +716,8 @@ window.Sim.drawBody = body => {
   // 🔥 Burn Overlay (Charred Surface + Molten Core)
   if (burnFactor > 0.05) {
     const burnGrad = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius * 1.1);
-    // Molten Core    burnGrad.addColorStop(0, `rgba(255, 240, 100, ${burnFactor * 0.7})`);
+    // Molten Core
+    burnGrad.addColorStop(0, `rgba(255, 240, 100, ${burnFactor * 0.7})`);
     // Red Hot Mantle
     burnGrad.addColorStop(0.4, `rgba(220, 60, 10, ${burnFactor * 0.8})`);
     // Charred Crust
@@ -637,13 +729,27 @@ window.Sim.drawBody = body => {
     ctx.fill(); // Overlays the base gradient
   }
 
-  // 🔥 Fiery Rim Glow
+  // 🔥 Fiery Rim Glow with luminous red effect
   if (burnFactor > 0.1) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter'; // Additive blending for glow
+    
+    // Red-orange rim
     ctx.strokeStyle = `rgba(255, 120, 20, ${burnFactor * 0.9})`;
     ctx.lineWidth = (2 + burnFactor * 2) / H.cam.zoom;
     ctx.stroke();
+    
+    // 🔥 RED LUMINOUS HALO (only red channel luminance)
+    // Creates outer glow with blur effect
+    if (burnFactor > 0.2) {
+      ctx.shadowBlur = 15 + burnFactor * 20;
+      ctx.shadowColor = `rgba(255, 80, 20, ${burnFactor * 0.7})`;
+      ctx.strokeStyle = `rgba(255, 100, 30, ${burnFactor * 0.5})`;
+      ctx.lineWidth = (3 + burnFactor * 3) / H.cam.zoom;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    
     ctx.restore();
   } else {
     ctx.strokeStyle = `rgba(${pal.gc}, .35)`;
@@ -674,22 +780,35 @@ window.Sim.drawBody = body => {
     p.heat = Math.max(0, p.heat - .012);
   }
   ctx.fill();
-  // Hot particles (Intensified when burning)
+  
+  // 🔥 Hot particles (Intensified when burning, with luminous red effect)
   for (const p of alive) {
     if (p.heat <= .05) continue;
     const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
     
-    // If burning, particles become super-hot yellow/white
+    // If burning, particles become super-hot yellow/white with luminous red
     const heatColor = burnFactor > 0.5 
       ? `rgba(255, ${Math.floor(H.lerp(220, 255, p.heat))}, 150, ${p.heat})` 
       : `rgba(255, ${Math.floor(H.lerp(60, 220, p.heat))}, 30, ${p.heat * .9})`;
       
+    ctx.globalAlpha = p.heat * 0.9;
     ctx.fillStyle = heatColor;
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, H.PI2); ctx.fill();
+    
+    // 🔥 RED LUMINOUS GLOW on hot particles during burn
+    if (burnFactor > 0.2 && p.heat > 0.5) {
+      ctx.globalAlpha = p.heat * burnFactor * 0.5;
+      ctx.shadowBlur = r * (3 + burnFactor * 4);
+      ctx.shadowColor = `rgba(255, 100, 30, ${burnFactor * 0.7})`;
+      ctx.fillStyle = `rgba(255, 140, 50, ${burnFactor * 0.6})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.3, 0, H.PI2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    
     p.heat = Math.max(0, p.heat - .012);
   }
 
-  // 7. Atmosphere Halo (Burns Orange/Red)
+  // 7. Atmosphere Halo (Burns Orange/Red with luminous effect)
   ctx.save();
   const atmColor = burnFactor > 0.1 
     ? `rgba(255, 100, 20, ${0.15 + burnFactor * 0.4})` 
@@ -699,9 +818,28 @@ window.Sim.drawBody = body => {
   atm.addColorStop(0, atmColor);
   atm.addColorStop(1, `rgba(${pal.gc}, 0)`);
   ctx.fillStyle = atm;
+  ctx.globalAlpha = 1;
   ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 1.8, 0, H.PI2); ctx.fill();
+  
+  // 🔥 NEW: Extra luminous red halo during intense burn (only red channel glow)
+  if (burnFactor > 0.3) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = burnFactor * 0.3;
+    ctx.shadowBlur = 25 + burnFactor * 15;
+    ctx.shadowColor = `rgba(255, 80, 20, ${burnFactor * 0.8})`;
+    const glowAtm = ctx.createRadialGradient(body.cx, body.cy, body.radius * 0.5, body.cx, body.cy, body.radius * 2.2);
+    glowAtm.addColorStop(0, `rgba(255, 120, 40, ${burnFactor * 0.5})`);
+    glowAtm.addColorStop(1, `rgba(255, 60, 20, 0)`);
+    ctx.fillStyle = glowAtm;
+    ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 2.2, 0, H.PI2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  
   ctx.restore();
 };
+
+// ... (keep all remaining code from line 705 onwards) ...
 
 /*
 function drawBody(body){
