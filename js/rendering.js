@@ -762,12 +762,10 @@ window.Sim.updateFPS = (rawDt) => {
   }
 };
 window.Sim.drawFPS = () => {
-  const ctx = window.Sim.ctx;
-  ctx.save();
-  ctx.font = '10px "Space Mono",monospace';
-  ctx.fillStyle = 'rgba(100,255,160,0.55)';
-  ctx.fillText(`${window.Sim.fpsDisplay || 0} FPS`, 16, 20);
-  ctx.restore();
+  const fpsElem = document.getElementById('fpsCounter');
+  if (fpsElem) {
+    fpsElem.textContent = `${window.Sim.fpsDisplay || 0} FPS`;
+  }
 };
 
 // ============================================================================

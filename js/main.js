@@ -30,6 +30,8 @@ window.Sim.init = () => {
     requestAnimationFrame(loop);
     const rawDt = Math.min((t - lastT) / 1000, 0.05);
     lastT = t;
+    
+  window.Sim.updateFPS(rawDt);
 
     // UI & Camera updates
     window.Sim.tickCam();
@@ -73,6 +75,7 @@ window.Sim.init = () => {
     // Trail system (buffer → composite → advance)
     window.Sim.renderPlanetsToBuffer();
     window.Sim.drawTrail();
+    window.Sim.drawFPS();
     window.Sim.trailHead = (window.Sim.trailHead + 1) % window.Sim.trailBufs.length;
 
     // Screen-space overlays
