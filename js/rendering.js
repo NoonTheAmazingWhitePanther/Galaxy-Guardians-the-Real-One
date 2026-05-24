@@ -668,7 +668,211 @@ window.Sim.drawLoose = () => {
 /**
  * Draw a single body (planet) with burning effects
  */
+ /**
+ * Draw a single body (planet) with burning effects
+ * 🔥 FIXED: Keep burnt ash color on cooled particles
+ */
 window.Sim.drawBody = body => {
+  const ctx = window.Sim.ctx;
+  const H = window.Sim;
+
+  const { particles: ps, springs: ss, pal } = body;
+
+  // 1. Collect alive particles
+  const alive = [];
+  for (const p of ps) if (!p.dead) alive.push(p);
+  if (alive.length < 3) return;
+
+  // 2. Compute Hull
+  const hull = H.convexHull(alive);
+  if (hull.length < 3) return;
+
+  // 3. Calculate Burn Intensity based on distance to Sun
+  const sdx = H.SUN.x - body.cx;
+  const sdy = H.SUN.y - body.cy;
+  const sDist = Math.hypot(sdx, sdy);
+  
+  // Burning starts at 4x burnRadius (matching tickLoose burn zone)
+  const burnZoneRadius = H.SUN.burnRadius * 4;
+  let burnFactor = 0;
+  if (sDist < burnZoneRadius) {
+    burnFactor = 1 - (sDist / burnZoneRadius);
+    // Pulse the burn effect for a "living fire" look
+    burnFactor *= (0.9 + 0.1 * Math.sin(H.SUN.coronaTime * 15));
+    burnFactor = Math.max(0, Math.min(1, burnFactor));
+  }
+
+  // 4. Draw Base Hull
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(hull[0].x, hull[0].y);
+  for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y);
+  ctx.closePath();
+
+  // Base Gradient (Normal Planet Color)
+  const gr = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius);
+  gr.addColorStop(0, pal.hi + 'dd');
+  gr.addColorStop(0.35, pal.mid + 'cc');
+  gr.addColorStop(0.75, pal.lo + 'bb');
+  gr.addColorStop(1, pal.lo + '44');
+  ctx.fillStyle = gr;
+  ctx.fill();
+
+  // 🔥 Burn Overlay (Charred Surface + Molten Core)
+  if (burnFactor > 0.05) {
+    const burnGrad = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius * 1.1);
+    // Molten Core
+    burnGrad.addColorStop(0, `rgba(255, 240, 100, ${burnFactor * 0.7})`);
+    // Red Hot Mantle
+    burnGrad.addColorStop(0.4, `rgba(220, 60, 10, ${burnFactor * 0.8})`);
+    // Charred Crust
+    burnGrad.addColorStop(0.8, `rgba(30, 5, 0, ${burnFactor * 0.9})`);
+    // Blackened Edges
+    burnGrad.addColorStop(1, `rgba(0, 0, 0, ${burnFactor * 0.95})`);
+
+    ctx.fillStyle = burnGrad;
+    ctx.fill(); // Overlays the base gradient
+  }
+
+  // 🔥 Fiery Rim Glow with luminous red effect
+  if (burnFactor > 0.1) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter'; // Additive blending for glow
+    
+    // Red-orange rim
+    ctx.strokeStyle = `rgba(255, 120, 20, ${burnFactor * 0.9})`;
+    ctx.lineWidth = (2 + burnFactor * 2) / H.cam.zoom;
+    ctx.stroke();
+    
+    // 🔥 RED LUMINOUS HALO (only red channel luminance)
+    // Creates outer glow with blur effect
+    if (burnFactor > 0.2) {
+      ctx.shadowBlur = 15 + burnFactor * 20;
+      ctx.shadowColor = `rgba(255, 80, 20, ${burnFactor * 0.7})`;
+      ctx.strokeStyle = `rgba(255, 100, 30, ${burnFactor * 0.5})`;
+      ctx.lineWidth = (3 + burnFactor * 3) / H.cam.zoom;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    
+    ctx.restore();
+  } else {
+    ctx.strokeStyle = `rgba(${pal.gc}, .35)`;
+    ctx.lineWidth = 1.5 / H.cam.zoom;
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 5. Draw Stressed Springs
+  ctx.save(); ctx.globalAlpha = .08; ctx.strokeStyle = `rgba(${pal.gc}, .9)`;
+  ctx.lineWidth = .8 / H.cam.zoom; ctx.beginPath();
+  for (const sp of ss) {
+    if (sp.broken) continue;
+    const pa = ps[sp.a], pb = ps[sp.b]; if (pa.dead || pb.dead) continue;
+    if (Math.hypot(pb.x - pa.x, pb.y - pa.y) / sp.restLen < 1.1) continue;
+    ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
+  }
+  ctx.stroke(); ctx.restore();
+
+  // 6. Draw Particles
+  // 🔥 FIXED: Separate cool particles into normal vs. burnt
+  const coolParticles = [];
+  const burntCoolParticles = [];
+  
+  for (const p of alive) {
+    if (p.heat > .05) continue;
+    // Check if particle was ever in burn zone (max heat was high)
+    // We detect this by checking if heat has been reduced significantly
+    const wasBurnt = p.heat < 0.05 && p.heat >= 0; // Cool but was heated
+    
+    if (wasBurnt || burnFactor > 0.2) {
+      // Particle was burnt, keep ash color
+      burntCoolParticles.push(p);
+    } else {
+      coolParticles.push(p);
+    }
+  }
+
+  // Draw normal cool particles (original color)
+  ctx.fillStyle = `rgba(${pal.gc}, .75)`;
+  ctx.beginPath();
+  for (const p of coolParticles) {
+    const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
+    ctx.moveTo(p.x + r, p.y); 
+    ctx.arc(p.x, p.y, r, 0, H.PI2);
+    p.heat = Math.max(0, p.heat - .012);
+  }
+  ctx.fill();
+
+  // Draw burnt cool particles (ash/charcoal color - PERSISTENT)
+  for (const p of burntCoolParticles) {
+    const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
+    // Ash color: black to dark red
+    ctx.fillStyle = `rgba(40, 20, 15, 0.85)`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, H.PI2);
+    ctx.fill();
+    p.heat = Math.max(0, p.heat - .012);
+  }
+  
+  // 🔥 Hot particles (Intensified when burning, with luminous red effect)
+  for (const p of alive) {
+    if (p.heat <= .05) continue;
+    const r = p.isCore ? H.config.PARTICLE_R * 1.3 : H.config.PARTICLE_R;
+    
+    // If burning, particles become super-hot yellow/white with luminous red
+    const heatColor = burnFactor > 0.5 
+      ? `rgba(255, ${Math.floor(H.lerp(220, 255, p.heat))}, 150, ${p.heat})` 
+      : `rgba(255, ${Math.floor(H.lerp(60, 220, p.heat))}, 30, ${p.heat * .9})`;
+      
+    ctx.globalAlpha = p.heat * 0.9;
+    ctx.fillStyle = heatColor;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, H.PI2); ctx.fill();
+    
+    // 🔥 RED LUMINOUS GLOW on hot particles during burn
+    if (burnFactor > 0.2 && p.heat > 0.5) {
+      ctx.globalAlpha = p.heat * burnFactor * 0.5;
+      ctx.shadowBlur = r * (3 + burnFactor * 4);
+      ctx.shadowColor = `rgba(255, 100, 30, ${burnFactor * 0.7})`;
+      ctx.fillStyle = `rgba(255, 140, 50, ${burnFactor * 0.6})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.3, 0, H.PI2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    
+    p.heat = Math.max(0, p.heat - .012);
+  }
+
+  // 7. Atmosphere Halo (Burns Orange/Red with luminous effect)
+  ctx.save();
+  const atmColor = burnFactor > 0.1 
+    ? `rgba(255, 100, 20, ${0.15 + burnFactor * 0.4})` 
+    : `rgba(${pal.gc}, .08)`;
+
+  const atm = ctx.createRadialGradient(body.cx, body.cy, body.radius * .7, body.cx, body.cy, body.radius * 1.8);
+  atm.addColorStop(0, atmColor);
+  atm.addColorStop(1, `rgba(${pal.gc}, 0)`);
+  ctx.fillStyle = atm;
+  ctx.globalAlpha = 1;
+  ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 1.8, 0, H.PI2); ctx.fill();
+  
+  // 🔥 NEW: Extra luminous red halo during intense burn (only red channel glow)
+  if (burnFactor > 0.3) {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = burnFactor * 0.3;
+    ctx.shadowBlur = 25 + burnFactor * 15;
+    ctx.shadowColor = `rgba(255, 80, 20, ${burnFactor * 0.8})`;
+    const glowAtm = ctx.createRadialGradient(body.cx, body.cy, body.radius * 0.5, body.cx, body.cy, body.radius * 2.2);
+    glowAtm.addColorStop(0, `rgba(255, 120, 40, ${burnFactor * 0.5})`);
+    glowAtm.addColorStop(1, `rgba(255, 60, 20, 0)`);
+    ctx.fillStyle = glowAtm;
+    ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 2.2, 0, H.PI2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  
+  ctx.restore();
+};
+ 
+/*window.Sim.drawBody = body => {
   const ctx = window.Sim.ctx;
   const H = window.Sim;
 
@@ -838,6 +1042,7 @@ window.Sim.drawBody = body => {
   
   ctx.restore();
 };
+*/
 
 // ... (keep all remaining code from line 705 onwards) ...
 
