@@ -28,10 +28,11 @@ window.Sim.init = () => {
   let lastT = 0;
   const loop = (t) => {
     requestAnimationFrame(loop);
-    const rawDt = Math.min((t - lastT) / 1000, 0.05);
+    const realFps = (t - lastT) / 1000
+    const rawDt = Math.min(realFps, 0.05);
     lastT = t;
     
-  window.Sim.updateFPS(rawDt);
+    window.Sim.updateFPS(realFps);
 
     // UI & Camera updates
     window.Sim.tickCam();

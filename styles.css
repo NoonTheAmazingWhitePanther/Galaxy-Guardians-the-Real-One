@@ -170,16 +170,20 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 }
 
 .fps-counter {
-  background: rgba(0, 0, 0, 0.6);
-  border: 1px solid #88ff88;
-  color: #aaffaa;
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-family: 'Space Mono', monospace;
-  font-size: 14px;
-  font-weight: bold;
-  margin: 0 8px;
-  line-height: 1;
+ /* Keep existing styles, ADD these: */
+ position: fixed;           /* Detach from flow */
+ top: var(--safe);          /* Align with top bars */
+ left: 50%;                 /* Center horizontally */
+ transform: translateX(-50%) translateY(-3px); /* Center + lift up */
+ z-index: 60;               /* Above bars */
+ 
+ /* POP EFFECT */
+ font-size: 20px;           /* Larger than bar text (11px) */
+ text-shadow: 
+   0 0 8px rgba(130,210,255,0.7),
+   0 0 16px rgba(130,210,255,0.4); /* Glow */
+ margin-top: 0;             /* Override original margin */
+ padding: 4px 14px;         /* Slightly larger padding */
 }
 
 
