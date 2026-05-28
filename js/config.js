@@ -3,6 +3,7 @@
 window.Sim = window.Sim || {};
 const Sim = window.Sim;
 
+
 Sim.config = {
   GRAV_CONST: 120,
   SPRING_K: 0.40,
@@ -63,3 +64,4 @@ Sim.RING_MIN_RADIUS = 40;
 Sim.RING_PARTICLES = 80;
 Sim.AST_SPAWN_INTERVAL = 600;
 Sim.AST_MAX = 6;
+

@@ -285,3 +285,40 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
   white-space: nowrap !important;
   overflow: hidden !important;
 }
+
+/* ========================================
+   DEBUG BUTTON – Mirrors Pan Pad (top-left)
+   ======================================== */
+#debug-toggle-btn {
+  position: fixed;
+  top: calc(var(--safe) + 44px);
+  left: var(--safe);
+  z-index: 55;
+  width: 44px;
+  height: 44px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--ui-font);
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--ui-accent);
+  cursor: pointer;
+  transition: transform 0.1s, background 0.1s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 0;
+  line-height: 1;
+}
+
+#debug-toggle-btn:hover {
+  background: rgba(30, 30, 50, 0.85);
+}
+
+#debug-toggle-btn:active {
+  transform: scale(0.92);
+}

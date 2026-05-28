@@ -10,7 +10,7 @@ window.Sim.init = () => {
   window.Sim.initTrailBuffers();
   window.Sim.updateSpeedBar();
   window.Sim.updateZoomBar();
-
+  //window.Sim.renderer = window.Sim.getRenderer()
   // ── Initial Canvas Clear ─────────────────────────
   window.Sim.ctx.fillStyle = '#04040c';
   window.Sim.ctx.fillRect(0, 0, window.Sim.W, window.Sim.H);
@@ -98,6 +98,8 @@ window.Sim.init = () => {
 
   requestAnimationFrame(loop);
 };
+
+
 
 // ── Bootstrap ──────────────────────────────────────
 if (document.readyState === 'loading') {
