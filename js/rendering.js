@@ -774,22 +774,286 @@ window.Sim.drawFPS = () => {
 const TRAIL_STEPS = 1;
 window.Sim.trailBufs = [], window.Sim.trailHead = 0;
 window.Sim.initTrailBuffers = () => {
-  window.Sim.trailBufs = Array.from({ length: TRAIL_STEPS }, () => {
-    const c = document.createElement("canvas");
-    c.width = window.Sim.W; c.height = window.Sim.H;
-    return { canvas: c, ctx: c.getContext("2d"), camX: 0, camY: 0, camZoom: 1, used: false };
-  });
-};
+  if (TRAIL_STEPS > 0) {
+    window.Sim.trailBufs = Array.from({ length: TRAIL_STEPS }, () => {
+      const c = document.createElement("canvas");
+      c.width = window.Sim.W; c.height = window.Sim.H;
+      return { canvas: c, ctx: c.getContext("2d"),   camX: 0, camY: 0, camZoom: 1, used:       false };
+      } )
+  }
+  };
 window.Sim.resizeTrailBuffers = () => {
   for (const b of window.Sim.trailBufs) {
     b.canvas.width = window.Sim.W; b.canvas.height = window.Sim.H;
     b.used = false;
   }
 };
+
+window.Sim.renderPlanetsToBufferFastPath = () => {
+  const buf = window.Sim.trailBufs[window.Sim.trailHead];
+  const ox = buf.ctx;
+  const W = window.Sim.W;
+  const H = window.Sim.H;
+  const cam = window.Sim.cam;
+  const cfg = window.Sim.config;
+  const PI2 = Math.PI * 2;
+
+  // 1. CLEAR & CAMERA TRANSFORM
+  ox.clearRect(0, 0, W, H);
+  ox.save();
+  ox.translate(W / 2, H / 2);
+  ox.scale(cam.zoom, cam.zoom);
+  ox.translate(-cam.x, -cam.y);
+
+  // LOD THRESHOLD: Below ~3px radius, fillRect is 4-6x faster than arc
+  const useFastRect = (cfg.PARTICLE_R * cam.zoom) < 3;
+  const coreScale = 1.3;
+
+  for (const b of window.Sim.state.bodies) {
+    const { particles: ps, pal } = b;
+
+    // [PARTICLE COUNT] Filter alive once (typical: 50-300 per body)
+    const alive = [];
+    for (let i = 0; i < ps.length; i++) {
+      if (!ps[i].dead) alive.push(ps[i]);
+    }
+    if (alive.length < 3) continue;
+
+    // [DRAW SEQUENCE 1] CONVEX HULL (Planet Body)
+    const hull = window.Sim.convexHull(alive);
+    if (hull.length < 3) continue;
+
+    ox.beginPath(); ox.moveTo(hull[0].x, hull[0].y);
+    for (let i = 1; i < hull.length; i++) ox.lineTo(hull[i].x, hull[i].y);
+    ox.closePath();
+
+    const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius);
+    gr.addColorStop(0, pal.hi+'ff'); gr.addColorStop(0.35, pal.mid+'ee');
+    gr.addColorStop(0.75, pal.lo+'cc'); gr.addColorStop(1, pal.lo+'44');
+    ox.fillStyle = gr; ox.fill();
+
+    ox.strokeStyle = `rgba(${pal.gc},.4)`; ox.lineWidth = 1.5 / cam.zoom; ox.stroke();
+
+    // [DRAW SEQUENCE 2] STRETCHED SPRINGS (Batched line path)
+    ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / cam.zoom;
+    ox.beginPath();
+    let hasSprings = false;
+    for (const sp of b.springs) {      if (sp.broken) continue;
+      const pa = ps[sp.a], pb = ps[sp.b];
+      if (pa.dead || pb.dead) continue;
+      if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) continue;
+      ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y);
+      hasSprings = true;
+    }
+    if (hasSprings) ox.stroke();
+    ox.globalAlpha = 1;
+
+    // [DRAW SEQUENCE 3 & 4] PARTICLES (FPS TWEAK: BATCHED)
+    // COOL particles: 1 draw call total (batched path)
+    // HOT particles: 1 draw call per particle (unique color prevents batching)
+    // RECT MODE: Replaces arc with fillRect when zoomed out (fastest rasterization)
+    const baseR = cfg.PARTICLE_R;
+
+    if (useFastRect) {
+      // === FAST RECT MODE (Zoomed Out) ===
+      // Cool: Direct rects, no path overhead
+      ox.fillStyle = `rgba(${pal.gc},.75)`;
+      for (const p of alive) {
+        if (p.heat > 0.05) continue;
+        const r = p.isCore ? baseR * coreScale : baseR;
+        const d = r * 2;
+        ox.fillRect(p.x - r, p.y - r, d, d);
+      }
+      // Hot: Individual rects (color varies)
+      for (const p of alive) {
+        if (p.heat <= 0.05) continue;
+        const r = p.isCore ? baseR * coreScale : baseR;
+        const g = Math.floor(60 + 160 * p.heat);
+        ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
+        const d = r * 2;
+        ox.fillRect(p.x - r, p.y - r, d, d);
+      }
+    } else {
+      // === HIGH QUALITY ARC MODE (Zoomed In) ===
+      // Cool: SINGLE batched path → 1 fill call
+      ox.fillStyle = `rgba(${pal.gc},.75)`;
+      ox.beginPath();
+      for (const p of alive) {
+        if (p.heat > 0.05) continue;
+        const r = p.isCore ? baseR * coreScale : baseR;
+        ox.moveTo(p.x + r, p.y); // Prevents connecting lines between arcs
+        ox.arc(p.x, p.y, r, 0, PI2);
+      }
+      ox.fill();
+
+      // Hot: Individual arcs (color changes require new path)
+      for (const p of alive) {        if (p.heat <= 0.05) continue;
+        const r = p.isCore ? baseR * coreScale : baseR;
+        const g = Math.floor(60 + 160 * p.heat);
+        ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
+        ox.beginPath(); ox.arc(p.x, p.y, r, 0, PI2); ox.fill();
+      }
+    }
+
+    // [DRAW SEQUENCE 5] ATMOSPHERE GLOW
+    const atm = ox.createRadialGradient(b.cx, b.cy, b.radius*0.7, b.cx, b.cy, b.radius*1.8);
+    atm.addColorStop(0, `rgba(${pal.gc},.07)`); atm.addColorStop(1, `rgba(${pal.gc},0)`);
+    ox.fillStyle = atm; ox.beginPath(); ox.arc(b.cx, b.cy, b.radius*1.8, 0, PI2); ox.fill();
+  }
+
+  ox.restore();
+  buf.camX = cam.x; buf.camY = cam.y; buf.camZoom = cam.zoom;
+  buf.used = true;
+};
+
+window.Sim.renderPlanetsToBufferFast = () => {
+  const buf = window.Sim.trailBufs[window.Sim.trailHead];
+  const ox = buf.ctx;
+  const W = window.Sim.W;
+  const H = window.Sim.H;
+  const cam = window.Sim.cam;
+  const cfg = window.Sim.config;
+  const PI2 = Math.PI * 2; // Cache PI2 locally to avoid global lookups
+
+  // Clear and apply camera transform
+  ox.clearRect(0, 0, W, H);
+  ox.save();
+  ox.translate(W / 2, H / 2);
+  ox.scale(cam.zoom, cam.zoom);
+  ox.translate(-cam.x, -cam.y);
+
+  // LOD threshold: if each particle is < 3 screen pixels, use fillRect instead of arc
+  // fillRect is ~4-6x faster than arc for tiny primitives
+  const useFastRect = (cfg.PARTICLE_R * cam.zoom) < 3;
+  const coreMult = 1.3;
+
+  for (const b of window.Sim.state.bodies) {
+    const { particles: ps, pal } = b;
+
+    // --- Filter alive particles once (avoid repeated dead checks) ---
+    const alive = [];
+    for (let i = 0; i < ps.length; i++) {
+      if (!ps[i].dead) alive.push(ps[i]);
+    }
+    if (alive.length < 3) continue;
+
+    // --- 1. Convex Hull Body Fill + Stroke ---
+    const hull = window.Sim.convexHull(alive);
+    if (hull.length < 3) continue;
+
+    ox.beginPath();
+    ox.moveTo(hull[0].x, hull[0].y);
+    for (let i = 1; i < hull.length; i++) ox.lineTo(hull[i].x, hull[i].y);
+    ox.closePath();
+
+    const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius);
+    gr.addColorStop(0, pal.hi + 'ff');
+    gr.addColorStop(0.35, pal.mid + 'ee');
+    gr.addColorStop(0.75, pal.lo + 'cc');
+    gr.addColorStop(1, pal.lo + '44');
+    ox.fillStyle = gr;
+    ox.fill();
+
+    // Hull outline
+    ox.strokeStyle = `rgba(${pal.gc},.4)`;    ox.lineWidth = 1.5 / cam.zoom;
+    ox.stroke();
+
+    // --- 2. Stretched Springs (batched into ONE path) ---
+    ox.globalAlpha = 0.07;
+    ox.strokeStyle = `rgba(${pal.gc},.9)`;
+    ox.lineWidth = 0.8 / cam.zoom;
+    ox.beginPath();
+    let hasSprings = false;
+    for (const sp of b.springs) {
+      if (sp.broken) continue;
+      const pa = ps[sp.a], pb = ps[sp.b];
+      if (pa.dead || pb.dead) continue;
+      // Only draw springs stretched beyond 10% of rest length
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      if (Math.hypot(dx, dy) / sp.restLen < 1.1) continue;
+      ox.moveTo(pa.x, pa.y);
+      ox.lineTo(pb.x, pb.y);
+      hasSprings = true;
+    }
+    if (hasSprings) ox.stroke();
+    ox.globalAlpha = 1;
+
+    // --- 3. Particles: BATCHED by temperature group ---
+    // KEY FPS TWEAK: One beginPath/fill per group instead of per-particle
+    const baseR = cfg.PARTICLE_R;
+
+    if (useFastRect) {
+      // === FAST RECT MODE (zoomed out) ===
+      // Cool particles batch
+      ox.fillStyle = `rgba(${pal.gc},.75)`;
+      ox.beginPath();
+      for (const p of alive) {
+        if (p.heat > 0.05) continue;
+        const r = p.isCore ? baseR * coreMult : baseR;
+        const d = r * 2;
+        ox.rect(p.x - r, p.y - r, d, d);
+      }
+      ox.fill();
+
+      // Hot particles batch (each needs unique color, but we still batch same-color runs)
+      // For hot particles with varying colors, we accept per-particle fills but skip beginPath overhead
+      for (const p of alive) {
+        if (p.heat <= 0.05) continue;
+        const r = p.isCore ? baseR * coreMult : baseR;
+        const g = Math.floor(60 + (220 - 60) * p.heat); // lerp inline
+        ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
+        const d = r * 2;
+        ox.fillRect(p.x - r, p.y - r, d, d); // fillRect doesn't need beginPath
+      }    } else {
+      // === FULL ARC MODE (zoomed in) ===
+      // Cool particles: SINGLE batched path
+      ox.fillStyle = `rgba(${pal.gc},.75)`;
+      ox.beginPath();
+      for (const p of alive) {
+        if (p.heat > 0.05) continue;
+        const r = p.isCore ? baseR * coreMult : baseR;
+        ox.moveTo(p.x + r, p.y); // Move to edge to avoid connecting arcs with lines
+        ox.arc(p.x, p.y, r, 0, PI2);
+      }
+      ox.fill();
+
+      // Hot particles: varying color prevents full batching, but we eliminate beginPath
+      // Each fill() auto-closes the current subpath; no beginPath needed between them
+      for (const p of alive) {
+        if (p.heat <= 0.05) continue;
+        const r = p.isCore ? baseR * coreMult : baseR;
+        const g = Math.floor(60 + 160 * p.heat);
+        ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
+        ox.beginPath(); // Required here because color changes per particle
+        ox.arc(p.x, p.y, r, 0, PI2);
+        ox.fill();
+      }
+    }
+
+    // --- 4. Atmosphere Glow ---
+    const atm = ox.createRadialGradient(b.cx, b.cy, b.radius * 0.7, b.cx, b.cy, b.radius * 1.8);
+    atm.addColorStop(0, `rgba(${pal.gc},.07)`);
+    atm.addColorStop(1, `rgba(${pal.gc},0)`);
+    ox.fillStyle = atm;
+    ox.beginPath();
+    ox.arc(b.cx, b.cy, b.radius * 1.8, 0, PI2);
+    ox.fill();
+  }
+
+  ox.restore();
+
+  // Store camera state for trail interpolation / dirty checking
+  buf.camX = cam.x;
+  buf.camY = cam.y;
+  buf.camZoom = cam.zoom;
+  buf.used = true;
+};
+
 window.Sim.renderPlanetsToBuffer = () => {
   const buf = window.Sim.trailBufs[window.Sim.trailHead];
   const ox = buf.ctx;
-  //ox.clearRect(0, 0, window.Sim.W, window.Sim.H);
+  
+  ox.clearRect(0, 0, window.Sim.W, window.Sim.H);
   ox.save();
   ox.translate(window.Sim.W/2, window.Sim.H/2);
   ox.scale(window.Sim.cam.zoom, window.Sim.cam.zoom);

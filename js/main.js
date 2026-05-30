@@ -74,7 +74,7 @@ window.Sim.init = () => {
     window.Sim.ctx.restore(); // End camera transform
 
     // Trail system (buffer → composite → advance)
-    window.Sim.renderPlanetsToBuffer();
+    window.Sim.renderPlanetsToBufferFastPath();
     window.Sim.drawTrail();
     window.Sim.drawFPS();
     window.Sim.trailHead = (window.Sim.trailHead + 1) % window.Sim.trailBufs.length;
