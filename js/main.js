@@ -81,14 +81,15 @@ window.Sim.init = () => {
 
     // Screen-space overlays
     window.Sim.drawCharge();
+    /*
     window.Sim.ctx.fillStyle = 'rgba(180,210,255,.15)';
     window.Sim.ctx.font = '8px "Space Mono",monospace';
     window.Sim.ctx.letterSpacing = '.18em';
     window.Sim.ctx.fillText(
       `${(window.Sim.cam.zoom * 100).toFixed(0)}% SCROLL·ZOOM RIGHT-DRAG·PAN F·FIT SPACE·PAUSE`,
-      16, window.Sim.H - 16
+      16, window.Sim.H - 16 
     );
-
+*/
     // Update cursor & planet counter
     window.Sim.cursorEl.style.left = window.Sim.tx + 'px';
     window.Sim.cursorEl.style.top = window.Sim.ty + 'px';

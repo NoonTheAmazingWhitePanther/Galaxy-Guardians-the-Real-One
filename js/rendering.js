@@ -789,7 +789,7 @@ window.Sim.resizeTrailBuffers = () => {
 window.Sim.renderPlanetsToBuffer = () => {
   const buf = window.Sim.trailBufs[window.Sim.trailHead];
   const ox = buf.ctx;
-  ox.clearRect(0, 0, window.Sim.W, window.Sim.H);
+  //ox.clearRect(0, 0, window.Sim.W, window.Sim.H);
   ox.save();
   ox.translate(window.Sim.W/2, window.Sim.H/2);
   ox.scale(window.Sim.cam.zoom, window.Sim.cam.zoom);
