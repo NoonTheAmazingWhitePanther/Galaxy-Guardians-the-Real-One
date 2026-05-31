@@ -1,7 +1,3 @@
-// que_ops.js v2 - Staggered Time-Sliced Operation Queue
-// Adds: Custom delay offsets, frame-internal staggering, time-sliced execution
-// Prevents: CPU/GPU spikes, GC bursts, canvas pipeline stalls
-
 "use strict";
 
 window.QueOps = (function() {
@@ -17,9 +13,9 @@ window.QueOps = (function() {
     stableFramesToAdjust: 120,
     autoBatch: true,
     strictBudget: true,
-    enableStagger: true,           // NEW: Enable delay-based staggering
-    maxFrameTimeMs: 14,            // NEW: Hard cap per rAF (leave ~2.6ms for browser)
-    staggerPrecisionMs: 0.5        // NEW: Minimum delay step for staggering
+    enableStagger: true,
+    maxFrameTimeMs: 14,
+    staggerPrecisionMs: 0.5
   };
 
   // ────────────────────────────────────────────────────────────────────
@@ -47,7 +43,8 @@ window.QueOps = (function() {
       fps: 60,
       frameCount: 0,
       opsProcessed: 0,
-      opsDeferred: 0,      opsSkipped: 0,
+      opsDeferred: 0,
+      opsSkipped: 0,
       opsStaggered: 0,
       budgetUsed: 0,
       subjectBreakdown: {},
@@ -128,7 +125,7 @@ window.QueOps = (function() {
     const frameStart = performance.now();
     const currentFrame = state.stats.frameCount++;
     
-    // Sort: Priority → Stagger Delay → Cycle Frequency
+    // Sort
     state.queue.sort((a, b) => {
       if (a.priority !== b.priority) return a.priority - b.priority;
       if (a.delayMs !== b.delayMs) return a.delayMs - b.delayMs;
@@ -137,20 +134,21 @@ window.QueOps = (function() {
 
     const deferred = [];
     let remainingBudget = budget;
-    let elapsedTime = 0;
 
-    for (const op of state.queue) {
-      // Time & budget guard
-      elapsedTime = performance.now() - frameStart;
+    // ── Extracted loop body for each op ──
+    const processOp = (op) => {
+      const elapsedTime = performance.now() - frameStart;
+      // Time / budget guard
       if (elapsedTime >= maxTime || remainingBudget <= 0) {
         deferred.push(op);
         state.stats.opsDeferred++;
-        continue;      }
+        return;
+      }
 
       // Cycle check
       if (currentFrame % op.cycleEvery !== 0) {
         deferred.push(op);
-        continue;
+        return;
       }
 
       // Stagger delay check
@@ -158,21 +156,23 @@ window.QueOps = (function() {
         if (elapsedTime < op.delayMs) {
           deferred.push(op);
           state.stats.opsStaggered++;
-          continue;
+          return;
         }
       }
 
       // Per-subject cap
       const subjectCfg = SUBJECTS[op.subject];
       const subjectMax = subjectCfg ? subjectCfg.maxPerFrame : 20;
-      if (!state.stats.subjectBreakdown[op.subject]) state.stats.subjectBreakdown[op.subject] = { processed: 0, cost: 0, skipped: 0, staggered: 0 };
+      if (!state.stats.subjectBreakdown[op.subject]) {
+        state.stats.subjectBreakdown[op.subject] = { processed: 0, cost: 0, skipped: 0, staggered: 0 };
+      }
       const subjStats = state.stats.subjectBreakdown[op.subject];
       
       if (subjStats.processed >= subjectMax) {
         subjStats.skipped++;
         state.stats.opsSkipped++;
         deferred.push(op);
-        continue;
+        return;
       }
 
       // Execute
@@ -188,14 +188,20 @@ window.QueOps = (function() {
         
         op.lastRunFrame = currentFrame;
         subjStats.processed++;
-        subjStats.cost += opCost + (execTime * 0.1); // Weight execution time into cost
+        subjStats.cost += opCost + (execTime * 0.1);
         state.stats.opsProcessed++;
         state.stats.budgetUsed += opCost;
         remainingBudget -= opCost;
       } catch (err) {
         console.error(`[QueOps] Op failed [${op.id}]:`, err);
-        subjStats.skipped++;        state.stats.opsSkipped++;
+        subjStats.skipped++;
+        state.stats.opsSkipped++;
       }
+    };
+
+    // 🔁 The loop now only calls processOp per op
+    for (const op of state.queue) {
+      processOp(op);
     }
 
     // Rebuild queue
@@ -239,11 +245,15 @@ window.QueOps = (function() {
   }
 
   function getDebugInfo() {
+    // Extracted map callback for subject entries
+    const mapSubjectEntry = ([k, v]) => [k, { maxPerFrame: v.maxPerFrame, delayMs: v.delayMs }];
+
     return {
       fps: state.stats.fps,
       coolingState: COOLING_STATES[state.config.coolingStateIndex],
       maxOpsPerFrame: state.config.maxOpsPerFrame,
-      maxFrameTimeMs: state.config.maxFrameTimeMs,      enableStagger: state.config.enableStagger,
+      maxFrameTimeMs: state.config.maxFrameTimeMs,
+      enableStagger: state.config.enableStagger,
       queueSize: state.queue.length,
       budgetUsed: state.stats.budgetUsed,
       opsProcessed: state.stats.opsProcessed,
@@ -252,12 +262,14 @@ window.QueOps = (function() {
       opsStaggered: state.stats.opsStaggered,
       subjectBreakdown: { ...state.stats.subjectBreakdown },
       config: { ...state.config },
-      subjects: Object.fromEntries(Object.entries(SUBJECTS).map(([k,v]) => [k, { maxPerFrame: v.maxPerFrame, delayMs: v.delayMs }]))
+      subjects: Object.fromEntries(Object.entries(SUBJECTS).map(mapSubjectEntry))
     };
   }
 
   function flush(priorityLevelToKeep = 0) {
-    state.queue = state.queue.filter(op => op.priority <= priorityLevelToKeep);
+    // Extracted filter predicate
+    const shouldKeepOp = (op) => op.priority <= priorityLevelToKeep;
+    state.queue = state.queue.filter(shouldKeepOp);
     console.warn(`[QueOps] Queue flushed. Remaining: ${state.queue.length}`);
   }
 
@@ -292,7 +304,8 @@ window.QueOps = (function() {
         if (coolingStateIndex > 0) newStateIndex = coolingStateIndex - 1;
         state.stats.framesAtThreshold = 0;
       }
-    } else if (fps > highFpsThreshold) {      state.stats.framesAtThreshold++;
+    } else if (fps > highFpsThreshold) {
+      state.stats.framesAtThreshold++;
       if (state.stats.framesAtThreshold >= stableFramesToAdjust) {
         if (coolingStateIndex < COOLING_STATES.length - 1) newStateIndex = coolingStateIndex + 1;
         state.stats.framesAtThreshold = 0;
@@ -332,7 +345,6 @@ window.QueOps = (function() {
     config: state.config
   };
 })();
-
 // ────────────────────────────────────────────────────────────────────
 // USAGE EXAMPLES
 // ────────────────────────────────────────────────────────────────────
