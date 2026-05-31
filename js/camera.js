@@ -63,13 +63,27 @@ window.addEventListener("mouseup", e => {
 
 window.addEventListener("contextmenu", e => e.preventDefault());
 
+// ── Helper: update bounding box from a single body ───
+function updateBoundsFromBody(b, minX, maxX, minY, maxY) {
+  return {
+    minX: Math.min(minX, b.cx - b.radius),
+    maxX: Math.max(maxX, b.cx + b.radius),
+    minY: Math.min(minY, b.cy - b.radius),
+    maxY: Math.max(maxY, b.cy + b.radius)
+  };
+}
+
+// ── Frame all bodies to fit the screen ───────────────
 window.Sim.frameBodies = () => {
   const pad = 300;
   let minX = -window.Sim.SUN.radius * 6, maxX = window.Sim.SUN.radius * 6, minY = -window.Sim.SUN.radius * 6, maxY = window.Sim.SUN.radius * 6;
+  
+  // 🔁 Loop now only calls the helper
   for (const b of window.Sim.state.bodies) {
-    minX = Math.min(minX, b.cx - b.radius); maxX = Math.max(maxX, b.cx + b.radius);
-    minY = Math.min(minY, b.cy - b.radius); maxY = Math.max(maxY, b.cy + b.radius);
+    const bounds = updateBoundsFromBody(b, minX, maxX, minY, maxY);
+    minX = bounds.minX; maxX = bounds.maxX; minY = bounds.minY; maxY = bounds.maxY;
   }
+  
   window.Sim.cam.x = (minX + maxX) / 2; 
   window.Sim.cam.y = (minY + maxY) / 2;
   window.Sim.cam.targetZoom = H.clamp(Math.min(window.Sim.W / (maxX - minX + pad * 2), window.Sim.H / (maxY - minY + pad * 2)), window.Sim.cam.minZoom, window.Sim.cam.maxZoom);

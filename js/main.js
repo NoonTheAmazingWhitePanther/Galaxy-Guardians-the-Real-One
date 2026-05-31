@@ -1,8 +1,13 @@
 "use strict";
 
-
 // ── At the TOP of each file (after "use strict") ─────
 // Cache helpers from window.Sim for performance
+
+// ── Helper: apply a single physics substep ───────────
+function tickPhysicsSubstep(sdPerTick) {
+  window.Sim.tickBodies(sdPerTick);
+  window.Sim.tickLoose(sdPerTick);
+}
 
 window.Sim.init = () => {
   // ── Initialize Core Systems ──────────────────────
@@ -14,7 +19,7 @@ window.Sim.init = () => {
   // ── Initial Canvas Clear ─────────────────────────
   window.Sim.ctx.fillStyle = '#04040c';
   window.Sim.ctx.fillRect(0, 0, window.Sim.W, window.Sim.H);
-
+  
   // ── Window Resize Handler ────────────────────────
   window.addEventListener('resize', () => {
     window.Sim.W = window.Sim.canvas.width = window.innerWidth;
@@ -22,9 +27,9 @@ window.Sim.init = () => {
     window.Sim.initStars();
     window.Sim.resizeTrailBuffers();
   });
-
+  
   // ── Main Animation Loop ───────────────────────
-
+  
   let lastT = 0;
   const loop = (t) => {
     requestAnimationFrame(loop);
@@ -33,36 +38,35 @@ window.Sim.init = () => {
     lastT = t;
     
     window.Sim.updateFPS(realFps);
-
+    
     // UI & Camera updates
     window.Sim.tickCam();
     window.Sim.updatePanPad();
     window.Sim.updateSpeedBar();
     window.Sim.updateZoomBar();
-
+    
     // Background layers
     window.Sim.ctx.fillStyle = 'rgba(4,4,12,.28)';
     window.Sim.ctx.fillRect(0, 0, window.Sim.W, window.Sim.H);
     window.Sim.drawNebula(t);
     window.Sim.drawStars(t);
-
+    
     // World-space rendering & physics
     window.Sim.ctx.save();
     window.Sim.applyCam();
-
+    
     if (!window.Sim.paused && window.Sim.physSpeed > 0 && rawDt > 0) {
       const MAX_SAFE_SD = rawDt * 3.0 * window.Sim.config.PHYS_SCALE;
       const totalSd = rawDt * window.Sim.physSpeed * window.Sim.config.PHYS_SCALE;
       const numTicks = Math.ceil(totalSd / MAX_SAFE_SD);
       const sdPerTick = totalSd / numTicks;
-
+      
+      // 🔁 Loop now only calls the extracted function
       for (let tick = 0; tick < numTicks; tick++) {
-        window.Sim.tickBodies(sdPerTick);
-        window.Sim.tickLoose(sdPerTick);
+        tickPhysicsSubstep(sdPerTick);
       }
       window.Sim.tickAsteroids(rawDt * window.Sim.physSpeed * window.Sim.config.PHYS_SCALE);
     }
-
     
     window.Sim.drawFlashes();
     window.Sim.drawSun(t);
@@ -72,13 +76,13 @@ window.Sim.init = () => {
     window.Sim.drawAsteroids();
     window.Sim.drawOrbitPreview(t);
     window.Sim.ctx.restore(); // End camera transform
-
+    
     // Trail system (buffer → composite → advance)
     window.Sim.renderPlanetsToBufferFastPath();
     window.Sim.drawTrail();
     window.Sim.drawFPS();
     window.Sim.trailHead = (window.Sim.trailHead + 1) % window.Sim.trailBufs.length;
-
+    
     // Screen-space overlays
     window.Sim.drawCharge();
     /*
@@ -94,17 +98,14 @@ window.Sim.init = () => {
     window.Sim.cursorEl.style.left = window.Sim.tx + 'px';
     window.Sim.cursorEl.style.top = window.Sim.ty + 'px';
     window.Sim.updateCount();
-
   }
-
+  
   requestAnimationFrame(loop);
 };
-
-
 
 // ── Bootstrap ──────────────────────────────────────
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', window.Sim.init);
 } else {
   window.Sim.init();
-  }
+}
