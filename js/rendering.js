@@ -3,21 +3,12 @@
 // ============================================================================
 // RENDERING.JS – FULLY OPTIMISED (ALL ORIGINAL FUNCTIONS PRESERVED)
 // ============================================================================
-// Changes:
-// - Removed all ctx.save/restore inside loops (stars, tentacles, particles)
-// - Burnt particles keep ash colour permanently (uses p.isBurnt flag)
-// - Batched particle drawing (less state changes)
-// - At most 1–2 save/restore per drawing function
-// ============================================================================
 
-// ── Import helpers from utils.js ─────────────────────
-// (Assume window.H is already defined)
-
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 // 1. STARS – INIT & DRAW (optimised)
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 window.Sim.initStars = () => {
-  window.Sim.state.stars = Array.from({ length: 90 }, () => ({
+  const createStar = () => ({
     x: H.rnd() * window.Sim.W,
     y: H.rnd() * window.Sim.H,
     r: H.rnd() * 1.2 + 0.2,
@@ -25,27 +16,30 @@ window.Sim.initStars = () => {
     ts: H.rnd() * 0.012 + 0.003,
     to: H.rnd() * H.PI2,
     hue: 200 + H.rnd() * 60
-  }));
+  });
+  window.Sim.state.stars = Array.from({ length: 90 }, createStar);
 };
 
 window.Sim.drawStars = t => {
   const ctx = window.Sim.ctx;
-  // Set shadow once, reuse for all stars
   ctx.shadowBlur = 3;
-  for (const s of window.Sim.state.stars) {
+
+  const drawOneStar = (s) => {
     const a = s.bri * (0.55 + 0.45 * Math.sin(t * s.ts + s.to));
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, H.PI2);
     ctx.fillStyle = `hsla(${s.hue},75%,95%,${a})`;
     ctx.shadowColor = `hsla(${s.hue},100%,95%,.3)`;
     ctx.fill();
-  }
-  ctx.shadowBlur = 0; // reset after stars
+  };
+
+  for (const s of window.Sim.state.stars) drawOneStar(s);
+  ctx.shadowBlur = 0;
 };
 
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 // 2. FLASHES (EXPLOSIONS) – unchanged logic, no save/restore needed
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 window.Sim.addFlash = (x, y, r, gc) => {
   window.Sim.state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc, life: 0.55, speed: 0.14, kind: "ring" });
   window.Sim.state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc, life: 0.45, speed: 0.12, kind: "fill" });
@@ -62,53 +56,56 @@ window.Sim.addNova = (x, y, r, gc) => {
 
 window.Sim.drawFlashes = () => {
   const ctx = window.Sim.ctx;
-  for (let i = window.Sim.state.flashes.length - 1; i >= 0; i--) {
+
+  const processFlash = (i) => {
     const f = window.Sim.state.flashes[i];
-    if (f.life <= 0) { window.Sim.state.flashes.splice(i,1); continue; }
-    const r = Math.max(0.1, f.r), a = H.clamp(f.life,0,1);
+    if (f.life <= 0) { window.Sim.state.flashes.splice(i, 1); return; }
+    const r = Math.max(0.1, f.r), a = H.clamp(f.life, 0, 1);
     if (f.kind === "white") {
       const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
-      gr.addColorStop(0, `rgba(255,255,255,${a*0.30})`);
-      gr.addColorStop(0.5, `rgba(255,250,240,${a*0.16})`);
-      gr.addColorStop(0.85, `rgba(255,240,200,${a*0.06})`);
+      gr.addColorStop(0, `rgba(255,255,255,${a * 0.30})`);
+      gr.addColorStop(0.5, `rgba(255,250,240,${a * 0.16})`);
+      gr.addColorStop(0.85, `rgba(255,240,200,${a * 0.06})`);
       gr.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, H.PI2); ctx.fill();
       ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, H.PI2);
-      ctx.strokeStyle = `rgba(255,255,255,${a*0.22})`;
+      ctx.strokeStyle = `rgba(255,255,255,${a * 0.22})`;
       ctx.lineWidth = Math.max(0.3, r * 0.04 / window.Sim.cam.zoom);
       ctx.stroke();
     } else if (f.kind === "ring") {
       ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, H.PI2);
-      ctx.strokeStyle = `rgba(${f.gc},${a*0.22})`;
+      ctx.strokeStyle = `rgba(${f.gc},${a * 0.22})`;
       ctx.lineWidth = Math.max(0.3, (f.maxR * 0.025) / window.Sim.cam.zoom) * a;
       ctx.stroke();
-      const gr = ctx.createRadialGradient(f.x, f.y, Math.max(0, r*0.75), f.x, f.y, r*1.35);
-      gr.addColorStop(0, `rgba(${f.gc},${a*0.08})`);
+      const gr = ctx.createRadialGradient(f.x, f.y, Math.max(0, r * 0.75), f.x, f.y, r * 1.35);
+      gr.addColorStop(0, `rgba(${f.gc},${a * 0.08})`);
       gr.addColorStop(1, `rgba(${f.gc},0)`);
-      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r*1.35, 0, H.PI2); ctx.fill();
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r * 1.35, 0, H.PI2); ctx.fill();
     } else if (f.kind === "fill") {
       const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
-      gr.addColorStop(0, `rgba(255,240,200,${a*0.13})`);
-      gr.addColorStop(0.4, `rgba(${f.gc},${a*0.09})`);
-      gr.addColorStop(0.8, `rgba(${f.gc},${a*0.03})`);
+      gr.addColorStop(0, `rgba(255,240,200,${a * 0.13})`);
+      gr.addColorStop(0.4, `rgba(${f.gc},${a * 0.09})`);
+      gr.addColorStop(0.8, `rgba(${f.gc},${a * 0.03})`);
       gr.addColorStop(1, `rgba(${f.gc},0)`);
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, H.PI2); ctx.fill();
     } else {
       const gr = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
-      gr.addColorStop(0, `rgba(255,255,255,${a*0.40})`);
-      gr.addColorStop(0.35, `rgba(255,230,150,${a*0.20})`);
-      gr.addColorStop(0.7, `rgba(${f.gc},${a*0.08})`);
+      gr.addColorStop(0, `rgba(255,255,255,${a * 0.40})`);
+      gr.addColorStop(0.35, `rgba(255,230,150,${a * 0.20})`);
+      gr.addColorStop(0.7, `rgba(${f.gc},${a * 0.08})`);
       gr.addColorStop(1, `rgba(${f.gc},0)`);
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, H.PI2); ctx.fill();
     }
     f.r += (f.maxR - f.r) * f.speed;
     f.life -= 0.042;
-  }
+  };
+
+  for (let i = window.Sim.state.flashes.length - 1; i >= 0; i--) processFlash(i);
 };
 
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 // 3. NEBULA – unchanged
-// ============================================================================
+// ════════════════════════════════════════════════════════════════════════════
 window.Sim.drawNebula = t => {
   const ctx = window.Sim.ctx;
   const blobs = [
@@ -118,7 +115,8 @@ window.Sim.drawNebula = t => {
     [window.Sim.W*0.85, window.Sim.H*0.4, Math.max(window.Sim.W,window.Sim.H)*0.45, 12,3,30,0.025],
     [window.Sim.W*0.1, window.Sim.H*0.75, Math.max(window.Sim.W,window.Sim.H)*0.5, 6,20,12,0.02]
   ];
-  for (const [bx,by,br,r,g,b,a] of blobs) {
+
+  const drawBlob = ([bx, by, br, r, g, b, a]) => {
     const px = bx + Math.sin(t*0.00007)*30;
     const py = by + Math.cos(t*0.00009)*20;
     const grd = ctx.createRadialGradient(px,py,0,px,py,br);
@@ -126,8 +124,12 @@ window.Sim.drawNebula = t => {
     grd.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = grd;
     ctx.fillRect(0,0,window.Sim.W,window.Sim.H);
-  }
+  };
+
+  for (const blob of blobs) drawBlob(blob);
 };
+
+// CONTINUE: Sun drawing (halos, flares, granulation, sunspots, god rays)
 
 // ============================================================================
 // 4. SUN – OPTIMISED (only 2 save/restore: one for clip, one for god rays)
@@ -155,18 +157,21 @@ window.Sim.drawSun = t => {
   const sunCol = window.Sim.getSolarColors(t);
   const sunBase = `rgba(${sunCol.r},${sunCol.g},${sunCol.b}`;
 
-  // Halos (no save/restore)
-  for (const [r, a, sp] of [[radius*5.5,0.015,0.0011],[radius*3.8,0.03,0.0017],[radius*2.5,0.055,0.002],[radius*1.7,0.09,0.0025]]) {
+  // ── Halos ──────────────────────────────────────────────────────────
+  const drawHalo = ([r, a, sp]) => {
     const pulse = 1 + 0.05 * Math.sin(ct * sp * 1000);
     const gr = ctx.createRadialGradient(x, y, radius*0.6, x, y, r*pulse);
     gr.addColorStop(0, `${sunBase},${a})`);
     gr.addColorStop(0.5, `${sunBase},${a*0.4})`);
     gr.addColorStop(1, `rgba(${sunCol.r},${Math.max(0,sunCol.g-80)},0,0)`);
     ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, r*pulse, 0, H.PI2); ctx.fill();
+  };
+  for (const halo of [[radius*5.5,0.015,0.0011],[radius*3.8,0.03,0.0017],[radius*2.5,0.055,0.002],[radius*1.7,0.09,0.0025]]) {
+    drawHalo(halo);
   }
 
-  // Flares (no save/restore)
-  for (let i = 0; i < 12; i++) {
+  // ── Flares ─────────────────────────────────────────────────────────
+  const drawFlare = (i) => {
     const angle = (H.PI2/12)*i + Math.sin(ct*0.7+i)*0.12;
     const flicker = Math.sin(ct*1.3+i*2.1)*0.5+0.5;
     const len = radius * (0.35 + flicker*0.5);
@@ -184,7 +189,8 @@ window.Sim.drawSun = t => {
     ctx.quadraticCurveTo(tipX+Math.cos(angle)*radius*0.08, tipY+Math.sin(angle)*radius*0.08, rx, ry);
     ctx.quadraticCurveTo(x+Math.cos(angle)*radius*0.6, y+Math.sin(angle)*radius*0.6, lx, ly);
     ctx.fillStyle = fg; ctx.fill();
-  }
+  };
+  for (let i = 0; i < 12; i++) drawFlare(i);
 
   // Sun sphere with clipping (needs save/restore)
   ctx.save();
@@ -195,8 +201,9 @@ window.Sim.drawSun = t => {
   bg.addColorStop(0.8, `${sunBase},0.85)`);
   bg.addColorStop(1, `rgba(${Math.max(0,sunCol.r-30)},${Math.max(0,sunCol.g-50)},0,0.9)`);
   ctx.fillStyle = bg; ctx.fillRect(x - radius, y - radius, radius*2, radius*2);
-  // Granulation (no extra state)
-  for (let i = 0; i < 28; i++) {
+
+  // ── Granulation ────────────────────────────────────────────────────
+  const drawGranule = (i) => {
     const ga = (H.PI2/28)*i + ct*0.025*(i%2?1:-1);
     const gd = (0.35 + 0.5*(i%7)/7)*radius;
     const gx = x + Math.cos(ga)*gd, gy = y + Math.sin(ga)*gd;
@@ -205,11 +212,12 @@ window.Sim.drawSun = t => {
     granG.addColorStop(0, `${sunBase},${(0.5+0.5*Math.sin(ct*2.1+i*1.3))*0.18})`);
     granG.addColorStop(1, `rgba(${sunCol.r},${Math.max(0,sunCol.g-40)},0,0)`);
     ctx.fillStyle = granG; ctx.beginPath(); ctx.arc(gx, gy, gr2, 0, H.PI2); ctx.fill();
-  }
+  };
+  for (let i = 0; i < 28; i++) drawGranule(i);
   ctx.restore();
 
-  // Sunspots
-  for (const [a, d, r, fl] of [[0.8,0.42,0.09,1.1],[2.3,0.55,0.06,0.9],[4.1,0.35,0.07,1.2],[5.5,0.5,0.05,0.8]]) {
+  // ── Sunspots ───────────────────────────────────────────────────────
+  const drawSunspot = ([a, d, r, fl]) => {
     const sa = a + ct*0.04*(fl-0.9);
     const sx = x + Math.cos(sa)*d*radius, sy = y + Math.sin(sa)*d*radius, sr = r*radius;
     const sg = ctx.createRadialGradient(sx,sy,0,sx,sy,sr);
@@ -217,6 +225,9 @@ window.Sim.drawSun = t => {
     sg.addColorStop(0.7, 'rgba(160,120,40,0.2)');
     sg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, H.PI2); ctx.fill();
+  };
+  for (const spot of [[0.8,0.42,0.09,1.1],[2.3,0.55,0.06,0.9],[4.1,0.35,0.07,1.2],[5.5,0.5,0.05,0.8]]) {
+    drawSunspot(spot);
   }
 
   // Specular highlight
@@ -231,10 +242,10 @@ window.Sim.drawSun = t => {
   rim.addColorStop(1, `rgba(${sunCol.r},${Math.max(0,sunCol.g-60)},0,0)`);
   ctx.fillStyle = rim; ctx.beginPath(); ctx.arc(x, y, radius*1.18, 0, H.PI2); ctx.fill();
 
-  // God rays (save/restore for globalAlpha)
+  // ── God rays ───────────────────────────────────────────────────────
   ctx.save();
   ctx.globalAlpha = 0.025;
-  for (let i = 0; i < 6; i++) {
+  const drawGodRay = (i) => {
     const sa = ct*0.05 + (H.PI2/6)*i;
     const ex = x + Math.cos(sa)*radius*18, ey = y + Math.sin(sa)*radius*18;
     const lx2 = x + Math.cos(sa - Math.PI/2)*radius*0.7, ly2 = y + Math.sin(sa - Math.PI/2)*radius*0.7;
@@ -244,9 +255,12 @@ window.Sim.drawSun = t => {
     sg.addColorStop(1, `rgba(${Math.max(0,sunCol.r-30)},0,0,0)`);
     ctx.beginPath(); ctx.moveTo(lx2, ly2); ctx.lineTo(ex, ey); ctx.lineTo(rx2, ry2); ctx.closePath();
     ctx.fillStyle = sg; ctx.fill();
-  }
+  };
+  for (let i = 0; i < 6; i++) drawGodRay(i);
   ctx.restore();
 };
+
+// CONTINUE: Solar tentacles, solar rays, loose particles (drawLoose)
 
 // ============================================================================
 // 5. SOLAR TENTACLES – OPTIMISED (no save/restore per tentacle)
@@ -269,11 +283,11 @@ window.Sim.drawSolarTentacles = (t) => {
   // Set common line properties once
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-  for (let i = window.Sim.solarTentacles.length-1; i >= 0; i--) {
+  const drawTentacle = (i) => {
     const tent = window.Sim.solarTentacles[i];
     tent.phase += tent.swaySpeed;
     tent.life -= tent.decay;
-    if (tent.life <= 0) { window.Sim.solarTentacles.splice(i,1); continue; }
+    if (tent.life <= 0) { window.Sim.solarTentacles.splice(i,1); return; }
 
     const a = tent.angle;
     const len = tent.length * tent.life;
@@ -295,7 +309,9 @@ window.Sim.drawSolarTentacles = (t) => {
     grad.addColorStop(1, `rgba(${Math.max(0,sunCol.r-60)},0,0,0)`);
     ctx.strokeStyle = grad;
     ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cx, cy, tx, ty); ctx.stroke();
-  }
+  };
+
+  for (let i = window.Sim.solarTentacles.length-1; i >= 0; i--) drawTentacle(i);
   ctx.globalAlpha = 1;
 };
 
@@ -313,7 +329,8 @@ window.Sim.drawSolarRays = t => {
   ctx.lineCap = 'round';
   const numRays = 16;
   const rotation = t * 0.00004;
-  for (let i = 0; i < numRays; i++) {
+
+  const drawRay = (i) => {
     const angle = (H.PI2/numRays)*i + rotation + Math.sin(t*0.0002+i*1.2)*0.25;
     const pulse = 1 + Math.sin(t*0.0005+i*0.9)*0.5;
     const len = radius * (1.5 + pulse*2.0);
@@ -337,7 +354,10 @@ window.Sim.drawSolarRays = t => {
     ctx.lineTo(sx - px*width*0.6, sy - py*width*0.6);
     ctx.closePath();
     ctx.fill();
-  }
+  };
+
+  for (let i = 0; i < numRays; i++) drawRay(i);
+
   // Ambient glow
   ctx.globalCompositeOperation = 'lighter';
   const glowRadius = radius * 6;
@@ -358,7 +378,8 @@ window.Sim.drawLoose = () => {
   const hot = [], warm = [], cool = new Map(), ring = new Map();
   const burnt = [], burntWarm = [];
 
-  for (const p of window.Sim.state.loose) {
+  // ── Bin a single loose particle ────────────────────────────────────
+  const binLooseParticle = (p) => {
     const life = Math.min(p.life,1);
     const r = Math.max(0.01, window.Sim.config.PARTICLE_R * (p.isRing?1.4:1) * life);
     const a = life;
@@ -378,36 +399,43 @@ window.Sim.drawLoose = () => {
       if (!cool.has(key)) cool.set(key, []);
       cool.get(key).push([p.x, p.y, r, a*0.8]);
     }
-  }
+  };
+  for (const p of window.Sim.state.loose) binLooseParticle(p);
 
+  // ── Draw a batch of particles (same style) ─────────────────────────
+  const drawBatchParticle = ([x, y, r, a]) => {
+    ctx.globalAlpha = a;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, H.PI2); ctx.fill();
+  };
   const drawBatch = (style, arr) => {
     if (!arr.length) return;
     ctx.fillStyle = style;
-    for (const [x,y,r,a] of arr) {
-      ctx.globalAlpha = a;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, H.PI2); ctx.fill();
-    }
+    for (const entry of arr) drawBatchParticle(entry);
   };
 
   // Rings with shadow
-  ctx.shadowBlur = 3;
-  for (const [gc, pts] of ring) {
+  const drawRingGroup = ([gc, pts]) => {
     ctx.shadowColor = `rgba(${gc},.6)`;
     drawBatch(`rgba(${gc},1)`, pts);
-  }
+  };
+  ctx.shadowBlur = 3;
+  for (const entry of ring) drawRingGroup(entry);
   ctx.shadowBlur = 0;
   drawBatch("rgba(255,220,80,1)", hot);
   drawBatch("rgba(255,100,30,1)", warm);
-  for (const [gc, pts] of cool) drawBatch(`rgba(${gc},1)`, pts);
+  const drawCoolGroup = ([gc, pts]) => drawBatch(`rgba(${gc},1)`, pts);
+  for (const entry of cool) drawCoolGroup(entry);
 
   // Burnt – charcoal core
-  for (const [x,y,r,a] of burnt) {
+  const drawBurntCharcoal = ([x, y, r, a]) => {
     ctx.globalAlpha = a * 0.85;
     ctx.fillStyle = "rgba(30,15,8,1)";
     ctx.beginPath(); ctx.arc(x, y, r, 0, H.PI2); ctx.fill();
-  }
+  };
+  for (const entry of burnt) drawBurntCharcoal(entry);
+
   // Warm burnt – red glow
-  for (const [x,y,r,a,heat] of burntWarm) {
+  const drawBurntWarm = ([x, y, r, a, heat]) => {
     const intensity = Math.min(heat,1);
     const red = H.lerp(80,180,intensity);
     const green = H.lerp(20,60,intensity);
@@ -422,9 +450,13 @@ window.Sim.drawLoose = () => {
       ctx.beginPath(); ctx.arc(x, y, r*1.2, 0, H.PI2); ctx.fill();
       ctx.shadowBlur = 0;
     }
-  }
+  };
+  for (const entry of burntWarm) drawBurntWarm(entry);
+
   ctx.globalAlpha = 1;
 };
+
+// CONTINUE: drawBody (hull fill, springs, particles, atmosphere halo)
 
 // ============================================================================
 // 8. DRAW BODY – OPTIMISED (no nested save/restore, burnt particles stay ash)
@@ -433,8 +465,10 @@ window.Sim.drawBody = body => {
   const ctx = window.Sim.ctx;
   const { particles: ps, springs: ss, pal } = body;
 
+  // Filter alive
   const alive = [];
-  for (const p of ps) if (!p.dead) alive.push(p);
+  const collectAlive = (p) => { if (!p.dead) alive.push(p); };
+  for (const p of ps) collectAlive(p);
   if (alive.length < 3) return;
   const hull = window.Sim.convexHull(alive);
   if (hull.length < 3) return;
@@ -453,7 +487,8 @@ window.Sim.drawBody = body => {
   // ---- Hull fill ----
   ctx.beginPath();
   ctx.moveTo(hull[0].x, hull[0].y);
-  for (let i=1; i<hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y);
+  const lineToHullPoint = (i) => ctx.lineTo(hull[i].x, hull[i].y);
+  for (let i = 1; i < hull.length; i++) lineToHullPoint(i);
   ctx.closePath();
 
   const gr = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius);
@@ -496,39 +531,48 @@ window.Sim.drawBody = body => {
   ctx.strokeStyle = `rgba(${pal.gc},.9)`;
   ctx.lineWidth = 0.8 / window.Sim.cam.zoom;
   ctx.beginPath();
-  for (const sp of ss) {
-    if (sp.broken) continue;
+  const drawSpringSegment = (sp) => {
+    if (sp.broken) return;
     const pa = ps[sp.a], pb = ps[sp.b];
-    if (pa.dead || pb.dead) continue;
-    if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) continue;
+    if (pa.dead || pb.dead) return;
+    if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) return;
     ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y);
-  }
+  };
+  for (const sp of ss) drawSpringSegment(sp);
   ctx.stroke();
   ctx.globalAlpha = 1;
 
   // ---- Particles (cool normal, cool burnt, hot) ----
   const coolNormal = [], coolBurnt = [], hotParticles = [];
-  for (const p of alive) {
+  const classifyParticle = (p) => {
     if (p.heat > 0.05) hotParticles.push(p);
     else {
       if (p.isBurnt) coolBurnt.push(p);
       else coolNormal.push(p);
     }
-  }
+  };
+  for (const p of alive) classifyParticle(p);
 
-  ctx.fillStyle = `rgba(${pal.gc},.75)`;
-  for (const p of coolNormal) {
+  // Cool normal
+  const drawCoolNormal = (p) => {
     const r = p.isCore ? window.Sim.config.PARTICLE_R*1.3 : window.Sim.config.PARTICLE_R;
+    ctx.fillStyle = `rgba(${pal.gc},.75)`;
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, H.PI2); ctx.fill();
     p.heat = Math.max(0, p.heat - 0.012);
-  }
-  for (const p of coolBurnt) {
+  };
+  for (const p of coolNormal) drawCoolNormal(p);
+
+  // Cool burnt
+  const drawCoolBurnt = (p) => {
     const r = p.isCore ? window.Sim.config.PARTICLE_R*1.3 : window.Sim.config.PARTICLE_R;
     ctx.fillStyle = "rgba(40,20,15,0.85)";
     ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, H.PI2); ctx.fill();
     p.heat = Math.max(0, p.heat - 0.012);
-  }
-  for (const p of hotParticles) {
+  };
+  for (const p of coolBurnt) drawCoolBurnt(p);
+
+  // Hot (with optional glow)
+  const drawHotParticle = (p) => {
     const r = p.isCore ? window.Sim.config.PARTICLE_R*1.3 : window.Sim.config.PARTICLE_R;
     const heatColor = burnFactor > 0.5
       ? `rgba(255,${Math.floor(H.lerp(220,255,p.heat))},150,${p.heat})`
@@ -545,7 +589,8 @@ window.Sim.drawBody = body => {
       ctx.restore();
     }
     p.heat = Math.max(0, p.heat - 0.012);
-  }
+  };
+  for (const p of hotParticles) drawHotParticle(p);
 
   // ---- Atmosphere halo ----
   ctx.save();
@@ -568,6 +613,8 @@ window.Sim.drawBody = body => {
   }
   ctx.restore();
 };
+
+// CONTINUE: Charge indicator, orbit preview, spawn helpers, FPS, trail system
 
 // ============================================================================
 // 9. CHARGE INDICATOR
@@ -606,6 +653,7 @@ window.Sim.getSpawnVelocity = (x, y, nP, grav) => {
   return { vx: -dy/dist * v, vy: dx/dist * v, dist };
 };
 window.Sim.computePreviewDamping = periodSub => Math.pow(0.88, 1 / Math.max(periodSub,1));
+
 window.Sim.predictOrbit = (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recordEvery, grav) => {
   const pts = [];
   let px = spawnX, py = spawnY, vx = vx0, vy = vy0;
@@ -615,10 +663,11 @@ window.Sim.predictOrbit = (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recor
   recordEvery = recordEvery || 1;
   const periodSub = window.Sim.orbitalPeriod(H.hypot(spawnX - window.Sim.SUN.x, spawnY - window.Sim.SUN.y) || 1, nP, g) / dtPerStep;
   const vDamp = window.Sim.computePreviewDamping(periodSub);
-  for (let i = 0; i < steps; i++) {
+
+  const computeStep = (i) => {
     const sdx = window.Sim.SUN.x - px, sdy = window.Sim.SUN.y - py;
     const sd2 = sdx*sdx + sdy*sdy;
-    if (sd2 < burnR2) break;
+    if (sd2 < burnR2) return true; // signal break
     const sd = Math.sqrt(sd2) + 0.1;
     const f = gm / (sd2 + 500);
     vx = (vx + (sdx/sd) * f * dtPerStep) * vDamp;
@@ -626,9 +675,15 @@ window.Sim.predictOrbit = (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recor
     px += vx * dtPerStep;
     py += vy * dtPerStep;
     if (i % recordEvery === 0) pts.push({ x: px, y: py });
+    return false;
+  };
+
+  for (let i = 0; i < steps; i++) {
+    if (computeStep(i)) break;
   }
   return pts;
 };
+
 let _previewCache = null;
 window.Sim.getPreviewPath = (wx, wy) => {
   if (_previewCache && Math.abs(_previewCache.wx - wx) < 2 && Math.abs(_previewCache.wy - wy) < 2 && _previewCache.mult === window.Sim.sunGravMult)
@@ -642,6 +697,7 @@ window.Sim.getPreviewPath = (wx, wy) => {
   _previewCache = { wx, wy, pts, mult: window.Sim.sunGravMult };
   return pts;
 };
+
 window.Sim.drawOrbitPreview = t => {
   if (!window.Sim.holding) return;
   const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1);
@@ -659,20 +715,25 @@ window.Sim.drawOrbitPreview = t => {
   ctx.save();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   const SEG = Math.max(2, Math.floor(total / 60));
-  for (let i = 0; i < total - SEG; i += SEG) {
+
+  const drawSegment = (i) => {
     const f0 = i / total, f1 = (i + SEG) / total, fc = (f0 + f1) / 2;
     const r = Math.floor(H.lerp(160,255,Math.min(fc*1.8,1)));
     const g = Math.floor(H.lerp(220,120,fc)), b = Math.floor(H.lerp(255,20,Math.min(fc*1.5,1)));
     const a = alpha * (1 - fc*0.5) * (f0 < 0.12 ? f0/0.12 : 1);
     const w2 = lw * (1.4 - fc*0.9);
     ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y);
-    for (let j = i+1; j <= i+SEG && j < total; j++) ctx.lineTo(pts[j].x, pts[j].y);
+    const lineToSegmentPoint = (j) => ctx.lineTo(pts[j].x, pts[j].y);
+    for (let j = i + 1; j <= i + SEG && j < total; j++) lineToSegmentPoint(j);
     ctx.strokeStyle = `rgba(${r},${g},${b},${a})`;
     ctx.lineWidth = Math.max(0.3 / window.Sim.cam.zoom, w2);
     ctx.stroke();
-  }
+  };
+
+  for (let i = 0; i < total - SEG; i += SEG) drawSegment(i);
+
   const animFrac = (t * 0.00035) % 1, DOT_COUNT = 7;
-  for (let d = 0; d < DOT_COUNT; d++) {
+  const drawDot = (d) => {
     const f = ((d/DOT_COUNT) + animFrac) % 1, idx = Math.floor(f * (total-1)), pt = pts[idx];
     const r2 = Math.floor(H.lerp(160,255,Math.min(f*1.8,1)));
     const g2 = Math.floor(H.lerp(220,120,f)), b2 = Math.floor(H.lerp(255,20,Math.min(f*1.5,1)));
@@ -680,13 +741,20 @@ window.Sim.drawOrbitPreview = t => {
     const da = alpha * (1 - f*0.4) * 0.95;
     ctx.beginPath(); ctx.arc(pt.x, pt.y, dotR, 0, H.PI2);
     ctx.fillStyle = `rgba(${r2},${g2},${b2},${da})`; ctx.fill();
-  }
-  ctx.restore();
+  };
 
+  for (let d = 0; d < DOT_COUNT; d++) drawDot(d);
+
+  // CONTINUE: Rest of drawOrbitPreview (line, arrow, burn zone circle, text)
+  
+    ctx.restore();
+
+  // Line from sun to spawn point
   ctx.save(); ctx.globalAlpha = alpha * 0.28; ctx.setLineDash([3 / window.Sim.cam.zoom, 4 / window.Sim.cam.zoom]);
   ctx.beginPath(); ctx.moveTo(window.Sim.SUN.x, window.Sim.SUN.y); ctx.lineTo(w.x, w.y);
   ctx.strokeStyle = "rgba(255,200,80,1)"; ctx.lineWidth = 0.6 / window.Sim.cam.zoom; ctx.stroke(); ctx.setLineDash([]); ctx.restore();
 
+  // Velocity arrow
   const tx_ = -dy / dist, ty_ = dx / dist, alen = Math.min(dist * 0.13, 240 / window.Sim.cam.zoom);
   const ax = w.x + tx_ * alen, ay = w.y + ty_ * alen;
   ctx.save(); ctx.globalAlpha = alpha; ctx.strokeStyle = "rgba(160,225,255,1)"; ctx.fillStyle = "rgba(160,225,255,1)"; ctx.lineWidth = lw * 0.85;
@@ -695,9 +763,11 @@ window.Sim.drawOrbitPreview = t => {
   ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax - Math.cos(ha-0.38)*hl, ay - Math.sin(ha-0.38)*hl);
   ctx.lineTo(ax - Math.cos(ha+0.38)*hl, ay - Math.sin(ha+0.38)*hl); ctx.closePath(); ctx.fill(); ctx.restore();
 
+  // Spawn point dot
   ctx.save(); ctx.globalAlpha = alpha; ctx.beginPath(); ctx.arc(w.x, w.y, 3.5 / window.Sim.cam.zoom, 0, H.PI2);
   ctx.fillStyle = "rgba(160,225,255,1)"; ctx.fill(); ctx.restore();
 
+  // Burn zone circle
   ctx.save();
   ctx.beginPath(); ctx.arc(window.Sim.SUN.x, window.Sim.SUN.y, BURN_ZONE_R, 0, H.PI2);
   ctx.strokeStyle = `rgba(255,60,30,${alpha*0.4})`;
@@ -706,6 +776,7 @@ window.Sim.drawOrbitPreview = t => {
   ctx.fillStyle = `rgba(255,40,20,${alpha*0.05})`; ctx.fill();
   ctx.restore();
 
+  // Text info
   const isBurnZone = dist < BURN_ZONE_R;
   const m = ctx.getTransform();
   ctx.setTransform(1,0,0,1,0,0);
@@ -736,14 +807,19 @@ window.Sim.spawnPlanet = (x, y, size) => {
   const nP = body.particles.length;
   body.gravMult = window.Sim.sunGravMult;
   const { vx, vy } = window.Sim.getSpawnVelocity(x, y, nP, window.Sim.sunGravMult);
-  for (const p of body.particles) { p.vx = vx; p.vy = vy; }
+
+  const setParticleVelocity = (p) => { p.vx = vx; p.vy = vy; };
+  for (const p of body.particles) setParticleVelocity(p);
+
   window.Sim.state.bodies.push(body);
   window.Sim.addFlash(x, y, radius * 2, pal.gc);
   window.Sim.updateCount();
 };
+
 window.Sim.updateCount = () => {
   let n = 0;
-  for (const b of window.Sim.state.bodies) if (!b.dead) n++;
+  const countAliveBody = (b) => { if (!b.dead) n++; };
+  for (const b of window.Sim.state.bodies) countAliveBody(b);
   window.Sim.pcountEl.textContent = n === 0 ? "—" : `${n} 🌕${n !== 1 ? "" : ""}`;
 };
 
@@ -769,349 +845,334 @@ window.Sim.drawFPS = () => {
 };
 
 // ============================================================================
-// 13. TRAIL SYSTEM (unchanged)
+// 13. TRAIL SYSTEM
 // ============================================================================
 const TRAIL_STEPS = 1;
 window.Sim.trailBufs = [], window.Sim.trailHead = 0;
+
 window.Sim.initTrailBuffers = () => {
   if (TRAIL_STEPS > 0) {
     window.Sim.trailBufs = Array.from({ length: TRAIL_STEPS }, () => {
       const c = document.createElement("canvas");
       c.width = window.Sim.W; c.height = window.Sim.H;
-      return { canvas: c, ctx: c.getContext("2d"),   camX: 0, camY: 0, camZoom: 1, used:       false };
-      } )
-  }
-  };
-window.Sim.resizeTrailBuffers = () => {
-  for (const b of window.Sim.trailBufs) {
-    b.canvas.width = window.Sim.W; b.canvas.height = window.Sim.H;
-    b.used = false;
+      return { canvas: c, ctx: c.getContext("2d"), camX: 0, camY: 0, camZoom: 1, used: false };
+    });
   }
 };
 
+window.Sim.resizeTrailBuffers = () => {
+  const resizeBuffer = (b) => {
+    b.canvas.width = window.Sim.W; b.canvas.height = window.Sim.H;
+    b.used = false;
+  };
+  for (const b of window.Sim.trailBufs) resizeBuffer(b);
+};
+
+// ── Fast path: planet rendering to off‑screen buffer ──────────────────────
 window.Sim.renderPlanetsToBufferFastPath = () => {
   const buf = window.Sim.trailBufs[window.Sim.trailHead];
   const ox = buf.ctx;
-  const W = window.Sim.W;
-  const H = window.Sim.H;
+  const W = window.Sim.W, H = window.Sim.H;
   const cam = window.Sim.cam;
   const cfg = window.Sim.config;
   const PI2 = Math.PI * 2;
 
-  // 1. CLEAR & CAMERA TRANSFORM
   ox.clearRect(0, 0, W, H);
   ox.save();
   ox.translate(W / 2, H / 2);
   ox.scale(cam.zoom, cam.zoom);
   ox.translate(-cam.x, -cam.y);
 
-  // LOD THRESHOLD: Below ~3px radius, fillRect is 4-6x faster than arc
   const useFastRect = (cfg.PARTICLE_R * cam.zoom) < 3;
   const coreScale = 1.3;
 
-  for (const b of window.Sim.state.bodies) {
+  const processBody = (b) => {
     const { particles: ps, pal } = b;
-
-    // [PARTICLE COUNT] Filter alive once (typical: 50-300 per body)
     const alive = [];
-    for (let i = 0; i < ps.length; i++) {
-      if (!ps[i].dead) alive.push(ps[i]);
-    }
-    if (alive.length < 3) continue;
+    const filterAlive = (p) => { if (!p.dead) alive.push(p); };
+    for (let i = 0; i < ps.length; i++) filterAlive(ps[i]);
+    if (alive.length < 3) return;
 
-    // [DRAW SEQUENCE 1] CONVEX HULL (Planet Body)
     const hull = window.Sim.convexHull(alive);
-    if (hull.length < 3) continue;
+    if (hull.length < 3) return;
 
     ox.beginPath(); ox.moveTo(hull[0].x, hull[0].y);
-    for (let i = 1; i < hull.length; i++) ox.lineTo(hull[i].x, hull[i].y);
+    const hullLineTo = (i) => ox.lineTo(hull[i].x, hull[i].y);
+    for (let i = 1; i < hull.length; i++) hullLineTo(i);
     ox.closePath();
 
     const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius);
     gr.addColorStop(0, pal.hi+'ff'); gr.addColorStop(0.35, pal.mid+'ee');
     gr.addColorStop(0.75, pal.lo+'cc'); gr.addColorStop(1, pal.lo+'44');
     ox.fillStyle = gr; ox.fill();
-
     ox.strokeStyle = `rgba(${pal.gc},.4)`; ox.lineWidth = 1.5 / cam.zoom; ox.stroke();
 
-    // [DRAW SEQUENCE 2] STRETCHED SPRINGS (Batched line path)
+    // Springs
     ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / cam.zoom;
     ox.beginPath();
-    let hasSprings = false;
-    for (const sp of b.springs) {      if (sp.broken) continue;
+    const drawSpring = (sp) => {
+      if (sp.broken) return;
       const pa = ps[sp.a], pb = ps[sp.b];
-      if (pa.dead || pb.dead) continue;
-      if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) continue;
+      if (pa.dead || pb.dead) return;
+      if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) return;
       ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y);
-      hasSprings = true;
-    }
-    if (hasSprings) ox.stroke();
+    };
+    for (const sp of b.springs) drawSpring(sp);
+    ox.stroke();
     ox.globalAlpha = 1;
 
-    // [DRAW SEQUENCE 3 & 4] PARTICLES (FPS TWEAK: BATCHED)
-    // COOL particles: 1 draw call total (batched path)
-    // HOT particles: 1 draw call per particle (unique color prevents batching)
-    // RECT MODE: Replaces arc with fillRect when zoomed out (fastest rasterization)
     const baseR = cfg.PARTICLE_R;
 
     if (useFastRect) {
-      // === FAST RECT MODE (Zoomed Out) ===
-      // Cool: Direct rects, no path overhead
+      // Cool rects
       ox.fillStyle = `rgba(${pal.gc},.75)`;
-      for (const p of alive) {
-        if (p.heat > 0.05) continue;
+      const drawCoolRect = (p) => {
+        if (p.heat > 0.05) return;
         const r = p.isCore ? baseR * coreScale : baseR;
-        const d = r * 2;
-        ox.fillRect(p.x - r, p.y - r, d, d);
-      }
-      // Hot: Individual rects (color varies)
-      for (const p of alive) {
-        if (p.heat <= 0.05) continue;
+        ox.fillRect(p.x - r, p.y - r, r*2, r*2);
+      };
+      for (const p of alive) drawCoolRect(p);
+
+      // Hot rects
+      const drawHotRect = (p) => {
+        if (p.heat <= 0.05) return;
         const r = p.isCore ? baseR * coreScale : baseR;
         const g = Math.floor(60 + 160 * p.heat);
         ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
-        const d = r * 2;
-        ox.fillRect(p.x - r, p.y - r, d, d);
-      }
+        ox.fillRect(p.x - r, p.y - r, r*2, r*2);
+      };
+      for (const p of alive) drawHotRect(p);
     } else {
-      // === HIGH QUALITY ARC MODE (Zoomed In) ===
-      // Cool: SINGLE batched path → 1 fill call
+      // Cool arcs
       ox.fillStyle = `rgba(${pal.gc},.75)`;
       ox.beginPath();
-      for (const p of alive) {
-        if (p.heat > 0.05) continue;
+      const addCoolArc = (p) => {
+        if (p.heat > 0.05) return;
         const r = p.isCore ? baseR * coreScale : baseR;
-        ox.moveTo(p.x + r, p.y); // Prevents connecting lines between arcs
+        ox.moveTo(p.x + r, p.y);
         ox.arc(p.x, p.y, r, 0, PI2);
-      }
+      };
+      for (const p of alive) addCoolArc(p);
       ox.fill();
 
-      // Hot: Individual arcs (color changes require new path)
-      for (const p of alive) {        if (p.heat <= 0.05) continue;
+      // Hot arcs
+      const drawHotArc = (p) => {
+        if (p.heat <= 0.05) return;
         const r = p.isCore ? baseR * coreScale : baseR;
         const g = Math.floor(60 + 160 * p.heat);
         ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
         ox.beginPath(); ox.arc(p.x, p.y, r, 0, PI2); ox.fill();
-      }
+      };
+      for (const p of alive) drawHotArc(p);
     }
 
-    // [DRAW SEQUENCE 5] ATMOSPHERE GLOW
+    // Atmosphere glow
     const atm = ox.createRadialGradient(b.cx, b.cy, b.radius*0.7, b.cx, b.cy, b.radius*1.8);
     atm.addColorStop(0, `rgba(${pal.gc},.07)`); atm.addColorStop(1, `rgba(${pal.gc},0)`);
     ox.fillStyle = atm; ox.beginPath(); ox.arc(b.cx, b.cy, b.radius*1.8, 0, PI2); ox.fill();
-  }
+  };
+
+  for (const b of window.Sim.state.bodies) processBody(b);
 
   ox.restore();
   buf.camX = cam.x; buf.camY = cam.y; buf.camZoom = cam.zoom;
   buf.used = true;
 };
 
+// ── Full planet rendering to buffer (identical logic) ──────────────────────
 window.Sim.renderPlanetsToBufferFast = () => {
   const buf = window.Sim.trailBufs[window.Sim.trailHead];
   const ox = buf.ctx;
-  const W = window.Sim.W;
-  const H = window.Sim.H;
+  const W = window.Sim.W, H = window.Sim.H;
   const cam = window.Sim.cam;
   const cfg = window.Sim.config;
-  const PI2 = Math.PI * 2; // Cache PI2 locally to avoid global lookups
+  const PI2 = Math.PI * 2;
 
-  // Clear and apply camera transform
   ox.clearRect(0, 0, W, H);
   ox.save();
   ox.translate(W / 2, H / 2);
   ox.scale(cam.zoom, cam.zoom);
   ox.translate(-cam.x, -cam.y);
 
-  // LOD threshold: if each particle is < 3 screen pixels, use fillRect instead of arc
-  // fillRect is ~4-6x faster than arc for tiny primitives
   const useFastRect = (cfg.PARTICLE_R * cam.zoom) < 3;
   const coreMult = 1.3;
 
-  for (const b of window.Sim.state.bodies) {
+  const processBody = (b) => {
     const { particles: ps, pal } = b;
-
-    // --- Filter alive particles once (avoid repeated dead checks) ---
     const alive = [];
-    for (let i = 0; i < ps.length; i++) {
-      if (!ps[i].dead) alive.push(ps[i]);
-    }
-    if (alive.length < 3) continue;
+    const filterAlive = (p) => { if (!p.dead) alive.push(p); };
+    for (let i = 0; i < ps.length; i++) filterAlive(ps[i]);
+    if (alive.length < 3) return;
 
-    // --- 1. Convex Hull Body Fill + Stroke ---
     const hull = window.Sim.convexHull(alive);
-    if (hull.length < 3) continue;
+    if (hull.length < 3) return;
 
-    ox.beginPath();
-    ox.moveTo(hull[0].x, hull[0].y);
-    for (let i = 1; i < hull.length; i++) ox.lineTo(hull[i].x, hull[i].y);
+    ox.beginPath(); ox.moveTo(hull[0].x, hull[0].y);
+    const hullLineTo = (i) => ox.lineTo(hull[i].x, hull[i].y);
+    for (let i = 1; i < hull.length; i++) hullLineTo(i);
     ox.closePath();
 
     const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius);
-    gr.addColorStop(0, pal.hi + 'ff');
-    gr.addColorStop(0.35, pal.mid + 'ee');
-    gr.addColorStop(0.75, pal.lo + 'cc');
-    gr.addColorStop(1, pal.lo + '44');
-    ox.fillStyle = gr;
-    ox.fill();
+    gr.addColorStop(0, pal.hi+'ff'); gr.addColorStop(0.35, pal.mid+'ee');
+    gr.addColorStop(0.75, pal.lo+'cc'); gr.addColorStop(1, pal.lo+'44');
+    ox.fillStyle = gr; ox.fill();
+    ox.strokeStyle = `rgba(${pal.gc},.4)`; ox.lineWidth = 1.5 / cam.zoom; ox.stroke();
 
-    // Hull outline
-    ox.strokeStyle = `rgba(${pal.gc},.4)`;    ox.lineWidth = 1.5 / cam.zoom;
-    ox.stroke();
-
-    // --- 2. Stretched Springs (batched into ONE path) ---
-    ox.globalAlpha = 0.07;
-    ox.strokeStyle = `rgba(${pal.gc},.9)`;
-    ox.lineWidth = 0.8 / cam.zoom;
+    ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / cam.zoom;
     ox.beginPath();
-    let hasSprings = false;
-    for (const sp of b.springs) {
-      if (sp.broken) continue;
+    const drawSpring = (sp) => {
+      if (sp.broken) return;
       const pa = ps[sp.a], pb = ps[sp.b];
-      if (pa.dead || pb.dead) continue;
-      // Only draw springs stretched beyond 10% of rest length
+      if (pa.dead || pb.dead) return;
       const dx = pb.x - pa.x, dy = pb.y - pa.y;
-      if (Math.hypot(dx, dy) / sp.restLen < 1.1) continue;
-      ox.moveTo(pa.x, pa.y);
-      ox.lineTo(pb.x, pb.y);
-      hasSprings = true;
-    }
-    if (hasSprings) ox.stroke();
+      if (Math.hypot(dx, dy) / sp.restLen < 1.1) return;
+      ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y);
+    };
+    for (const sp of b.springs) drawSpring(sp);
+    ox.stroke();
     ox.globalAlpha = 1;
 
-    // --- 3. Particles: BATCHED by temperature group ---
-    // KEY FPS TWEAK: One beginPath/fill per group instead of per-particle
     const baseR = cfg.PARTICLE_R;
 
     if (useFastRect) {
-      // === FAST RECT MODE (zoomed out) ===
-      // Cool particles batch
+      // Cool rects
       ox.fillStyle = `rgba(${pal.gc},.75)`;
       ox.beginPath();
-      for (const p of alive) {
-        if (p.heat > 0.05) continue;
+      const drawCoolRect = (p) => {
+        if (p.heat > 0.05) return;
         const r = p.isCore ? baseR * coreMult : baseR;
-        const d = r * 2;
-        ox.rect(p.x - r, p.y - r, d, d);
-      }
+        ox.rect(p.x - r, p.y - r, r*2, r*2);
+      };
+      for (const p of alive) drawCoolRect(p);
       ox.fill();
 
-      // Hot particles batch (each needs unique color, but we still batch same-color runs)
-      // For hot particles with varying colors, we accept per-particle fills but skip beginPath overhead
-      for (const p of alive) {
-        if (p.heat <= 0.05) continue;
+      // Hot rects (per particle due to varying color)
+      const drawHotRect = (p) => {
+        if (p.heat <= 0.05) return;
         const r = p.isCore ? baseR * coreMult : baseR;
-        const g = Math.floor(60 + (220 - 60) * p.heat); // lerp inline
+        const g = Math.floor(60 + (220 - 60) * p.heat);
         ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
-        const d = r * 2;
-        ox.fillRect(p.x - r, p.y - r, d, d); // fillRect doesn't need beginPath
-      }    } else {
-      // === FULL ARC MODE (zoomed in) ===
-      // Cool particles: SINGLE batched path
+        ox.fillRect(p.x - r, p.y - r, r*2, r*2);
+      };
+      for (const p of alive) drawHotRect(p);
+    } else {
+      // Cool arcs
       ox.fillStyle = `rgba(${pal.gc},.75)`;
       ox.beginPath();
-      for (const p of alive) {
-        if (p.heat > 0.05) continue;
+      const addCoolArc = (p) => {
+        if (p.heat > 0.05) return;
         const r = p.isCore ? baseR * coreMult : baseR;
-        ox.moveTo(p.x + r, p.y); // Move to edge to avoid connecting arcs with lines
+        ox.moveTo(p.x + r, p.y);
         ox.arc(p.x, p.y, r, 0, PI2);
-      }
+      };
+      for (const p of alive) addCoolArc(p);
       ox.fill();
 
-      // Hot particles: varying color prevents full batching, but we eliminate beginPath
-      // Each fill() auto-closes the current subpath; no beginPath needed between them
-      for (const p of alive) {
-        if (p.heat <= 0.05) continue;
+      // Hot arcs
+      const drawHotArc = (p) => {
+        if (p.heat <= 0.05) return;
         const r = p.isCore ? baseR * coreMult : baseR;
         const g = Math.floor(60 + 160 * p.heat);
         ox.fillStyle = `rgba(255,${g},30,${p.heat * 0.9})`;
-        ox.beginPath(); // Required here because color changes per particle
-        ox.arc(p.x, p.y, r, 0, PI2);
-        ox.fill();
-      }
+        ox.beginPath(); ox.arc(p.x, p.y, r, 0, PI2); ox.fill();
+      };
+      for (const p of alive) drawHotArc(p);
     }
 
-    // --- 4. Atmosphere Glow ---
-    const atm = ox.createRadialGradient(b.cx, b.cy, b.radius * 0.7, b.cx, b.cy, b.radius * 1.8);
-    atm.addColorStop(0, `rgba(${pal.gc},.07)`);
-    atm.addColorStop(1, `rgba(${pal.gc},0)`);
-    ox.fillStyle = atm;
-    ox.beginPath();
-    ox.arc(b.cx, b.cy, b.radius * 1.8, 0, PI2);
-    ox.fill();
-  }
+    // Atmosphere glow
+    const atm = ox.createRadialGradient(b.cx, b.cy, b.radius*0.7, b.cx, b.cy, b.radius*1.8);
+    atm.addColorStop(0, `rgba(${pal.gc},.07)`); atm.addColorStop(1, `rgba(${pal.gc},0)`);
+    ox.fillStyle = atm; ox.beginPath(); ox.arc(b.cx, b.cy, b.radius*1.8, 0, PI2); ox.fill();
+  };
+
+  for (const b of window.Sim.state.bodies) processBody(b);
 
   ox.restore();
-
-  // Store camera state for trail interpolation / dirty checking
-  buf.camX = cam.x;
-  buf.camY = cam.y;
-  buf.camZoom = cam.zoom;
+  buf.camX = cam.x; buf.camY = cam.y; buf.camZoom = cam.zoom;
   buf.used = true;
 };
 
+// ── Legacy planet rendering to buffer ──────────────────────────────────────
 window.Sim.renderPlanetsToBuffer = () => {
   const buf = window.Sim.trailBufs[window.Sim.trailHead];
   const ox = buf.ctx;
-  
+
   ox.clearRect(0, 0, window.Sim.W, window.Sim.H);
   ox.save();
   ox.translate(window.Sim.W/2, window.Sim.H/2);
   ox.scale(window.Sim.cam.zoom, window.Sim.cam.zoom);
   ox.translate(-window.Sim.cam.x, -window.Sim.cam.y);
-  for (const b of window.Sim.state.bodies) {
+
+  const processLegacyBody = (b) => {
     const { particles: ps, pal } = b;
     const alive = [];
-    for (const p of ps) if (!p.dead) alive.push(p);
-    if (alive.length < 3) continue;
+    const filterAlive = (p) => { if (!p.dead) alive.push(p); };
+    for (const p of ps) filterAlive(p);
+    if (alive.length < 3) return;
+
     const hull = window.Sim.convexHull(alive);
-    if (hull.length < 3) continue;
+    if (hull.length < 3) return;
+
     ox.beginPath(); ox.moveTo(hull[0].x, hull[0].y);
-    for (let i=1; i<hull.length; i++) ox.lineTo(hull[i].x, hull[i].y);
+    const hullLineTo = (i) => ox.lineTo(hull[i].x, hull[i].y);
+    for (let i = 1; i < hull.length; i++) hullLineTo(i);
     ox.closePath();
+
     const gr = ox.createRadialGradient(b.cx, b.cy, 0, b.cx, b.cy, b.radius);
     gr.addColorStop(0, pal.hi+'ff'); gr.addColorStop(0.35, pal.mid+'ee');
     gr.addColorStop(0.75, pal.lo+'cc'); gr.addColorStop(1, pal.lo+'44');
     ox.fillStyle = gr; ox.fill();
     ox.strokeStyle = `rgba(${pal.gc},.4)`; ox.lineWidth = 1.5 / window.Sim.cam.zoom; ox.stroke();
+
     ox.globalAlpha = 0.07; ox.strokeStyle = `rgba(${pal.gc},.9)`; ox.lineWidth = 0.8 / window.Sim.cam.zoom;
     ox.beginPath();
-    for (const sp of b.springs) {
-      if (sp.broken) continue;
+    const drawSpring = (sp) => {
+      if (sp.broken) return;
       const pa = ps[sp.a], pb = ps[sp.b];
-      if (pa.dead || pb.dead) continue;
-      if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) continue;
+      if (pa.dead || pb.dead) return;
+      if (Math.hypot(pb.x-pa.x, pb.y-pa.y) / sp.restLen < 1.1) return;
       ox.moveTo(pa.x, pa.y); ox.lineTo(pb.x, pb.y);
-    }
+    };
+    for (const sp of b.springs) drawSpring(sp);
     ox.stroke();
     ox.globalAlpha = 1;
+
     ox.fillStyle = `rgba(${pal.gc},.75)`;
-    for (const p of alive) {
-      if (p.heat > 0.05) continue;
+    const drawCoolParticle = (p) => {
+      if (p.heat > 0.05) return;
       const r = p.isCore ? window.Sim.config.PARTICLE_R*1.3 : window.Sim.config.PARTICLE_R;
       ox.beginPath(); ox.arc(p.x, p.y, r, 0, H.PI2); ox.fill();
-    }
-    for (const p of alive) {
-      if (p.heat <= 0.05) continue;
+    };
+    for (const p of alive) drawCoolParticle(p);
+
+    const drawHotParticle = (p) => {
+      if (p.heat <= 0.05) return;
       const r = p.isCore ? window.Sim.config.PARTICLE_R*1.3 : window.Sim.config.PARTICLE_R;
       ox.fillStyle = `rgba(255,${Math.floor(H.lerp(60,220,p.heat))},30,${p.heat*0.9})`;
       ox.beginPath(); ox.arc(p.x, p.y, r, 0, H.PI2); ox.fill();
-    }
+    };
+    for (const p of alive) drawHotParticle(p);
+
     const atm = ox.createRadialGradient(b.cx, b.cy, b.radius*0.7, b.cx, b.cy, b.radius*1.8);
     atm.addColorStop(0, `rgba(${pal.gc},.07)`); atm.addColorStop(1, `rgba(${pal.gc},0)`);
     ox.fillStyle = atm; ox.beginPath(); ox.arc(b.cx, b.cy, b.radius*1.8, 0, H.PI2); ox.fill();
-  }
+  };
+
+  for (const b of window.Sim.state.bodies) processLegacyBody(b);
+
   ox.restore();
   buf.camX = window.Sim.cam.x; buf.camY = window.Sim.cam.y; buf.camZoom = window.Sim.cam.zoom;
   buf.used = true;
 };
+
 const TRAIL_ALPHAS = [1.0, 0.52, 0.24, 0.09, 0.02];
 window.Sim.drawTrail = () => {
-  for (let age = TRAIL_STEPS-1; age >= 0; age--) {
+  const drawTrailFrame = (age) => {
     const idx = ((window.Sim.trailHead - age - 1) + TRAIL_STEPS*2) % TRAIL_STEPS;
     const buf = window.Sim.trailBufs[idx];
-    if (!buf.used) continue;
+    if (!buf.used) return;
     const alpha = TRAIL_ALPHAS[age];
-    if (alpha < 0.005) continue;
+    if (alpha < 0.005) return;
     const scaleRatio = window.Sim.cam.zoom / buf.camZoom;
     const offX = (buf.camX - window.Sim.cam.x) * window.Sim.cam.zoom;
     const offY = (buf.camY - window.Sim.cam.y) * window.Sim.cam.zoom;
@@ -1123,6 +1184,10 @@ window.Sim.drawTrail = () => {
     window.Sim.ctx.translate(-window.Sim.W/2, -window.Sim.H/2);
     window.Sim.ctx.drawImage(buf.canvas, 0, 0);
     window.Sim.ctx.restore();
-  }
+  };
+
+  for (let age = TRAIL_STEPS-1; age >= 0; age--) drawTrailFrame(age);
   window.Sim.ctx.globalCompositeOperation = "source-over";
 };
+
+// END OF RENDERING.JS
