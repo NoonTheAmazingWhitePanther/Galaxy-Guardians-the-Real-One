@@ -9,9 +9,9 @@ Sim.config = {
   SPRING_K: 0.40,
   DAMPING: 1.0,
   SUBSTEPS: 8,
-  PARTICLE_R: 2.8,
+  PARTICLE_R: 9,
   BREAK_MULT: 2.8,
-  PHYS_SCALE: 60,
+  PHYS_SCALE: 80,
   get COLLISION_R() { return this.PARTICLE_R * 1.15; },
   get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
 };
@@ -59,9 +59,9 @@ Sim.AST_PALETTE = [
 Sim.sunGravMult = 1.0;
 Sim.physSpeed = 1;
 Sim.paused = false;
-Sim.SPEED_MAX = 8;
-Sim.RING_MIN_RADIUS = 40;
-Sim.RING_PARTICLES = 80;
+Sim.SPEED_MAX = 12;
+Sim.RING_MIN_RADIUS = 10;
+Sim.RING_PARTICLES = 10;
 Sim.AST_SPAWN_INTERVAL = 600;
-Sim.AST_MAX = 6;
+Sim.AST_MAX = 3;
 

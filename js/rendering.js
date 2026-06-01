@@ -260,6 +260,23 @@ window.Sim.drawSun = t => {
   ctx.restore();
 };
 
+/**
+ * Enqueue the sun drawing op for the current frame.
+ * Replaces any previous sun op to keep the queue clean.
+ */
+window.Sim.queueSun = (t) => {
+  window.QueOps.removeById('sun');                     // remove old sun op
+  window.QueOps.add({
+    id: 'sun',                                        // fixed, permanent ID
+    subject: 'rendering',
+    fn: window.Sim.drawSun,                            // original sun drawer
+    args: [t],                                        // time parameter
+    cost: 8,                                          // sun is moderately heavy
+    priority: 28,                                     // draw early (before planets)
+    delayMs: 0
+  });
+};
+
 // CONTINUE: Solar tentacles, solar rays, loose particles (drawLoose)
 
 // ============================================================================
@@ -457,6 +474,24 @@ window.Sim.drawLoose = () => {
 };
 
 // CONTINUE: drawBody (hull fill, springs, particles, atmosphere halo)
+
+// draw bodies eith quo ops
+window.Sim.drawBodies = () => {
+  for (const b of window.Sim.state.bodies) {
+    if (b.dead) continue;
+
+    window.QueOps.removeById(b.id);   // delete any old op for this body
+    window.QueOps.add({
+      id: b.id,
+      subject: 'rendering',
+      fn: window.Sim.drawBody,       // the existing single‑body drawer
+      args: [b],
+      cost: 1,
+      priority: 27,
+      delayMs: 0,
+    });
+  }
+};
 
 // ============================================================================
 // 8. DRAW BODY – OPTIMISED (no nested save/restore, burnt particles stay ash)
@@ -811,6 +846,7 @@ window.Sim.spawnPlanet = (x, y, size) => {
   const setParticleVelocity = (p) => { p.vx = vx; p.vy = vy; };
   for (const p of body.particles) setParticleVelocity(p);
 
+  body.id = H.IdRegistry.next('body');
   window.Sim.state.bodies.push(body);
   window.Sim.addFlash(x, y, radius * 2, pal.gc);
   window.Sim.updateCount();

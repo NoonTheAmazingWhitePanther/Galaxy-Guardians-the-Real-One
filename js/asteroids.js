@@ -17,40 +17,42 @@ function createRock(clusterR) {
 // ── Comet spawning ────────────────────────────────────
 window.Sim.spawnAsteroid = () => {
   if (H.state.asteroids.length >= H.AST_MAX) return;
-
+  
   const spawnR = 10000 + H.rndR(4000, 10000);
   const fromA = H.rnd() * H.PI2;
   const sx = H.SUN.x + Math.cos(fromA) * spawnR;
   const sy = H.SUN.y + Math.sin(fromA) * spawnR;
-
+  
   const exitR = spawnR * H.rndR(0.7, 1.2);
   const exitA = fromA + Math.PI + H.rndR(-1.4, 1.4);
   const ex = H.SUN.x + Math.cos(exitA) * exitR;
   const ey = H.SUN.y + Math.sin(exitA) * exitR;
   const aimA = Math.atan2(ey - sy, ex - sx);
-
+  
+  // Faster comets: shoot in straight lines
   const speed = H.rndR(25.0, 55.0);
   const cvx = Math.cos(aimA) * speed;
   const cvy = Math.sin(aimA) * speed;
-
+  
   const pal = H.AST_PALETTE[Math.floor(H.rnd() * H.AST_PALETTE.length)];
   const nRocks = Math.floor(H.rndR(3, 9));
   const clusterR = H.rndR(8, 28);
-
-  // 🔁 Array.from now calls a named function for every rock
+  
   const rocks = Array.from({ length: nRocks }, () => createRock(clusterR));
-
+  
   const mass = rocks.reduce((s, r) => s + r.r * r.r, 0) * 0.2;
-
+  
+  // Lock trail direction to initial launch vector (points straight backwards)
   const trailDirX = -Math.cos(aimA);
   const trailDirY = -Math.sin(aimA);
 
   H.state.asteroids.push({
+    id: H.IdRegistry.next('asteroid'),
     x: sx, y: sy, vx: cvx, vy: cvy,
     rocks, clusterR, mass, pal,
     trail: [], trailLen: 180, age: 0,
-    spawnAngle: aimA,
-    trailDirX: trailDirX,
+    spawnAngle: aimA,      // Locked visual angle
+    trailDirX: trailDirX,  // Locked trail direction
     trailDirY: trailDirY,
   });
 };
@@ -94,12 +96,12 @@ function processBodyForAsteroid(a, b, dt) {
     const spd = H.hypot(a.vx, a.vy);
     const nx = (b.cx - a.x) / d, ny = (b.cy - a.y) / d;
 
-    // 🔁 Loop over planet particles → calls function per particle
+    // Loop over planet particles → calls function per particle
     for (const p of b.particles) {
       updateParticleInCollision(p, a, b, spd, nx, ny);
     }
 
-    // 🔁 Loop over asteroid rocks → calls function per rock
+    // Loop over asteroid rocks → calls function per rock
     for (const rock of a.rocks) {
       addLooseFromRock(rock, a, spd);
     }
@@ -135,7 +137,7 @@ function processAsteroidIteration(ai, dt) {
   a.vx += sdx / sd * sf * dt;
   a.vy += sdy / sd * sf * dt;
 
-  // 🔁 Body interactions – loop calls a function for each body
+  // Body interactions – loop calls a function for each body
   for (const b of H.state.bodies) {
     const hit = processBodyForAsteroid(a, b, dt);
     if (hit) {
@@ -149,7 +151,7 @@ function processAsteroidIteration(ai, dt) {
   a.x += a.vx * dt;
   a.y += a.vy * dt;
 
-  // 🔁 Update rock offsets – loop calls function per rock
+  // Update rock offsets – loop calls function per rock
   for (const rock of a.rocks) {
     updateRockOffset(rock, dt);
   }
@@ -173,7 +175,7 @@ window.Sim.tickAsteroids = dt => {
     H.spawnAsteroid();
   }
 
-  // 🔁 Main asteroid loop – only calls one function per asteroid
+  // Main asteroid loop – only calls one function per asteroid
   for (let ai = H.state.asteroids.length - 1; ai >= 0; ai--) {
     processAsteroidIteration(ai, dt);
   }
@@ -219,7 +221,7 @@ function drawRock(rock, a) {
   H.ctx.beginPath();
   H.ctx.moveTo(rock.pts[0][0], rock.pts[0][1]);
 
-  // 🔁 Outline loop – calls function for each point
+  // Outline loop – calls function for each point
   for (let i = 1; i < rock.pts.length; i++) {
     rockOutlineLineTo(rock.pts[i]);
   }
@@ -239,13 +241,13 @@ function drawRock(rock, a) {
 function drawAsteroid(a) {
   const tailNx = a.trailDirX;
   const tailNy = a.trailDirY;
-  const tailScreenPx = 280;
+  const tailScreenPx = 140;
   const tailWorldLen = tailScreenPx / H.cam.zoom;
 
   H.ctx.save();
 
-  // 🔁 Ion tail – loop calls function per step
-  const STEPS = 48;
+  // Ion tail – loop calls function per step
+  const STEPS = 24;
   for (let i = 1; i <= STEPS; i++) {
     drawIonTailStep(i, STEPS, a, tailNx, tailNy, tailWorldLen);
   }
@@ -270,16 +272,27 @@ function drawAsteroid(a) {
   H.ctx.fillStyle = coma;
   H.ctx.beginPath(); H.ctx.arc(a.x, a.y, comaR, 0, H.PI2); H.ctx.fill();
 
-  // 🔁 Nucleus rocks – loop calls function per rock
+  // Nucleus rocks – loop calls function per rock
   for (const rock of a.rocks) {
     drawRock(rock, a);
   }
 }
 
-// ── Comet rendering ───────────────────────────────────
+// ── Comet rendering (via QueOps) ──────────────────────
 window.Sim.drawAsteroids = () => {
-  // 🔁 Main drawing loop – only calls one function per asteroid
   for (const a of H.state.asteroids) {
-    drawAsteroid(a);
+    // Assign a permanent ID if missing (safety – should not happen)
+    if (!a.id) a.id = H.IdRegistry.next('asteroid');
+
+    window.QueOps.removeById(a.id);
+    window.QueOps.add({
+      id: a.id,
+      subject: 'rendering',
+      fn: drawAsteroid,
+      args: [a],
+      cost: 1,
+      priority: 30,
+      delayMs: 0
+    });
   }
 };

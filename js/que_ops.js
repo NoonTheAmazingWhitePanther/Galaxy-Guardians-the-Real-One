@@ -22,8 +22,8 @@ window.QueOps = (function() {
   // SUBJECT REGISTRY (Now includes stagger delays)
   // ────────────────────────────────────────────────────────────────────
   const SUBJECTS = {
-    physics:      { maxPerFrame: 40, cycleEvery: 1, costMult: 1.5, delayMs: 0.1, desc: "Gravity, integration, springs, collisions" },
-    rendering:    { maxPerFrame: 35, cycleEvery: 1, costMult: 2.0, delayMs: 0.3, desc: "Canvas draw calls, path creation, state changes" },
+    physics:      { maxPerFrame: 40, cycleEvery: 1, costMult: 1.5, delayMs: 0.01, desc: "Gravity, integration, springs, collisions" },
+    rendering:    { maxPerFrame: 128, cycleEvery: 1, costMult: 2.0, delayMs: 0.2, desc: "Canvas draw calls, path creation, state changes" },
     particles:    { maxPerFrame: 30, cycleEvery: 2, costMult: 1.0, delayMs: 0.2, desc: "Loose debris, sparks, trails, pooling" },
     logic:        { maxPerFrame: 20, cycleEvery: 1, costMult: 1.0, delayMs: 0.0, desc: "Game state, scoring, events, input" },
     ai:           { maxPerFrame: 15, cycleEvery: 3, costMult: 1.8, delayMs: 0.5, desc: "NPC behavior, pathfinding, decisions" },
@@ -338,12 +338,19 @@ window.QueOps = (function() {
   // ────────────────────────────────────────────────────────────────────
   // PUBLIC API
   // ────────────────────────────────────────────────────────────────────
+  
   return {
     init, add, tick, updateConfig, getDebugInfo, flush, registerSubject,
+    clearSubject: (subject) => {
+        state.queue = state.queue.filter(op => op.subject !== subject);
+    },
+      removeById: (id) => {
+    state.queue = state.queue.filter(op => op.id !== id);
+    },
     coolingStates: COOLING_STATES,
     subjects: SUBJECTS,
     config: state.config
-  };
+};
 })();
 // ────────────────────────────────────────────────────────────────────
 // USAGE EXAMPLES
