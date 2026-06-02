@@ -12,17 +12,13 @@ function tickPhysicsSubstep(sdPerTick) {
 
 window.Sim.init = () => {
   
-  // disabling limitations and throttling in quo ops
-  window.QueOps.updateConfig({ maxOpsPerFrame: 4, maxFrameTimeMs: 100, enableStagger: false });
-  
   // production like values Staggering needs to ve on
-  window.QueOps.updateConfig({ 
+  
+  /*window.QueOpsEasy.updateConfig({ 
   maxOpsPerFrame: 128,    // enough for all objects
   maxFrameTimeMs: 14,     // normal frame protection
   enableStagger: false    // keep stagger off until we adjust delays
-  
-  
-});
+});*/
   
   // ── Initialize Core Systems ──────────────────────
   window.Sim.initStars();
@@ -100,7 +96,7 @@ window.Sim.init = () => {
       window.Sim.drawAsteroids();
       window.Sim.queueOrbitPreview(t);
       
-      window.QueOps.tick();
+      window.QueOpsEasy.tick();
       window.Sim.ctx.restore(); // End camera transform
       
       // Trail system (buffer → composite → advance)
