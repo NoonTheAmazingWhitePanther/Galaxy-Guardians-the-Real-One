@@ -66,8 +66,8 @@ window.Sim.init = () => {
       // Background layers
       window.Sim.ctx.fillStyle = 'rgba(4,4,12,.28)';
       window.Sim.ctx.fillRect(0, 0, window.Sim.W, window.Sim.H);
-      window.Sim.drawNebula(t);
-      window.Sim.drawStars(t);
+      window.Sim.queueNebula(t);
+      window.Sim.queueStars(t);
       
       // World-space rendering & physics
       window.Sim.ctx.save();
@@ -88,11 +88,11 @@ window.Sim.init = () => {
       
       window.Sim.drawFlashes();
       window.Sim.queueSun(t);
-      window.Sim.drawSolarTentacles(t);
-      window.Sim.drawSolarRays(t);
-      window.Sim.drawLoose();
+      window.Sim.queueTentacles(t);
+      window.Sim.queueRays(t);
+      window.Sim.queueLoose();
       window.Sim.drawAsteroids();
-      window.Sim.drawOrbitPreview(t);
+      window.Sim.queueOrbitPreview(t);
       window.QueOps.tick();
       window.Sim.ctx.restore(); // End camera transform
       

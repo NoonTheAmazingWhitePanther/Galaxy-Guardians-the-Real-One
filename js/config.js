@@ -12,6 +12,8 @@ Sim.config = {
   PARTICLE_R: 9,
   BREAK_MULT: 2.8,
   PHYS_SCALE: 80,
+  TENTECLEMAX: 18,
+  
   get COLLISION_R() { return this.PARTICLE_R * 1.15; },
   get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
 };
@@ -38,7 +40,7 @@ Sim.state = {
 // Solar prominence/tentacle animation storage
 Sim.solarTentacles = [];
 
-Sim.SUN = { x: 0, y: 0, radius: 180, burnRadius: 220, mass: 182784, coronaTime: 0 };
+Sim.SUN = { x: 0, y: 0, radius: 240, burnRadius: 300, mass: 182784, coronaTime: 0 };
 
 Sim.PALS = [
   { hi: "#ffeeaa", mid: "#ff8800", lo: "#5a1800", gc: "255,140,50" },

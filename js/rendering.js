@@ -20,6 +20,20 @@ window.Sim.initStars = () => {
   window.Sim.state.stars = Array.from({ length: 90 }, createStar);
 };
 
+window.Sim.queueStars = (t) => {
+  window.QueOps.removeById('stars');
+  window.QueOps.add({
+    id: 'stars',
+    subject: 'rendering',
+    fn: window.Sim.drawStars,
+    args: [t],
+    cost: 3,
+    priority: 25,
+    cycleEvery: 1,
+    delayMs: 0
+  });
+};
+
 window.Sim.drawStars = t => {
   const ctx = window.Sim.ctx;
   ctx.shadowBlur = 3;
@@ -106,6 +120,20 @@ window.Sim.drawFlashes = () => {
 // ════════════════════════════════════════════════════════════════════════════
 // 3. NEBULA – unchanged
 // ════════════════════════════════════════════════════════════════════════════
+window.Sim.queueNebula = (t) => {
+  window.QueOps.removeById('nebula');
+  window.QueOps.add({
+    id: 'nebula',
+    subject: 'rendering',
+    fn: window.Sim.drawNebula,
+    args: [t],
+    cost: 3,
+    priority: 25,
+    cycleEvery: 1,
+    delayMs: 0
+  });
+};
+
 window.Sim.drawNebula = t => {
   const ctx = window.Sim.ctx;
   const blobs = [
@@ -289,11 +317,11 @@ window.Sim.drawSolarTentacles = (t) => {
   const sunBase = `rgba(${sunCol.r},${sunCol.g},${sunCol.b}`;
 
   // Spawn
-  if (H.rnd() < 0.25 && window.Sim.solarTentacles.length < 28) {
+  if (H.rnd() < 0.25 && window.Sim.solarTentacles.length < Sim.config.TENTECLEMAX) {
     window.Sim.solarTentacles.push({
-      angle: H.rnd()*H.PI2, length: 50+H.rnd()*80, width: 4+H.rnd()*8,
+      angle: H.rnd()*H.PI2, length: 50+H.rnd()*80, width: 6+H.rnd()*8,
       swaySpeed: 0.018+H.rnd()*0.015, phase: H.rnd()*H.PI2,
-      life: 1.0, decay: 0.01+H.rnd()*0.01
+      life: 1.5, decay: 0.01+H.rnd()*0.01
     });
   }
 
@@ -332,9 +360,37 @@ window.Sim.drawSolarTentacles = (t) => {
   ctx.globalAlpha = 1;
 };
 
+window.Sim.queueTentacles = (t) => {
+  window.QueOps.removeById('tentacles');
+  window.QueOps.add({
+    id: 'tentacles',
+    subject: 'rendering',
+    fn: window.Sim.drawSolarTentacles,
+    args: [t],
+    cost: 5,
+    priority: 28,
+    cycleEvery: 1,
+    delayMs: 0
+  });
+};
+
 // ============================================================================
 // 6. SOLAR RAYS – OPTIMISED (one save/restore for composite)
 // ============================================================================
+window.Sim.queueRays = (t) => {
+  window.QueOps.removeById('rays');
+  window.QueOps.add({
+    id: 'rays',
+    subject: 'rendering',
+    fn: window.Sim.drawSolarRays,
+    args: [t],
+    cost: 5,
+    priority: 28,
+    cycleEvery: 1,
+    delayMs: 0
+  });
+};
+
 window.Sim.drawSolarRays = t => {
   const ctx = window.Sim.ctx;
   const { x, y, radius } = window.Sim.SUN;
@@ -390,6 +446,20 @@ window.Sim.drawSolarRays = t => {
 // ============================================================================
 // 7. LOOSE PARTICLES – OPTIMISED BATCHED, BURNT PERSISTENT
 // ============================================================================
+window.Sim.queueLoose = () => {
+  window.QueOps.removeById('loose');
+  window.QueOps.add({
+    id: 'loose',
+    subject: 'particles',
+    fn: window.Sim.drawLoose,
+    args: [],
+    cost: 5,              // batched drawing of all loose particles
+    priority: 32,
+    cycleEvery: 1,
+    delayMs: 0
+  });
+};
+
 window.Sim.drawLoose = () => {
   const ctx = window.Sim.ctx;
   const hot = [], warm = [], cool = new Map(), ring = new Map();
@@ -489,6 +559,7 @@ window.Sim.drawBodies = () => {
       cost: 1,
       priority: 27,
       delayMs: 0,
+
     });
   }
 };
@@ -654,6 +725,24 @@ window.Sim.drawBody = body => {
 // ============================================================================
 // 9. CHARGE INDICATOR
 // ============================================================================
+window.Sim.queueCharge = () => {
+  if (window.Sim.holding) {
+    window.QueOps.removeById('charge');
+    window.QueOps.add({
+      id: 'charge',
+      subject: 'ui',
+      fn: window.Sim.drawCharge,
+      args: [],
+      cost: 1,
+      priority: 35,
+      cycleEvery: 1,
+      delayMs: 0
+    });
+  } else {
+    window.QueOps.removeById('charge');
+  }
+};
+
 window.Sim.drawCharge = () => {
   if (!window.Sim.holding) return;
   const charge = Math.min((performance.now() - window.Sim.holdT) / 2000, 1);
@@ -731,6 +820,24 @@ window.Sim.getPreviewPath = (wx, wy) => {
   const pts = window.Sim.predictOrbit(wx, wy, vx, vy, 100, totalSteps, dtPerStep, 20, window.Sim.sunGravMult);
   _previewCache = { wx, wy, pts, mult: window.Sim.sunGravMult };
   return pts;
+};
+
+window.Sim.queueOrbitPreview = (t) => {
+  if (window.Sim.holding) {
+    window.QueOps.removeById('orbit');
+    window.QueOps.add({
+      id: 'orbit',
+      subject: 'ui',
+      fn: window.Sim.drawOrbitPreview,
+      args: [t],
+      cost: 6,
+      priority: 35,
+      cycleEvery: 1,
+      delayMs: 0
+    });
+  } else {
+    window.QueOps.removeById('orbit');   // remove if not holding
+  }
 };
 
 window.Sim.drawOrbitPreview = t => {
