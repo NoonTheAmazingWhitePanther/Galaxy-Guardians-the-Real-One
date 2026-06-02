@@ -21,7 +21,6 @@
 </div>
 
 <!-- Top Middle Fps Counter -->
-
 <div id="fpsCounter" role="toolbar" aria-label="Frames per second" class="fps-counter">0 FPS</div>
 
 <!-- TOP RIGHT -->
@@ -67,19 +66,30 @@
   <div class="cfg-reset" id="cfg-reset-btn">⟳ RESET DEFAULTS</div>
 </div>
 
-<!-- SCRIPTS (Exact load order required) -->
-<script src="js/config.js"></script>
-<script src="js/utils.js"></script>
-<script src="js/camera.js"></script>
-<script src="js/physics.js"></script>
-<script src="js/asteroids.js"></script>
-<script src="js/rendering.js"></script>
-<script src="js/input-ui.js"></script>
-<script src="js/main.js"></script>
-<script src="js/config-debug.js"></script>
-<script src="js/debug.js"></script>
-<script src="js/que-ops.js"></script>
-<script src="js/que-ops-easy.js"></script>
-<script src="js/id-registry.js"></script>
+<!-- 
+  ========================================================================
+  SCRIPTS: 2.0 MODULAR ARCHITECTURE
+  ========================================================================
+  The new main.js is an ES6 Module. It imports everything it needs.
+  Legacy flat files are commented out to prevent global scope conflicts.
+-->
+
+<!-- 🔥 CRITICAL: type="module" is required for ES6 import/export to work -->
+<script type="module" src="js/main.js"></script>
+
+<!-- Legacy scripts (Commented out for 2.0 migration. Uncomment to revert to v1.x) -->
+<!-- <script src="js/config.js"></script> -->
+<!-- <script src="js/utils.js"></script> -->
+<!-- <script src="js/camera.js"></script> -->
+<!-- <script src="js/physics.js"></script> -->
+<!-- <script src="js/asteroids.js"></script> -->
+<!-- <script src="js/rendering.js"></script> -->
+<!-- <script src="js/input-ui.js"></script> -->
+<!-- <script src="js/config-debug.js"></script> -->
+<!-- <script src="js/debug.js"></script> -->
+<!-- <script src="js/que-ops.js"></script> -->
+<!-- <script src="js/que-ops-easy.js"></script> -->
+<!-- <script src="js/id-registry.js"></script> -->
+
 </body>
 </html>
