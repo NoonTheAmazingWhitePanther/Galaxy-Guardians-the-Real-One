@@ -58,6 +58,7 @@ window.Sim.init = () => {
       
       
       // UI & Camera updates
+      
       window.Sim.tickCam();
       window.Sim.updatePanPad();
       window.Sim.updateSpeedBar();
@@ -66,12 +67,16 @@ window.Sim.init = () => {
       // Background layers
       window.Sim.ctx.fillStyle = 'rgba(4,4,12,.28)';
       window.Sim.ctx.fillRect(0, 0, window.Sim.W, window.Sim.H);
-      window.Sim.queueNebula(t);
-      window.Sim.queueStars(t);
       
-      // World-space rendering & physics
+      window.Sim.drawStars(t);
+            // World-space rendering & physics
       window.Sim.ctx.save();
       window.Sim.applyCam();
+      
+      //window.Sim.queueNebula(t);
+      
+     // window.QueOps.tick();
+      
       
       if (!window.Sim.paused && window.Sim.physSpeed > 0 && rawDt > 0) {
         const MAX_SAFE_SD = rawDt * 3.0 * window.Sim.config.PHYS_SCALE;
@@ -86,6 +91,7 @@ window.Sim.init = () => {
         window.Sim.tickAsteroids(rawDt * window.Sim.physSpeed * window.Sim.config.PHYS_SCALE);
       }
       
+      
       window.Sim.drawFlashes();
       window.Sim.queueSun(t);
       window.Sim.queueTentacles(t);
@@ -93,6 +99,7 @@ window.Sim.init = () => {
       window.Sim.queueLoose();
       window.Sim.drawAsteroids();
       window.Sim.queueOrbitPreview(t);
+      
       window.QueOps.tick();
       window.Sim.ctx.restore(); // End camera transform
       
@@ -139,3 +146,4 @@ if (document.readyState === 'loading') {
 } else {
   window.Sim.init();
 }
+

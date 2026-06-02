@@ -23,15 +23,9 @@ window.Sim.initStars = () => {
 window.Sim.queueStars = (t) => {
   window.QueOps.removeById('stars');
   window.QueOps.add({
-    id: 'stars',
-    subject: 'rendering',
-    fn: window.Sim.drawStars,
-    args: [t],
-    cost: 3,
-    priority: 25,
-    cycleEvery: 1,
-    delayMs: 0
-  });
+    id: 'stars', subject: 'rendering',
+    fn: window.Sim.drawStars, args: [t],
+    cost: 3, priority: 31, cycleEvery: 2, delayMs: 0});
 };
 
 window.Sim.drawStars = t => {
