@@ -9,7 +9,7 @@ export const config = {
     SUBSTEPS: 8,
     PARTICLE_R: 9,
     BREAK_MULT: 2.8,
-    PHYS_SCALE: 80,
+    PHYS_SCALE: 40,
     TENTECLEMAX: 18,
     get COLLISION_R() { return this.PARTICLE_R * 1.15; },
     get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }

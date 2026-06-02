@@ -3,7 +3,6 @@
  * Prime Module: Mouse, touch, keyboard, UI sliders, and Pan Pad.
  */
 import { clamp, hypot } from '../../core/math.js';
-// 🔥 FIXED: Added physSpeed and paused directly to the import list
 import { state, physSpeed, paused, setSunGravMult, setPhysSpeed, togglePause, SPEED_MAX } from '../../core/state.js';
 import { CameraModule } from '../camera/camera.module.js';
 
@@ -36,7 +35,6 @@ export const InputModule = {
     },
 
     _bindUI() {
-        // 1. Gravity Slider
         if (this.gravSlider) {
             this.gravSlider.addEventListener("input", () => {
                 const val = parseFloat(this.gravSlider.value);
@@ -45,19 +43,18 @@ export const InputModule = {
             });
         }
 
-        // 2. Speed Bar
         const spTrack = document.getElementById("sp-track");
-        const spLabel = document.getElementById("sp-label");        const spPause = document.getElementById("sp-pause");
+        const spLabel = document.getElementById("sp-label");
+        const spPause = document.getElementById("sp-pause");
         
-        if (spPause) {
-            document.getElementById("sp-fast")?.addEventListener("pointerdown", e => {
+        if (spPause) {            document.getElementById("sp-fast")?.addEventListener("pointerdown", e => {
                 e.preventDefault();
-                setPhysSpeed(parseFloat((physSpeed + 0.5).toFixed(1))); // 🔥 FIXED: physSpeed
+                setPhysSpeed(parseFloat((physSpeed + 0.5).toFixed(1)));
                 this._updateSpeedUI(spLabel, spPause);
             });
             document.getElementById("sp-slow")?.addEventListener("pointerdown", e => {
                 e.preventDefault();
-                setPhysSpeed(parseFloat((physSpeed - 0.5).toFixed(1))); // 🔥 FIXED: physSpeed
+                setPhysSpeed(parseFloat((physSpeed - 0.5).toFixed(1)));
                 this._updateSpeedUI(spLabel, spPause);
             });
             spPause.addEventListener("pointerdown", e => { 
@@ -78,7 +75,6 @@ export const InputModule = {
             window.addEventListener("pointermove", e => { if (this.spDrag) spTrackPos(e.clientY); });
         }
 
-        // 3. Zoom Bar
         const zmTrack = document.getElementById("zm-track");
         const zmLabel = document.getElementById("zm-label");
         
@@ -96,11 +92,12 @@ export const InputModule = {
             e.preventDefault(); 
             CameraModule.frameBodies();
         });
+
         if (zmTrack) {
             const zmTrackPos = clientY => {
                 const rect = zmTrack.getBoundingClientRect();
-                const frac = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
-                const logMin = Math.log(CameraModule.cam.minZoom), logMax = Math.log(CameraModule.cam.maxZoom);
+                const frac = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);                const logMin = Math.log(CameraModule.cam.minZoom);
+                const logMax = Math.log(CameraModule.cam.maxZoom);
                 CameraModule.cam.targetZoom = Math.exp(logMin + frac * (logMax - logMin));
                 if (zmLabel) zmLabel.textContent = (CameraModule.cam.targetZoom * 100).toFixed(0) + "%";
             };
@@ -110,7 +107,6 @@ export const InputModule = {
 
         window.addEventListener("pointerup", () => { this.spDrag = false; this.zmDrag = false; });
         
-        // 4. Clear Button
         document.getElementById("clear-btn")?.addEventListener("click", () => {
             state.bodies = []; state.loose = []; state.flashes = [];
             if (this.pcountEl) this.pcountEl.textContent = "—";
@@ -119,19 +115,16 @@ export const InputModule = {
 
     _updateSpeedUI(spLabel, spPause) {
         if (spLabel) {
-            // 🔥 FIXED: Use physSpeed directly instead of state.physSpeed
             spLabel.textContent = physSpeed === 0 ? "0×" : physSpeed === 1 ? "1×" : physSpeed.toFixed(1) + "×";
         }
         if (spPause) {
-            // 🔥 FIXED: Use paused directly instead of state.paused
             spPause.textContent = paused ? "▶" : "▐▐";
             spPause.className = paused ? "paused" : "";
         }
-        // Update fill/thumb heights
         const spFill = document.getElementById("sp-fill");
         const spThumb = document.getElementById("sp-thumb");
         if (spFill && spThumb) {
-            const frac = physSpeed / SPEED_MAX; // 🔥 FIXED
+            const frac = physSpeed / SPEED_MAX;
             spFill.style.height = (frac * 100) + "%";
             spThumb.style.top = ((1 - frac) * 100) + "%";
         }
@@ -146,14 +139,13 @@ export const InputModule = {
             this.holdT = performance.now();
             this.cursorEl.classList.add("holding");
         });
+
         window.addEventListener("mouseup", e => {
             if (!this.holding) return;
             this.holding = false;
             this.cursorEl.classList.remove("holding");
             this._spawnPlanet();
         });
-
-        // Touch Support
         let pinchDist0 = 0, pinchZoom0 = 1, pinchMidX = 0, pinchMidY = 0;
         this.canvas.addEventListener("touchstart", e => {
             if (e.touches.length === 2) {
@@ -194,18 +186,18 @@ export const InputModule = {
                 this.holding = false;
                 this.cursorEl.classList.remove("holding");
                 this._spawnPlanet();
-            }        }, { passive: false });
+            }
+        }, { passive: false });
     },
 
     _bindKeyboard() {
         window.addEventListener("keydown", e => {
             if (e.key === "=" || e.key === "+") CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom * 1.2, CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
             if (e.key === "-") CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom / 1.2, CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
-            if (e.key === "0" || e.key === "r") { CameraModule.cam.targetZoom = 1; CameraModule.cam.x = 0; CameraModule.cam.y = 0; }
-            if (e.key === "f") CameraModule.frameBodies();
+            if (e.key === "0" || e.key === "r") { CameraModule.cam.targetZoom = 1; CameraModule.cam.x = 0; CameraModule.cam.y = 0; }            if (e.key === "f") CameraModule.frameBodies();
             if (e.key === " " || e.key === "p") { e.preventDefault(); togglePause(); }
-            if (e.key === "]") setPhysSpeed(parseFloat((physSpeed + 0.5).toFixed(1))); // 🔥 FIXED
-            if (e.key === "[") setPhysSpeed(parseFloat((physSpeed - 0.5).toFixed(1))); // 🔥 FIXED
+            if (e.key === "]") setPhysSpeed(parseFloat((physSpeed + 0.5).toFixed(1)));
+            if (e.key === "[") setPhysSpeed(parseFloat((physSpeed - 0.5).toFixed(1)));
         });
     },
 
@@ -238,12 +230,12 @@ export const InputModule = {
             panPad.classList.remove('active');
         });
 
-        // Bridge to main.js loop
         window.Sim = window.Sim || {};
         window.Sim.updatePanPad = () => {
             if (!this.panPadActive) return;
             this.panPadPower = Math.min(this.panPadPower + PAN_ACCEL, PAN_MAX);
-            const speed = Math.min(this.panPadPower / CameraModule.cam.zoom, 100);            CameraModule.cam.x += this.panPadDir.x * speed;
+            const speed = Math.min(this.panPadPower / CameraModule.cam.zoom, 100);
+            CameraModule.cam.x += this.panPadDir.x * speed;
             CameraModule.cam.y += this.panPadDir.y * speed;
         };
     },
@@ -251,8 +243,7 @@ export const InputModule = {
     _updatePanDirection(e, panPad) {
         const rect = panPad.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dx = e.clientX - cx;
+        const cy = rect.top + rect.height / 2;        const dx = e.clientX - cx;
         const dy = e.clientY - cy;
         const angle = Math.atan2(dy, dx);
         const sector = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);

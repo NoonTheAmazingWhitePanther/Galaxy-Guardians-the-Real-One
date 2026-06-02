@@ -1,9 +1,14 @@
 /**
  * js/main.js
  * Galaxy Guardians 2.0 - Main Entry Point & Orchestrator
+ * Pure ES6 Module. No global window.Sim pollution.
  */
+
+// ── 1. Core Imports ──────────────────────────────────────────────────────
 import { config } from './core/config.js';
-import { state, SUN, PALS, physSpeed, paused } from './core/state.js';
+import { state, SUN, physSpeed, paused } from './core/state.js';
+
+// ── 2. Module Imports ────────────────────────────────────────────────────
 import { CameraModule } from './modules/camera/camera.module.js';
 import { InputModule } from './modules/input/input.module.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
@@ -15,7 +20,7 @@ import { ParticlesModule } from './modules/rendering/particles.js';
 import { TrailsModule } from './modules/rendering/trails.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
 
-// ── DOM References ──────────────────────────────────────────────────────
+// ── 3. DOM References ────────────────────────────────────────────────────
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 const cursorEl = document.getElementById("cursor");
@@ -27,65 +32,71 @@ const gravVal = document.getElementById("grav-val");
 
 let W = canvas.width = window.innerWidth;
 let H = canvas.height = window.innerHeight;
-
-// ── Game State & Helpers ────────────────────────────────────────────────
 let lastT = 0;
+
+// Frame-skipping to maintain high FPS (only run heavy logic every N frames)
 let flagdraw = 0;
 const totalFrameSkipping = 4;
 
-// ── Initialization ──────────────────────────────────────────────────────
-async function init() {
-    // 1. Initialize Core Modules
+// ── 4. Initialization ────────────────────────────────────────────────────
+function init() {
+    // Initialize Prime Modules
     CameraModule.init(canvas, ctx, W, H);
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
     EffectsModule.init(W, H);
     TrailsModule.init(W, H);
 
-    // 2. Bridge legacy InputModule to new OverlaysModule spawn logic
-    // This allows the existing input.module.js to work seamlessly without further rewrites
-    window.Sim = window.Sim || {};
-    window.Sim.spawnPlanet = (x, y, size) => {
-        OverlaysModule.spawnPlanet(x, y, size, pcountEl);
-    };
-    window.Sim.getPlanetRadius = (sliderVal, charge) => {        const raw = sliderVal * (1 + charge * 4);
+    // Bridge: Connect InputModule's spawn trigger to OverlaysModule's logic
+    InputModule._spawnPlanet = () => {        const charge = Math.min((performance.now() - InputModule.holdT) / 2000, 1);
+        const sliderVal = parseFloat(slider.value);
+        const raw = sliderVal * (1 + charge * 4);
         const t = Math.min(raw / 50, 1);
         const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
-        return Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+        const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+        
+        const w = CameraModule.screenToWorld(InputModule.tx, InputModule.ty);
+        OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, pcountEl);
     };
 
-    // 3. Initial Canvas Clear
+    // Initial Canvas Clear
     ctx.fillStyle = '#04040c';
     ctx.fillRect(0, 0, W, H);
 
-    // 4. Start Loop
+    // Start Loop
     requestAnimationFrame(mainLoop);
 }
 
-// ── Main Animation Loop ─────────────────────────────────────────────────
+// ── 5. Main Animation Loop ───────────────────────────────────────────────
 function mainLoop(t) {
     requestAnimationFrame(mainLoop);
 
     const realFps = (t - lastT) / 1000;
-    const rawDt = Math.min(realFps, 0.05);
+    const rawDt = Math.min(realFps, 0.05); // Cap dt to prevent spiral of death on lag
     lastT = t;
 
     OverlaysModule.updateFPS(realFps);
 
+    // 🔥 FRAME SKIP: Only run heavy logic every 4th frame to preserve FPS
     if (flagdraw === totalFrameSkipping) {
-        // 1. UI & Camera Updates
+        
+        // 1. UI & Camera Updates (Run every frame for smoothness)
         CameraModule.tick();
         
+        // Temporary bridge for Pan Pad (set by InputModule)
+        if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
+            window.Sim.updatePanPad();
+        }
+
         // 2. Background Layers
         ctx.fillStyle = 'rgba(4,4,12,.28)';
         ctx.fillRect(0, 0, W, H);
         EffectsModule.drawStars(ctx, t, W, H);
 
-        // 3. World-space Physics
+        // 3. World-Space Physics
         if (!paused && physSpeed > 0 && rawDt > 0) {
             const MAX_SAFE_SD = rawDt * 3.0 * config.PHYS_SCALE;
             const totalSd = rawDt * physSpeed * config.PHYS_SCALE;
-            const numTicks = Math.ceil(totalSd / MAX_SAFE_SD);
-            const sdPerTick = totalSd / numTicks;
+            const numTicks = Math.ceil(totalSd / MAX_SAFE_SD);            const sdPerTick = totalSd / numTicks;
 
             for (let tick = 0; tick < numTicks; tick++) {
                 tickBodies(sdPerTick);
@@ -94,25 +105,31 @@ function mainLoop(t) {
             AsteroidsModule.tick(rawDt * physSpeed * config.PHYS_SCALE);
         }
 
-        // 4. World-space Rendering
+        // 4. World-Space Rendering
         ctx.save();
-        CameraModule.apply();
+        CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM HERE
+
         EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
         SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
         SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
         SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
         ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
         AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
+        
+        // 🔥 CRITICAL FIX: Bodies MUST be drawn inside the camera transform!
+        // If drawn outside, world coordinates (e.g., 0,0) map to screen top-left (0,0) 
+        // at scale 1.0, causing the "popping bigger planet" bug.
+        BodiesModule.drawBodies(ctx);
+        
         OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
 
-        ctx.restore(); // End camera transform
+        ctx.restore(); // 🔥 END CAMERA TRANSFORM HERE
 
-        // 5. Trail System & Bodies
+        // 5. Trail System (Handles its own internal transforms)
         TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
-        BodiesModule.drawBodies(ctx);
         TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
 
-        // 6. Screen-space Overlays
+        // 6. Screen-Space Overlays
         OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
         OverlaysModule.drawFPS();
         OverlaysModule.updateCount(pcountEl);
@@ -121,20 +138,25 @@ function mainLoop(t) {
         cursorEl.style.left = InputModule.tx + 'px';
         cursorEl.style.top = InputModule.ty + 'px';
 
-        flagdraw = 0;
+        flagdraw = 0; // Reset counter
     }
-    flagdraw++;
+    
+    flagdraw++; // Increment counter
 }
 
-// ── Event Listeners ─────────────────────────────────────────────────────
-window.addEventListener('resize', () => {
-    W = canvas.width = window.innerWidth;
+// ── 6. Event Listeners ───────────────────────────────────────────────────
+window.addEventListener('resize', () => {    W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
+    
+    // 🔥 CRITICAL FIX: Update camera dimensions to prevent "popping" on resize
+    CameraModule.width = W;
+    CameraModule.height = H;
+    
     EffectsModule.init(W, H); // Re-init stars for new dimensions
     TrailsModule.resize(W, H);
 });
 
-// ── Bootstrap ───────────────────────────────────────────────────────────
+// ── 7. Bootstrap ─────────────────────────────────────────────────────────
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
