@@ -12,6 +12,7 @@ import { state, SUN, physSpeed, paused } from './core/state.js';
 import { CameraModule } from './modules/camera/camera.module.js';
 import { InputModule } from './modules/input/input.module.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
+import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { AsteroidsModule } from './modules/entities/asteroids.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { SunModule } from './modules/rendering/sun.js';
@@ -43,6 +44,7 @@ function init() {
     // Initialize Prime Modules
     CameraModule.init(canvas, ctx, W, H);
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
+    ConfigMenuModule.init();
     EffectsModule.init(W, H);
     TrailsModule.init(W, H);
 

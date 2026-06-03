@@ -6,8 +6,15 @@ import { hypot, clamp, rnd, rndR } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
 
+// Persistent objects to avoid GC pressure
+const _grid = new Map();
+const _cellPool = [];
+
 export const interBodyCollisions = () => {
     const bodies = state.bodies;
+    const cellSize = config.COLLISION_R * 2;
+    const invCellSize = 1 / cellSize;
+
     for (let bi = 0; bi < bodies.length; bi++) {
         for (let bj = bi + 1; bj < bodies.length; bj++) {
             const A = bodies[bi], B = bodies[bj];
@@ -16,43 +23,68 @@ export const interBodyCollisions = () => {
             const thresh = A.radius + B.radius + config.COLLISION_R * 4;
             if (cd2 > thresh * thresh) continue;
 
-            const cellSize = config.COLLISION_R * 2;
-            const grid = new Map();
-            const addParticleToGrid = (p, tag) => {
-                const key = Math.floor(p.x / cellSize) + "," + Math.floor(p.y / cellSize);
-                if (!grid.has(key)) grid.set(key, []);
-                grid.get(key).push({ p, tag });
+            // Clear persistent grid
+            _grid.clear();
+            let poolIdx = 0;
+
+            const addParticle = (p, tag) => {
+                const gx = (p.x * invCellSize) | 0;
+                const gy = (p.y * invCellSize) | 0;
+                const key = (gx << 16) ^ gy; // Fast integer hash
+                
+                let cell = _grid.get(key);
+                if (!cell) {
+                    cell = _cellPool[poolIdx++] || [];
+                    cell.length = 0;
+                    _grid.set(key, cell);
+                    if (poolIdx > _cellPool.length) _cellPool.push(cell);
+                }
+                cell.push(p, tag);
             };
-            for (const p of A.particles) if (!p.dead) addParticleToGrid(p, 0);
-            for (const p of B.particles) if (!p.dead) addParticleToGrid(p, 1);
 
-            for (const cell of grid.values()) {
-                let hasA = false, hasB = false;
-                for (const e of cell) { if (e.tag === 0) hasA = true; else hasB = true; }
-                if (!hasA || !hasB) continue;
+            for (let i = 0; i < A.particles.length; i++) {
+                const p = A.particles[i];
+                if (!p.dead) addParticle(p, 0);
+            }
+            for (let i = 0; i < B.particles.length; i++) {
+                const p = B.particles[i];
+                if (!p.dead) addParticle(p, 1);
+            }
 
-                for (const ea of cell) {
-                    if (ea.tag !== 0) continue;
-                    const pa = ea.p;
-                    for (const eb of cell) {
-                        if (eb.tag !== 1) continue;
-                        const pb = eb.p;
+            for (const cell of _grid.values()) {
+                const len = cell.length;
+                if (len < 4) continue; // Need at least one from A and one from B (4 elements: pA, tagA, pB, tagB)
+
+                for (let i = 0; i < len; i += 2) {
+                    const pa = cell[i];
+                    const tagA = cell[i + 1];
+                    if (tagA !== 0) continue;
+
+                    for (let j = 0; j < len; j += 2) {
+                        const pb = cell[j];
+                        const tagB = cell[j + 1];
+                        if (tagB !== 1) continue;
+
                         const dx = pb.x - pa.x, dy = pb.y - pa.y;
                         const d2 = dx * dx + dy * dy;
                         if (d2 >= config.COLLISION_R * config.COLLISION_R) continue;
+
                         const d = Math.sqrt(d2) || 0.001;
                         const nx = dx / d, ny = dy / d;
                         const ov = config.COLLISION_R - d;
                         const ma = pa.mass, mb = pb.mass, mt = ma + mb;
+                        
                         pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
                         pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
+                        
                         const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
-                        if (vn < 0) {                            const j = -(1 + 0.35) * vn / (1 / ma + 1 / mb);
-                            pa.vx += j * nx / ma; pa.vy += j * ny / ma;
-                            pb.vx -= j * nx / mb; pb.vy -= j * ny / mb;
-                            const heatGain = Math.min(0.4, Math.abs(vn) * 0.12);
-                            pa.heat = clamp(pa.heat + heatGain, 0, 1);
-                            pb.heat = clamp(pb.heat + heatGain, 0, 1);
+                        if (vn < 0) {
+                            const jVal = -(1.35) * vn / (1 / ma + 1 / mb);
+                            pa.vx += jVal * nx / ma; pa.vy += jVal * ny / ma;
+                            pb.vx -= jVal * nx / mb; pb.vy -= jVal * ny / mb;
+                            const h = Math.min(0.4, Math.abs(vn) * 0.12);
+                            pa.heat = clamp(pa.heat + h, 0, 1);
+                            pb.heat = clamp(pb.heat + h, 0, 1);
                         }
                     }
                 }

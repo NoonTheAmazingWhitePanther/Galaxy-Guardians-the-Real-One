@@ -11,7 +11,8 @@ export const config = {
     BREAK_MULT: 2.8,
     PHYS_SCALE: 40,
     TENTECLEMAX: 18,
-    get COLLISION_R() { return this.PARTICLE_R * 1.15; },
+    COLLISION_R_BASE_MULT: 1.15,
+    get COLLISION_R() { return this.PARTICLE_R * (this.COLLISION_R_BASE_MULT || 1.15); },
     get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
 };
 
