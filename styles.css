@@ -322,3 +322,42 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 #debug-toggle-btn:active {
   transform: scale(0.92);
 }
+
+/* ========================================
+   12. CONFIG MENU TABS
+   ======================================== */
+.cfg-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--ui-border);
+  padding-bottom: 8px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Hide scrollbar for Firefox */
+}
+.cfg-tabs::-webkit-scrollbar { display: none; } /* Hide scrollbar for Chrome/Safari */
+
+.cfg-tab {
+  padding: 4px 8px;
+  font-size: 10px;
+  cursor: pointer;
+  opacity: 0.5;
+  white-space: nowrap;
+  border-radius: 4px;
+  transition: opacity 0.2s, background 0.2s;
+}
+.cfg-tab:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
+.cfg-tab.active { opacity: 1; color: var(--ui-accent); background: rgba(130,210,255,0.1); }
+
+.cfg-content { display: none; }
+.cfg-content.active { display: block; }
+
+.cfg-info {
+  font-size: 11px;
+  opacity: 0.7;
+  line-height: 1.5;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

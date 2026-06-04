@@ -20,6 +20,28 @@ export const ConfigMenuModule = {
             menu.style.display = ConfigMenuModule.isOpen ? 'block' : 'none';
         });
 
+        // Tab Switching Logic
+        const tabs = menu.querySelectorAll('.cfg-tab');
+        const contents = menu.querySelectorAll('.cfg-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const target = tab.getAttribute('data-tab');
+                
+                // Update tabs
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                // Update content
+                contents.forEach(c => {
+                    c.classList.remove('active');
+                    if (c.id === `cfg-content-${target}`) {
+                        c.classList.add('active');
+                    }
+                });
+            });
+        });
+
         // Setup sliders
         const sliders = [
             { id: 'cfg-grav', key: 'GRAV_CONST', valId: 'cfg-grav-val' },
