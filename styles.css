@@ -144,8 +144,18 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
   position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: var(--ui-bg); border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius); padding: 18px; backdrop-filter: blur(12px);
-  display: none; min-width: 290px; max-width: 90vw; z-index: 200;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);}
+  display: none; 
+  
+  /* LOCK DIMENSIONS: Ensures menu never changes size between tabs */
+  width: 320px; 
+  height: 360px; 
+  max-width: 90vw;
+  max-height: 80vh;
+  
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
 .cfg-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 11px; }
 .cfg-row label { min-width: 115px; opacity: 0.9; }
 .cfg-row input { width: 110px; }
@@ -349,15 +359,21 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 .cfg-tab:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
 .cfg-tab.active { opacity: 1; color: var(--ui-accent); background: rgba(130,210,255,0.1); }
 
-.cfg-content { display: none; }
+.cfg-content { 
+  display: none; 
+  height: 280px; /* Fixed height for all content containers */
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
 .cfg-content.active { display: block; }
 
 .cfg-info {
   font-size: 11px;
   opacity: 0.7;
   line-height: 1.5;
-  min-height: 100px;
+  height: 100%; /* Fills the fixed content height */
   display: flex;
   align-items: center;
   justify-content: center;
+  text-align: center;
 }
