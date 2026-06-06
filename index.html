@@ -76,16 +76,44 @@
   </div>
 
   <div id="cfg-content-display" class="cfg-content">
-    <div class="cfg-info">Display settings coming soon...</div>
+    <div class="cfg-row"><label>RESOLUTION</label><input type="range" id="cfg-res" min="0.5" max="2" value="1" step="0.25"><span id="cfg-res-val">1.0x</span></div>
+    <div class="cfg-row"><label>FRAME CAP</label><input type="range" id="cfg-fps-cap" min="30" max="240" value="60" step="30"><span id="cfg-fps-cap-val">60</span></div>
+    <div class="cfg-row"><label>FRAME SKIPPING</label><input type="range" id="cfg-skip" min="1" max="4" value="1" step="1"><span id="cfg-skip-val">1</span></div>
+    <div class="cfg-row"><label>DAY/NIGHT CYCLE</label><input type="checkbox" id="cfg-daynight"></div>
+    <div class="cfg-row"><label>SHOW STARS</label><input type="checkbox" id="cfg-stars" checked></div>
+    <div class="cfg-row"><label>SHOW SUN CORONA</label><input type="checkbox" id="cfg-corona" checked></div>
+    <div class="cfg-row"><label>SHOW ORBITS</label><input type="checkbox" id="cfg-orbits"></div>
+    <div class="cfg-row"><label>PARTICLE BLOOM</label><input type="range" id="cfg-bloom" min="0" max="2" value="1" step="0.1"></div>
+    <div class="cfg-row"><label>UI OPACITY</label><input type="range" id="cfg-ui-alpha" min="0.2" max="1" value="0.88" step="0.01"></div>
   </div>
   <div id="cfg-content-sound" class="cfg-content">
-    <div class="cfg-info">Sound settings coming soon...</div>
+    <div class="cfg-row"><label>MASTER VOLUME</label><input type="range" id="cfg-vol-master" min="0" max="1" value="0.5" step="0.01"></div>
+    <div class="cfg-row"><label>SFX VOLUME</label><input type="range" id="cfg-vol-sfx" min="0" max="1" value="0.7" step="0.01"></div>
+    <div class="cfg-row"><label>MUSIC VOLUME</label><input type="range" id="cfg-vol-music" min="0" max="1" value="0.3" step="0.01"></div>
+    <div class="cfg-row"><label>COLLISION SOUNDS</label><input type="checkbox" id="cfg-sfx-coll" checked></div>
+    <div class="cfg-row"><label>AMBIENT HUM</label><input type="checkbox" id="cfg-sfx-ambient" checked></div>
   </div>
   <div id="cfg-content-performance" class="cfg-content">
-    <div class="cfg-info">CPU/GPU metrics coming soon...</div>
+    <div class="cfg-metrics" id="system-metrics">
+      <div class="metric-row"><span>OS</span><span id="sys-os">Loading...</span></div>
+      <div class="metric-row"><span>Browser</span><span id="sys-browser">Loading...</span></div>
+      <div class="metric-row"><span>Cores</span><span id="sys-cores">Loading...</span></div>
+      <div class="metric-row"><span>Memory</span><span id="sys-mem">Loading...</span></div>
+      <div class="metric-row"><span>Battery</span><span id="sys-batt">Loading...</span></div>
+      <div class="metric-row"><span>Voltage</span><span id="sys-volt">N/A</span></div>
+    </div>
   </div>
   <div id="cfg-content-hotkeys" class="cfg-content">
-    <div class="cfg-info">Hotkey list coming soon...</div>
+    <div class="hotkey-list">
+      <div class="hk-row"><kbd>SPACE</kbd><span>Pause/Resume</span></div>
+      <div class="hk-row"><kbd>F</kbd><span>Fit View</span></div>
+      <div class="hk-row"><kbd>+</kbd> / <kbd>-</kbd><span>Zoom In/Out</span></div>
+      <div class="hk-row"><kbd>R</kbd><span>Reset View</span></div>
+      <div class="hk-row"><kbd>[</kbd> / <kbd>]</kbd><span>Sim Speed</span></div>
+      <div class="hk-row"><kbd>~</kbd><span>Toggle Debug</span></div>
+      <div class="hk-row"><kbd>Mouse Wheel</kbd><span>Zoom</span></div>
+      <div class="hk-row"><kbd>Right Click</kbd><span>Pan</span></div>
+    </div>
   </div>
   <div id="cfg-content-about" class="cfg-content">
     <div class="cfg-info" style="text-align: center; padding: 10px;">

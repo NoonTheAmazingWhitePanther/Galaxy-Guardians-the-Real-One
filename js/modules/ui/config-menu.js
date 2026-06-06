@@ -39,6 +39,10 @@ export const ConfigMenuModule = {
                         c.classList.add('active');
                     }
                 });
+
+                if (target === 'performance') {
+                    ConfigMenuModule.updateMetrics();
+                }
             });
         });
 
@@ -49,7 +53,19 @@ export const ConfigMenuModule = {
             { id: 'cfg-damp', key: 'DAMPING', valId: 'cfg-damp-val' },
             { id: 'cfg-substeps', key: 'SUBSTEPS', valId: 'cfg-substeps-val' },
             { id: 'cfg-collr', key: 'COLLISION_R_MULT', valId: 'cfg-collr-val' },
-            { id: 'cfg-pr', key: 'PARTICLE_R', valId: 'cfg-pr-val' }
+            { id: 'cfg-pr', key: 'PARTICLE_R', valId: 'cfg-pr-val' },
+            
+            // Display
+            { id: 'cfg-res', key: 'RESOLUTION_MULT', valId: 'cfg-res-val' },
+            { id: 'cfg-fps-cap', key: 'FPS_CAP', valId: 'cfg-fps-cap-val' },
+            { id: 'cfg-skip', key: 'FRAME_SKIPPING', valId: 'cfg-skip-val' },
+            { id: 'cfg-bloom', key: 'BLOOM_INTENSITY' },
+            { id: 'cfg-ui-alpha', key: 'UI_OPACITY' },
+
+            // Sound
+            { id: 'cfg-vol-master', key: 'VOL_MASTER' },
+            { id: 'cfg-vol-sfx', key: 'VOL_SFX' },
+            { id: 'cfg-vol-music', key: 'VOL_MUSIC' }
         ];
 
         sliders.forEach(s => {
@@ -59,7 +75,7 @@ export const ConfigMenuModule = {
 
             // Initialize slider value from config
             if (s.key === 'COLLISION_R_MULT') {
-                el.value = 1.15; // Default mult
+                el.value = config.COLLISION_R_BASE_MULT || 1.15;
             } else {
                 el.value = config[s.key];
             }
@@ -70,11 +86,33 @@ export const ConfigMenuModule = {
                 if (valEl) valEl.textContent = val;
                 
                 if (s.key === 'COLLISION_R_MULT') {
-                    // Update the getter logic or value
                     config.COLLISION_R_BASE_MULT = val;
                 } else {
                     config[s.key] = val;
                 }
+
+                if (s.key === 'UI_OPACITY') {
+                    document.documentElement.style.setProperty('--ui-bg', `rgba(8, 8, 18, ${val})`);
+                }
+            });
+        });
+
+        // Setup checkboxes
+        const checkboxes = [
+            { id: 'cfg-daynight', key: 'DAY_NIGHT_CYCLE' },
+            { id: 'cfg-stars', key: 'SHOW_STARS' },
+            { id: 'cfg-corona', key: 'SHOW_CORONA' },
+            { id: 'cfg-orbits', key: 'SHOW_ORBITS' },
+            { id: 'cfg-sfx-coll', key: 'SFX_COLLISION' },
+            { id: 'cfg-sfx-ambient', key: 'SFX_AMBIENT' }
+        ];
+
+        checkboxes.forEach(c => {
+            const el = document.getElementById(c.id);
+            if (!el) return;
+            el.checked = config[c.key];
+            el.addEventListener('change', (e) => {
+                config[c.key] = e.target.checked;
             });
         });
 
@@ -87,8 +125,25 @@ export const ConfigMenuModule = {
                     'cfg-damp': 1.0,
                     'cfg-substeps': 8,
                     'cfg-collr': 1.15,
-                    'cfg-pr': 9
+                    'cfg-pr': 2.8,
+                    'cfg-res': 1.0,
+                    'cfg-fps-cap': 60,
+                    'cfg-skip': 1,
+                    'cfg-bloom': 1.0,
+                    'cfg-ui-alpha': 0.88,
+                    'cfg-vol-master': 0.5,
+                    'cfg-vol-sfx': 0.7,
+                    'cfg-vol-music': 0.3
                 };
+                const checkDefaults = {
+                    'cfg-daynight': false,
+                    'cfg-stars': true,
+                    'cfg-corona': true,
+                    'cfg-orbits': false,
+                    'cfg-sfx-coll': true,
+                    'cfg-sfx-ambient': true
+                };
+
                 Object.keys(defaults).forEach(id => {
                     const el = document.getElementById(id);
                     if (el) {
@@ -96,7 +151,57 @@ export const ConfigMenuModule = {
                         el.dispatchEvent(new Event('input'));
                     }
                 });
+                Object.keys(checkDefaults).forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.checked = checkDefaults[id];
+                        el.dispatchEvent(new Event('change'));
+                    }
+                });
             });
+        }
+    },
+
+    updateMetrics: () => {
+        // OS & Browser detection
+        const ua = navigator.userAgent;
+        let os = "Unknown OS";
+        if (ua.indexOf("Win") !== -1) os = "Windows";
+        if (ua.indexOf("Mac") !== -1) os = "macOS";
+        if (ua.indexOf("Linux") !== -1) os = "Linux";
+        if (ua.indexOf("Android") !== -1) os = "Android";
+        if (ua.indexOf("like Mac") !== -1) os = "iOS";
+
+        let browser = "Unknown Browser";
+        if (ua.indexOf("Chrome") !== -1) browser = "Chrome";
+        else if (ua.indexOf("Firefox") !== -1) browser = "Firefox";
+        else if (ua.indexOf("Safari") !== -1) browser = "Safari";
+        else if (ua.indexOf("Edge") !== -1) browser = "Edge";
+
+        document.getElementById('sys-os').textContent = os;
+        document.getElementById('sys-browser').textContent = browser;
+        document.getElementById('sys-cores').textContent = navigator.hardwareConcurrency || "N/A";
+        
+        if (navigator.deviceMemory) {
+            document.getElementById('sys-mem').textContent = `~${navigator.deviceMemory} GB`;
+        } else {
+            document.getElementById('sys-mem').textContent = "N/A";
+        }
+
+        // Battery Info
+        if (navigator.getBattery) {
+            navigator.getBattery().then(battery => {
+                const updateBatt = () => {
+                    document.getElementById('sys-batt').textContent = `${Math.round(battery.level * 100)}% ${battery.charging ? "(Charging)" : ""}`;
+                };
+                battery.addEventListener('levelchange', updateBatt);
+                battery.addEventListener('chargingchange', updateBatt);
+                updateBatt();
+            }).catch(() => {
+                document.getElementById('sys-batt').textContent = "N/A";
+            });
+        } else {
+            document.getElementById('sys-batt').textContent = "N/A";
         }
     }
 };

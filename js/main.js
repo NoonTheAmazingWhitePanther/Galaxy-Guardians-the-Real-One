@@ -14,7 +14,6 @@ import { InputModule } from './modules/input/input.module.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { AsteroidsModule } from './modules/entities/asteroids.js';
-import { Planet } from './modules/entities/planet.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { SunModule } from './modules/rendering/sun.js';
 import { BodiesModule } from './modules/rendering/bodies.js';
@@ -58,7 +57,7 @@ function init() {
         const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
         
         const w = CameraModule.screenToWorld(InputModule.tx, InputModule.ty);
-        Planet.spawn(w.x, w.y, radius / 8, pcountEl);
+        OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, pcountEl);
     };
 
     // Initial Canvas Clear
@@ -69,8 +68,7 @@ function init() {
     requestAnimationFrame(mainLoop);
 }
 
-// ── 5. Main Animation Loop ───────────────────────────────────────────
-
+// ── 5. Main Animation Loop ───────────────────────────────────────────────
 function mainLoop(t) {
     requestAnimationFrame(mainLoop);
 

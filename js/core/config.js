@@ -13,7 +13,25 @@ export const config = {
     TENTECLEMAX: 18,
     COLLISION_R_BASE_MULT: 1.15,
     get COLLISION_R() { return this.PARTICLE_R * (this.COLLISION_R_BASE_MULT || 1.15); },
-    get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; }
+    get LOOSE_HIT_R() { return this.PARTICLE_R * 3.5; },
+
+    // Display
+    RESOLUTION_MULT: 1.0,
+    FPS_CAP: 60,
+    FRAME_SKIPPING: 1,
+    DAY_NIGHT_CYCLE: false,
+    SHOW_STARS: true,
+    SHOW_CORONA: true,
+    SHOW_ORBITS: false,
+    BLOOM_INTENSITY: 1.0,
+    UI_OPACITY: 0.88,
+
+    // Sound
+    VOL_MASTER: 0.5,
+    VOL_SFX: 0.7,
+    VOL_MUSIC: 0.3,
+    SFX_COLLISION: true,
+    SFX_AMBIENT: true
 };
 
 export const burntConfig = {

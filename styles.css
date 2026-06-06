@@ -377,3 +377,36 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
   justify-content: center;
   text-align: center;
 }
+
+/* ========================================
+   13. HOTKEYS & METRICS
+   ======================================== */
+.hotkey-list, .cfg-metrics {
+  padding: 10px;
+}
+
+.hk-row, .metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.hk-row kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: var(--ui-font);
+  color: var(--ui-accent);
+}
+
+.metric-row span:first-child {
+  opacity: 0.6;
+}
+
+.metric-row span:last-child {
+  color: var(--ui-accent);
+  font-weight: bold;
+}
