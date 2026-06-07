@@ -14,6 +14,9 @@ export const ConfigMenuModule = {
         
         if (!menu || !toggleBtn) return;
 
+        // Load saved settings
+        ConfigMenuModule.loadSettings();
+
         // Toggle menu visibility
         toggleBtn.addEventListener('click', () => {
             ConfigMenuModule.isOpen = !ConfigMenuModule.isOpen;
@@ -46,6 +49,10 @@ export const ConfigMenuModule = {
             });
         });
 
+        // Auto-save settings on change
+        menu.addEventListener('input', () => ConfigMenuModule.saveSettings());
+        menu.addEventListener('change', () => ConfigMenuModule.saveSettings());
+
         // Setup sliders
         const sliders = [
             { id: 'cfg-grav', key: 'GRAV_CONST', valId: 'cfg-grav-val' },
@@ -60,6 +67,8 @@ export const ConfigMenuModule = {
             { id: 'cfg-fps-cap', key: 'FPS_CAP', valId: 'cfg-fps-cap-val' },
             { id: 'cfg-skip', key: 'FRAME_SKIPPING', valId: 'cfg-skip-val' },
             { id: 'cfg-bloom', key: 'BLOOM_INTENSITY' },
+            { id: 'cfg-trail-fade', key: 'TRAIL_FADE' },
+            { id: 'cfg-glow', key: 'GLOW_INTENSITY' },
             { id: 'cfg-ui-alpha', key: 'UI_OPACITY' },
 
             // Sound
@@ -130,6 +139,8 @@ export const ConfigMenuModule = {
                     'cfg-fps-cap': 60,
                     'cfg-skip': 1,
                     'cfg-bloom': 1.0,
+                    'cfg-trail-fade': 0.5,
+                    'cfg-glow': 1.0,
                     'cfg-ui-alpha': 0.88,
                     'cfg-vol-master': 0.5,
                     'cfg-vol-sfx': 0.7,
@@ -160,6 +171,48 @@ export const ConfigMenuModule = {
                 });
             });
         }
+    },
+
+    saveSettings: () => {
+        const settings = {};
+        // Save sliders
+        const sliders = [
+            'cfg-grav', 'cfg-spring', 'cfg-damp', 'cfg-substeps', 'cfg-collr', 'cfg-pr',
+            'cfg-res', 'cfg-fps-cap', 'cfg-skip', 'cfg-bloom', 'cfg-ui-alpha',
+            'cfg-vol-master', 'cfg-vol-sfx', 'cfg-vol-music'
+        ];
+        sliders.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) settings[id] = el.value;
+        });
+
+        // Save checkboxes
+        const checks = [
+            'cfg-daynight', 'cfg-stars', 'cfg-corona', 'cfg-orbits', 'cfg-sfx-coll', 'cfg-sfx-ambient'
+        ];
+        checks.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) settings[id] = el.checked;
+        });
+
+        localStorage.setItem('gg_settings', JSON.stringify(settings));
+    },
+
+    loadSettings: () => {
+        const saved = localStorage.getItem('gg_settings');
+        if (!saved) return;
+        try {
+            const settings = JSON.parse(saved);
+            Object.keys(settings).forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    if (el.type === 'checkbox') el.checked = settings[id];
+                    else el.value = settings[id];
+                    el.dispatchEvent(new Event('input'));
+                    el.dispatchEvent(new Event('change'));
+                }
+            });
+        } catch (e) { console.warn("Failed to load settings", e); }
     },
 
     updateMetrics: () => {

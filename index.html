@@ -63,6 +63,7 @@
     <div class="cfg-tab" data-tab="performance">CPU/GPU</div>
     <div class="cfg-tab" data-tab="hotkeys">Hotkeys</div>
     <div class="cfg-tab" data-tab="about">About</div>
+    <div class="cfg-tab" data-tab="multiplayer">Multiplayer</div>
   </div>
 
   <div id="cfg-content-physics" class="cfg-content active">
@@ -84,6 +85,8 @@
     <div class="cfg-row"><label>SHOW SUN CORONA</label><input type="checkbox" id="cfg-corona" checked></div>
     <div class="cfg-row"><label>SHOW ORBITS</label><input type="checkbox" id="cfg-orbits"></div>
     <div class="cfg-row"><label>PARTICLE BLOOM</label><input type="range" id="cfg-bloom" min="0" max="2" value="1" step="0.1"></div>
+    <div class="cfg-row"><label>TRAIL FADE</label><input type="range" id="cfg-trail-fade" min="0" max="1" value="0.5" step="0.1"></div>
+    <div class="cfg-row"><label>GLOW INTENSITY</label><input type="range" id="cfg-glow" min="0" max="2" value="1" step="0.1"></div>
     <div class="cfg-row"><label>UI OPACITY</label><input type="range" id="cfg-ui-alpha" min="0.2" max="1" value="0.88" step="0.01"></div>
   </div>
   <div id="cfg-content-sound" class="cfg-content">
@@ -116,11 +119,27 @@
     </div>
   </div>
   <div id="cfg-content-about" class="cfg-content">
-    <div class="cfg-info" style="text-align: center; padding: 10px;">
-      <strong>Galaxy Guardians 2.0</strong><br>
-      Modular Engine v2.0.1<br><br>
-      Built with ❤️ and a lot of Math.hypot()
+    <div class="about-container">
+      <div class="about-header">
+        <div class="about-title">GALAXY GUARDIANS</div>
+        <div class="about-version">MODULAR ENGINE v2.2.0</div>
+      </div>
+      <div class="about-section">
+        <div class="section-label">ARCHITECTURE</div>
+        <p>Built on a custom ES6 Modular Core designed for high-performance physics simulations and real-time astronomical rendering.</p>
+      </div>
+      <div class="about-section">
+        <div class="section-label">OPTIMIZATIONS</div>
+        <p>Zero-GC Spatial Hashing, Fast Integer Grid Collision, and Multi-step Verlet Integration.</p>
+      </div>
+      <div class="about-footer">
+        Developed by NoonTheAmazingWhitePanther<br>
+        © 2026 • Open Source Simulation
+      </div>
     </div>
+  </div>
+  <div id="cfg-content-multiplayer" class="cfg-content">
+    <div class="cfg-info">🔗 Multiplayer features coming soon...</div>
   </div>
 </div>
 

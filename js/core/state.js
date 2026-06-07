@@ -35,8 +35,8 @@ export let physSpeed = 1;
 export let paused = false;
 
 export const SPEED_MAX = 12;
-export const RING_MIN_RADIUS = 10;
-export const RING_PARTICLES = 10;
+export const RING_MIN_RADIUS = 100;
+export const RING_PARTICLES = 5;
 export const AST_SPAWN_INTERVAL = 600;
 export const AST_MAX = 3;
 

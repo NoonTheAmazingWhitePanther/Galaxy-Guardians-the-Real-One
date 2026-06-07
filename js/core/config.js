@@ -24,6 +24,8 @@ export const config = {
     SHOW_CORONA: true,
     SHOW_ORBITS: false,
     BLOOM_INTENSITY: 1.0,
+    TRAIL_FADE: 0.5,
+    GLOW_INTENSITY: 1.0,
     UI_OPACITY: 0.88,
 
     // Sound

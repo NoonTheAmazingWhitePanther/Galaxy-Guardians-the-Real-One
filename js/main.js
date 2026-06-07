@@ -39,6 +39,11 @@ let lastT = 0;
 let flagdraw = 0;
 const totalFrameSkipping = 4;
 
+const restFullCycles = 10; // counting loop cycles
+const restFullCyclesMs = 10;
+let restCycle = 0;
+let restCycleMs = 0;
+
 // ── 4. Initialization ────────────────────────────────────────────────────
 function init() {
     // Initialize Prime Modules
@@ -64,86 +69,103 @@ function init() {
     ctx.fillStyle = '#04040c';
     ctx.fillRect(0, 0, W, H);
 
+    //reset cycles
+    restCycle = restFullCycles; // adding the right maximum for first rebder to complete
+    restCycleMs = restFullCyclesMs;
     // Start Loop
     requestAnimationFrame(mainLoop);
 }
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 // ── 5. Main Animation Loop ───────────────────────────────────────────────
 function mainLoop(t) {
-    requestAnimationFrame(mainLoop);
-
-    const realFps = (t - lastT) / 1000;
-    const rawDt = Math.min(realFps, 0.05); // Cap dt to prevent spiral of death on lag
-    lastT = t;
-
-    OverlaysModule.updateFPS(realFps);
-
-    // 🔥 FRAME SKIP: Only run heavy logic every 4th frame to preserve FPS
-    if (flagdraw === totalFrameSkipping) {
-        
-        // 1. UI & Camera Updates (Run every frame for smoothness)
-        CameraModule.tick();
-        
-        // Temporary bridge for Pan Pad (set by InputModule)
-        if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
-            window.Sim.updatePanPad();
-        }
-
-        // 2. Background Layers
-        ctx.fillStyle = 'rgba(4,4,12,.28)';
-        ctx.fillRect(0, 0, W, H);
-        EffectsModule.drawStars(ctx, t, W, H);
-
-        // 3. World-Space Physics
-        if (!paused && physSpeed > 0 && rawDt > 0) {
-            const MAX_SAFE_SD = rawDt * 3.0 * config.PHYS_SCALE;
-            const totalSd = rawDt * physSpeed * config.PHYS_SCALE;
-            const numTicks = Math.ceil(totalSd / MAX_SAFE_SD);            const sdPerTick = totalSd / numTicks;
-
-            for (let tick = 0; tick < numTicks; tick++) {
-                tickBodies(sdPerTick);
-                tickLoose(sdPerTick);
-            }
-            AsteroidsModule.tick(rawDt * physSpeed * config.PHYS_SCALE);
-        }
-
-        // 4. World-Space Rendering
-        ctx.save();
-        CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM HERE
-
-        EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
-        SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
-        SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
-        SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
-        ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
-        AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
-        
-        // 🔥 CRITICAL FIX: Bodies MUST be drawn inside the camera transform!
-        // If drawn outside, world coordinates (e.g., 0,0) map to screen top-left (0,0) 
-        // at scale 1.0, causing the "popping bigger planet" bug.
-        BodiesModule.drawBodies(ctx);
-        
-        OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
-
-        ctx.restore(); // 🔥 END CAMERA TRANSFORM HERE
-
-        // 5. Trail System (Handles its own internal transforms)
-        TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
-        TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
-
-        // 6. Screen-Space Overlays
-        OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
-        OverlaysModule.drawFPS();
-        OverlaysModule.updateCount(pcountEl);
-
-        // Update cursor position
-        cursorEl.style.left = InputModule.tx + 'px';
-        cursorEl.style.top = InputModule.ty + 'px';
-
-        flagdraw = 0; // Reset counter
-    }
+    /*
+    if (restCycle === restFullCycles){
+        restCycle = 0;
+        // go to sleep between frames. to reduce total overload.
+        // Mandatory in most applications. keeping the green vibe on.
+        await sleep(restFullCyclesMs);
+        console.log("Delayed")
+    }*/
+    //restCycle++;
+        requestAnimationFrame(mainLoop);
     
-    flagdraw++; // Increment counter
+        const realFps = (t - lastT) / 1000;
+        const rawDt = Math.min(realFps, 0.05); // Cap dt to prevent spiral of death on lag
+        lastT = t;
+    
+        OverlaysModule.updateFPS(realFps);
+    
+        // 🔥 FRAME SKIP: Only run heavy logic every 4th frame to preserve FPS
+        if (flagdraw === totalFrameSkipping) {
+            
+            // 1. UI & Camera Updates (Run every frame for smoothness)
+            CameraModule.tick();
+            
+            // Temporary bridge for Pan Pad (set by InputModule)
+            if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
+                window.Sim.updatePanPad();
+            }
+    
+            // 2. Background Layers
+            ctx.fillStyle = 'rgba(4,4,12,.28)';
+            ctx.fillRect(0, 0, W, H);
+            EffectsModule.drawStars(ctx, t, W, H);
+    
+            // 3. World-Space Physics
+            if (!paused && physSpeed > 0 && rawDt > 0) {
+                const MAX_SAFE_SD = rawDt * 3.0 * config.PHYS_SCALE;
+                const totalSd = rawDt * physSpeed * config.PHYS_SCALE;
+                const numTicks = Math.ceil(totalSd / MAX_SAFE_SD);            const sdPerTick = totalSd / numTicks;
+    
+                for (let tick = 0; tick < numTicks; tick++) {
+                    tickBodies(sdPerTick);
+                    tickLoose(sdPerTick);
+                }
+                AsteroidsModule.tick(rawDt * physSpeed * config.PHYS_SCALE);
+            }
+    
+            // 4. World-Space Rendering
+            ctx.save();
+            CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM HERE
+    
+            EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
+            SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
+            SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
+            SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
+            ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
+            AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
+            
+            // 🔥 CRITICAL FIX: Bodies MUST be drawn inside the camera transform!
+            // If drawn outside, world coordinates (e.g., 0,0) map to screen top-left (0,0) 
+            // at scale 1.0, causing the "popping bigger planet" bug.
+            BodiesModule.drawBodies(ctx);
+            
+            OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+    
+            ctx.restore(); // 🔥 END CAMERA TRANSFORM HERE
+    
+            // 5. Trail System (Handles its own internal transforms)
+            TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
+            TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
+    
+            // 6. Screen-Space Overlays
+            OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+            OverlaysModule.drawFPS();
+            OverlaysModule.updateCount(pcountEl);
+    
+            // Update cursor position
+            cursorEl.style.left = InputModule.tx + 'px';
+            cursorEl.style.top = InputModule.ty + 'px';
+    
+            flagdraw = 0; // Reset counter
+        }
+        
+        flagdraw++; // Increment counter
+    
+    
 }
 
 // ── 6. Event Listeners ───────────────────────────────────────────────────
