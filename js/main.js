@@ -55,6 +55,8 @@ let lastT = 0;
 // Physics ticks are skipped to reduce CPU load.
 let physicsFrameCounter = 0;
 const PHYSICS_FRAME_SKIP = 4; // Physics runs every Nth frame
+let renderFrameCounter = 0;
+const RENDER_FRAME_SKIP = 4;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 5. INITIALIZATION
@@ -126,53 +128,56 @@ function mainLoop(t) {
     // Update FPS display
     OverlaysModule.updateFPS(realFps);
     
-    // ────────────────────────────────────────────────────────────
-    // RENDER: Every frame for smooth 60 FPS visuals
-    // ────────────────────────────────────────────────────────────
-    
-    // 1. Update camera (for smooth zoom/pan interpolation)
-    CameraModule.tick();
-    
-    // 2. Pan Pad update (legacy bridge - TODO: Refactor to pure imports)
-    if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
-        window.Sim.updatePanPad();
-    }
-    
-    // 3. Background layers
-    ctx.fillStyle = 'rgba(4,4,12,.28)';
-    ctx.fillRect(0, 0, W, H);
-    EffectsModule.drawStars(ctx, t, W, H);
-    
-    // 4. World-space rendering (inside camera transform)
-    ctx.save();
-    CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM
-    
-    EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
-    SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
-    SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
-    SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
-    ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
-    AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
-    
-    // 🔥 CRITICAL: Bodies MUST be drawn inside camera transform!
-    // If drawn outside, world coordinates don't map correctly to screen space,
-    // causing the "popping bigger planet" visual bug.
-    BodiesModule.drawBodies(ctx);
-    
-    // Orbit prediction preview
-    OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
-    
-    ctx.restore(); // 🔥 END CAMERA TRANSFORM
-    
-    // 5. Trail system (manages its own internal transforms)
-    TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
-    TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
-    
-    // 6. Screen-space overlays (UI, charge indicator, etc)
-    OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
-    OverlaysModule.drawFPS();
-    OverlaysModule.updateCount(pcountEl);
-    
+    // skip render anyway and do not clean rhe screen render
+    if (renderFrameCounter++ >= RENDER_FRAME_SKIP){
+        renderFrameCounter = 0;
+        // ────────────────────────────────────────────────────────────
+        // RENDER: Every frame for smooth 60 FPS visuals
+        // ────────────────────────────────────────────────────────────
+        
+        // 1. Update camera (for smooth zoom/pan interpolation)
+        CameraModule.tick();
+        
+        // 2. Pan Pad update (legacy bridge - TODO: Refactor to pure imports)
+        if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
+            window.Sim.updatePanPad();
+        }
+        
+        // 3. Background layers
+        ctx.fillStyle = 'rgba(4,4,12,.28)';
+        ctx.fillRect(0, 0, W, H);
+        EffectsModule.drawStars(ctx, t, W, H);
+        
+        // 4. World-space rendering (inside camera transform)
+        ctx.save();
+        CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM
+        
+        EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
+        SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
+        SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
+        SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
+        ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
+        AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
+        
+        // 🔥 CRITICAL: Bodies MUST be drawn inside camera transform!
+        // If drawn outside, world coordinates don't map correctly to screen space,
+        // causing the "popping bigger planet" visual bug.
+        BodiesModule.drawBodies(ctx);
+        
+        // Orbit prediction preview
+        OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+        
+        ctx.restore(); // 🔥 END CAMERA TRANSFORM
+        
+        // 5. Trail system (manages its own internal transforms)
+        TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
+        TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
+        
+        // 6. Screen-space overlays (UI, charge indicator, etc)
+        OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+        OverlaysModule.drawFPS();
+        OverlaysModule.updateCount(pcountEl);
+    }   
     // 7. Update cursor position
     cursorEl.style.left = InputModule.tx + 'px';
     cursorEl.style.top = InputModule.ty + 'px';
