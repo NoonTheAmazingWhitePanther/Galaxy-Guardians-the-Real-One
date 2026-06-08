@@ -147,7 +147,14 @@ Showingoff **Golden Age Children Favorite ScrapBook -  A Result of revolution an
 
 For me. all with different eyes are Aliens.
 Gaming, Simulation and Total Galaxy Defense.
+JUST CAUSE. I might need to help Japan.
 
+Introducing Physics Skipping
+Render Frame Skipping
+5 second premade Cache.
+Full Rendering system and Time Manipulation and Scribbing from x0.0000001 to x1000
+
+60 Fps stable on Poco
 ---
 
 ## 📋 Master Roadmap
