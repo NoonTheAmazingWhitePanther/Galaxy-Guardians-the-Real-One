@@ -137,6 +137,17 @@ Because this engine was built from zero — no Unity, no Phaser, no shortcuts. E
 
 **Fake or Real. You decide. The galaxy doesn't care.**
 
+**Thor** or **Starlord** have a ship.
+I have a **Planet** I need the extra practice.
+Showingoff **Golden Age Children Favorite ScrapBook -  A Result of revolution an occarance with realism, freedom and Liberation**
+
+**.    '       Asia     '    .**
+ **Brics +-** ALWAYS **Native**
+
+
+For me. all with different eyes are Aliens.
+Gaming, Simulation and Total Galaxy Defense.
+
 ---
 
 ## 📋 Master Roadmap
