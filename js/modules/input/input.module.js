@@ -252,15 +252,19 @@ export const InputModule = {
     },
 
     _spawnPlanet() {
-        if (typeof window.Sim.spawnPlanet === 'function') {
-            const charge = Math.min((performance.now() - this.holdT) / 2000, 1);
-            const sliderVal = parseFloat(this.slider.value);
-            const radius = typeof window.Sim.getPlanetRadius === 'function' 
-                ? window.Sim.getPlanetRadius(sliderVal, charge) 
-                : clamp(sliderVal * (1 + charge * 4) * 8, 16, 110);
-            
-            const w = CameraModule.screenToWorld(this.tx, this.ty);
-            window.Sim.spawnPlanet(w.x, w.y, radius);
-        }
+      const charge = Math.min((performance.now() - this.holdT) / 2000, 1);
+      const sliderVal = parseFloat(this.slider.value);
+      const raw = sliderVal * (1 + charge * 4);
+      const t = Math.min(raw / 50, 1);
+      const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
+      const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+    
+      const w = CameraModule.screenToWorld(this.tx, this.ty);
+    
+      // Import OverlaysModule dynamically to avoid circular dependency
+      import('../../modules/ui/overlays.js').then(({ OverlaysModule }) => {
+        OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, this.pcountEl);
+      });
     }
+        
 };

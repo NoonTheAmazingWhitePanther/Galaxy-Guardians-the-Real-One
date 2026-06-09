@@ -28,9 +28,12 @@ export const interBodyCollisions = () => {
             let poolIdx = 0;
 
             const addParticle = (p, tag) => {
-                const gx = (p.x * invCellSize) | 0;
-                const gy = (p.y * invCellSize) | 0;
-                const key = (gx << 16) ^ gy; // Fast integer hash
+                const HASH_OFFSET = 100000; // Large enough for any expected grid coord
+
+                  const gx = (p.x * invCellSize) | 0;
+                  const gy = (p.y * invCellSize) | 0;
+                  const key = ((gx + HASH_OFFSET) << 20) ^ (gy + HASH_OFFSET); // Fast integer hash, safe for negatives
+
                 
                 let cell = _grid.get(key);
                 if (!cell) {

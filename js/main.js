@@ -75,7 +75,7 @@ function init() {
 
     // Bridge: Connect InputModule's spawn trigger to OverlaysModule
     // This allows input handling to trigger planet spawning
-    InputModule._spawnPlanet = handlePlanetSpawn;
+    //InputModule._spawnPlanet = handlePlanetSpawn;
 
     // Initial canvas clear
     ctx.fillStyle = '#04040c';
@@ -89,6 +89,7 @@ function init() {
  * Handle planet spawning from input.
  * Calculates spawn parameters based on charge and slider value.
  */
+ /*
 function handlePlanetSpawn() {
     const charge = Math.min((performance.now() - InputModule.holdT) / 2000, 1);
     const sliderVal = parseFloat(slider.value);
@@ -100,7 +101,7 @@ function handlePlanetSpawn() {
     const w = CameraModule.screenToWorld(InputModule.tx, InputModule.ty);
     OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, pcountEl);
 }
-
+*/
 // ─────────────────────────────────────────────────────────────────────────
 // 6. MAIN ANIMATION LOOP
 // ─────────────────────────────────────────────────────────────────────────

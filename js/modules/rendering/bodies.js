@@ -6,6 +6,11 @@ import { hypot, lerp, clamp, convexHull, PI2 } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { state, SUN } from '../../core/state.js';
 import { CameraModule } from '../camera/camera.module.js';
+import { renderParticles } from '../rendering/particle-management.js';
+
+// ... in drawBody(), after springs, replace particle loops with:
+
+
 
 export const BodiesModule = {
     drawBodies: (ctx) => {
@@ -88,51 +93,8 @@ export const BodiesModule = {
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Particles classification
-        const coolNormal = [], coolBurnt = [], hotParticles = [];
-        for (const p of alive) {
-            if (p.heat > 0.05) hotParticles.push(p);
-            else {
-                if (p.isBurnt) coolBurnt.push(p);
-                else coolNormal.push(p);
-            }
-        }
-        // Cool normal
-        ctx.fillStyle = `rgba(${pal.gc},.75)`;
-        for (const p of coolNormal) {
-            const r = p.isCore ? config.PARTICLE_R * 1.3 : config.PARTICLE_R;
-            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, PI2); ctx.fill();
-            p.heat = Math.max(0, p.heat - 0.012);
-        }
+        renderParticles(ctx, alive, pal, burnFactor, config.PARTICLE_R, lerp);
 
-        // Cool burnt
-        ctx.fillStyle = "rgba(40,20,15,0.85)";
-        for (const p of coolBurnt) {
-            const r = p.isCore ? config.PARTICLE_R * 1.3 : config.PARTICLE_R;
-            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, PI2); ctx.fill();
-            p.heat = Math.max(0, p.heat - 0.012);
-        }
-
-        // Hot particles
-        for (const p of hotParticles) {
-            const r = p.isCore ? config.PARTICLE_R * 1.3 : config.PARTICLE_R;
-            const heatColor = burnFactor > 0.5
-                ? `rgba(255,${Math.floor(lerp(220, 255, p.heat))},150,${p.heat})`
-                : `rgba(255,${Math.floor(lerp(60, 220, p.heat))},30,${p.heat * 0.9})`;
-            ctx.fillStyle = heatColor;
-            ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, PI2); ctx.fill();
-            
-            if (burnFactor > 0.2 && p.heat > 0.5) {
-                ctx.save();
-                ctx.globalAlpha = p.heat * burnFactor * 0.5;
-                ctx.shadowBlur = r * (3 + burnFactor * 4);
-                ctx.shadowColor = `rgba(255,100,30,${burnFactor * 0.7})`;
-                ctx.fillStyle = `rgba(255,140,50,${burnFactor * 0.6})`;
-                ctx.beginPath(); ctx.arc(p.x, p.y, r * 1.3, 0, PI2); ctx.fill();
-                ctx.restore();
-            }
-            p.heat = Math.max(0, p.heat - 0.012);
-        }
 
         // Atmosphere halo
         ctx.save();
