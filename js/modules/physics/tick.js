@@ -47,7 +47,8 @@ export const applyGravity = (p, nParticles) => {
     const sdx = SUN.x - p.x, sdy = SUN.y - p.y;
     const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
     const sf = (config.GRAV_CONST * SUN.mass * gm / (sd2 + 500)) / nParticles;
-    p.fx += (sdx / sd) * sf * p.mass; p.fy += (sdy / sd) * sf * p.mass;    for (const b of state.bodies) {
+    p.fx += (sdx / sd) * sf * p.mass; p.fy += (sdy / sd) * sf * p.mass;
+    for (const b of state.bodies) {
         if (p.body === b) continue;
         const dx = b.cx - p.x, dy = b.cy - p.y;
         const d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
@@ -57,18 +58,20 @@ export const applyGravity = (p, nParticles) => {
 };
 
 export const tickLoose = (dt) => {
-    state.loose = state.loose.filter(p => p.life > 0.02);
-    if (state.loose.length > 400) state.loose.splice(0, state.loose.length - 350);
-    
+    // Fuse filter into single pass: mark dead, collect survivors
+    const survivors = [];
     for (const p of state.loose) {
+        if (p.life <= 0.02) continue; // skip dead
+        if (state.loose.length > 400 && survivors.length >= 350) break; // hard cap
+        
         const sdx = SUN.x - p.x, sdy = SUN.y - p.y;
         const sd2 = sdx * sdx + sdy * sdy, sd = Math.sqrt(sd2) + 0.1;
         const inBurnZone = sd < SUN.burnRadius * 4;
         const inCritical = sd < SUN.burnRadius;
-        
+
         if (!p.isBurnt && p.heat > 0.7 && !inBurnZone) { p.isBurnt = true; p.burnedAt = performance.now(); }
-        if (inCritical) { p.life = 0; continue; }
-        
+        if (inCritical) continue; // skip to next, don't add to survivors
+
         if (p.isBurnt && inBurnZone) {
             p.life -= p.meltRate * dt * 2.5;
             const escapeFactor = p.detachSpeed / 15;
@@ -81,17 +84,16 @@ export const tickLoose = (dt) => {
             p.life -= p.isRing ? p.decay * dt : (p.decay + 0.008) * dt;
         }
 
-        // Option A: Remove clustering entirely (burnt particles drift naturally)
-// Just delete the entire burnt clustering block.
-
-// Option B: Replace with cheap random repulsion
+        // Cheap random repulsion for burnt particles (replaces O(n²) clustering)
         if (p.isBurnt) {
-          p.vx += (rnd() - 0.5) * 0.1 * dt;
-          p.vy += (rnd() - 0.5) * 0.1 * dt;
+            p.vx += (Math.random() - 0.5) * 0.1 * dt;
+            p.vy += (Math.random() - 0.5) * 0.1 * dt;
         }
 
-        if (sd < SUN.burnRadius) { p.life = 0; continue; }
-        const sf = config.GRAV_CONST * SUN.mass * sunGravMult / (sd2 + 500) * 0.04;        p.vx += sdx / sd * sf * dt; p.vy += sdy / sd * sf * dt;
+        if (sd < SUN.burnRadius) continue; // skip to next
+
+        const sf = config.GRAV_CONST * SUN.mass * sunGravMult / (sd2 + 500) * 0.04;
+        p.vx += sdx / sd * sf * dt; p.vy += sdy / sd * sf * dt;
         for (const b of state.bodies) {
             const dx = b.cx - p.x, dy = b.cy - p.y;
             const d2 = dx * dx + dy * dy, d = Math.sqrt(d2) + 0.1;
@@ -99,12 +101,16 @@ export const tickLoose = (dt) => {
             p.vx += dx / d * f * dt; p.vy += dy / d * f * dt;
         }
         p.vx *= 0.995; p.vy *= 0.995; p.x += p.vx * dt; p.y += p.vy * dt;
+        
         if (p.isBurnt) {
             p.heat = sd < SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.015 * dt) : Math.max(0.5, p.heat - 0.003 * dt);
         } else {
             p.heat = sd < SUN.burnRadius * 3 ? Math.min(1, p.heat + 0.02 * dt) : Math.max(0, p.heat - 0.008 * dt);
         }
+        
+        survivors.push(p);
     }
+    state.loose = survivors;
 };
 
 export const tickBodies = (scaledDt) => {
@@ -112,29 +118,34 @@ export const tickBodies = (scaledDt) => {
     const bodies = state.bodies;
     const burnR = SUN.burnRadius, burnZoneR = burnR * 4;
     const burnSq = burnR * burnR, burnZoneSq = burnZoneR * burnZoneR;
-    
-    const countAlive = (b) => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; };
-    const nAlives = new Array(bodies.length).fill(0);
 
-for (let sub = 0; sub < config.SUBSTEPS; sub++) {
-  for (let bi = 0; bi < bodies.length; bi++) {
-    const body = bodies[bi];
-    
-    // On first substep, count alive and cache
-    if (sub === 0) {
-      let n = 0;
-      for (const p of body.particles) if (!p.dead) n++;
-      nAlives[bi] = n || 1;
-    }
-    
-    const na = nAlives[bi];
-    
-    for (const p of body.particles) {
-      if (p.dead) continue;
-      applyGravity(p, na);
-      integrateParticle(p, dt);
-      // ... burn zone ...
-      const dx = SUN.x - p.x, dy = SUN.y - p.y;
+    const nAlives = new Array(bodies.length);
+
+    for (let sub = 0; sub < config.SUBSTEPS; sub++) {
+        // ── PHASE 1: Count alive (first substep only) ──
+        if (sub === 0) {
+            for (let bi = 0; bi < bodies.length; bi++) {
+                let n = 0;
+                for (const p of bodies[bi].particles) if (!p.dead) n++;
+                nAlives[bi] = n || 1;
+            }
+        }
+
+        // ── PHASE 2: Fused gravity + integration + burn (ONE loop per body) ──
+        for (let bi = 0; bi < bodies.length; bi++) {
+            const body = bodies[bi];
+            const na = nAlives[bi];
+            for (const p of body.particles) {
+                if (p.dead) continue;
+                
+                // 1. Gravity
+                applyGravity(p, na);
+                
+                // 2. Integration
+                integrateParticle(p, dt);
+                
+                // 3. Burn zone
+                const dx = SUN.x - p.x, dy = SUN.y - p.y;
                 const sd2 = dx * dx + dy * dy;
                 if (sd2 < burnSq) { p.dead = true; p.heat = 1; }
                 else if (sd2 < burnZoneSq) {
@@ -142,17 +153,22 @@ for (let sub = 0; sub < config.SUBSTEPS; sub++) {
                     const proximity = 1 - (dist / burnZoneR);
                     p.heat = Math.min(1, p.heat + (0.004 + proximity * 0.000035));
                     if (p.heat >= 2.0) p.dead = true;
-                } else { if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005); }
-        
+                } else {
+                    if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005);
+                }
+            }
+        }
+
+        // ── PHASE 3: Springs (all bodies) ──
+        for (const body of bodies) solveSprings(body, dt);
+
+        // ── PHASE 4: Inter-body collisions (last substep only) ──
         if (sub === config.SUBSTEPS - 1) interBodyCollisions();
     }
-    
-    for (const body of bodies) solveSprings(body, dt);
+
+    // ── POST-SUBSTEP: COM, split, filter (once per tick, not per substep) ──
     for (const body of bodies) updateCOM(body);
     for (const body of bodies) splitDeadParticles(body);
     state.bodies = bodies.filter(b => !b.dead);
     looseVsPlanets();
-    
-  }
-}
 };
