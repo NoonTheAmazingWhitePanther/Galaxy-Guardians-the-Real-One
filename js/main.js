@@ -14,7 +14,7 @@
 // 1. CORE IMPORTS (State & Configuration)
 // ─────────────────────────────────────────────────────────────────────────
 import { config } from './core/config.js';
-import { state, SUN, physSpeed, paused, sunGravMult } from './core/state.js';
+import { state, SUN, physSpeed, paused} from './core/state.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // 2. PRIME MODULE IMPORTS (Domain-driven architecture)
