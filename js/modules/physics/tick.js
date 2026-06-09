@@ -81,18 +81,13 @@ export const tickLoose = (dt) => {
             p.life -= p.isRing ? p.decay * dt : (p.decay + 0.008) * dt;
         }
 
+        // Option A: Remove clustering entirely (burnt particles drift naturally)
+// Just delete the entire burnt clustering block.
+
+// Option B: Replace with cheap random repulsion
         if (p.isBurnt) {
-            let nearbyX = 0, nearbyY = 0, nearbyCount = 0;
-            for (const other of state.loose) {
-                if (other === p || !other.isBurnt) continue;
-                const dx = other.x - p.x, dy = other.y - p.y;
-                const d = hypot(dx, dy);
-                if (d < 80 && d > 0.1) {
-                    const influence = (1 - d / 80) * 0.15;
-                    nearbyX += (dx / d) * influence; nearbyY += (dy / d) * influence; nearbyCount++;
-                }
-            }
-            if (nearbyCount > 0) { p.vx += (nearbyX / nearbyCount) * dt * 2; p.vy += (nearbyY / nearbyCount) * dt * 2; }
+          p.vx += (rnd() - 0.5) * 0.1 * dt;
+          p.vy += (rnd() - 0.5) * 0.1 * dt;
         }
 
         if (sd < SUN.burnRadius) { p.life = 0; continue; }
@@ -119,20 +114,27 @@ export const tickBodies = (scaledDt) => {
     const burnSq = burnR * burnR, burnZoneSq = burnZoneR * burnZoneR;
     
     const countAlive = (b) => { let n = 0; for (const p of b.particles) if (!p.dead) n++; return n || 1; };
-    const nAlives = bodies.map(b => countAlive(b));
+    const nAlives = new Array(bodies.length).fill(0);
 
-    for (let sub = 0; sub < config.SUBSTEPS; sub++) {
-        for (let bi = 0; bi < bodies.length; bi++) {
-            const na = nAlives[bi];
-            for (const p of bodies[bi].particles) if (!p.dead) applyGravity(p, na);
-        }
-        for (const body of bodies) for (const p of body.particles) integrateParticle(p, dt);
-        for (const body of bodies) solveSprings(body, dt);
-        
-        for (const body of bodies) {
-            for (const p of body.particles) {
-                if (p.dead) continue;
-                const dx = SUN.x - p.x, dy = SUN.y - p.y;
+for (let sub = 0; sub < config.SUBSTEPS; sub++) {
+  for (let bi = 0; bi < bodies.length; bi++) {
+    const body = bodies[bi];
+    
+    // On first substep, count alive and cache
+    if (sub === 0) {
+      let n = 0;
+      for (const p of body.particles) if (!p.dead) n++;
+      nAlives[bi] = n || 1;
+    }
+    
+    const na = nAlives[bi];
+    
+    for (const p of body.particles) {
+      if (p.dead) continue;
+      applyGravity(p, na);
+      integrateParticle(p, dt);
+      // ... burn zone ...
+      const dx = SUN.x - p.x, dy = SUN.y - p.y;
                 const sd2 = dx * dx + dy * dy;
                 if (sd2 < burnSq) { p.dead = true; p.heat = 1; }
                 else if (sd2 < burnZoneSq) {
@@ -141,12 +143,16 @@ export const tickBodies = (scaledDt) => {
                     p.heat = Math.min(1, p.heat + (0.004 + proximity * 0.000035));
                     if (p.heat >= 2.0) p.dead = true;
                 } else { if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005); }
-            }
-        }
+        
         if (sub === config.SUBSTEPS - 1) interBodyCollisions();
     }
-        for (const body of bodies) updateCOM(body);
+    
+    for (const body of bodies) solveSprings(body, dt);
+    for (const body of bodies) updateCOM(body);
     for (const body of bodies) splitDeadParticles(body);
     state.bodies = bodies.filter(b => !b.dead);
     looseVsPlanets();
+    
+  }
+}
 };
