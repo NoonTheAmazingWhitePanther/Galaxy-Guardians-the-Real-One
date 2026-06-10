@@ -1,32 +1,37 @@
 /**
  * js/core/state.js
- * Single source of truth for game state and constants.
- * All state variables are properly exported for module consumption.
+ * Single source of truth for ALL game state.
+ * FULL FILE - COPY AND PASTE THIS ENTIRE BLOCK
  */
 
-// ─── GAME STATE ───────────────────────────────────────────────────────
+// ─── 1. THE MASTER STATE OBJECT ─────────────────────────────────────────────
 export const state = {
+    // Entity arrays
     bodies: [],
     loose: [],
     flashes: [],
     stars: [],
     asteroids: [],
-    astTimer: 0
+    astTimer: 0,
+    
+    // Physics & Gameplay (Consolidated here for the new main.js)
+    physSpeed: 1,
+    paused: false,
+    sunGravMult: 1.0,
+
+    // Screen Shake Juice
+    shake: { intensity: 0, decay: 0.9 } 
 };
 
-// ─── SUN & CELESTIAL ───────────────────────────────────────────────────
-export const SUN = { 
-    x: 0, 
-    y: 0, 
-    radius: 240, 
-    burnRadius: 300, 
-    mass: 182784, 
-    coronaTime: 0 
+// ─── 2. THE SUN ─────────────────────────────────────────────────────────────
+export const SUN = {
+    x: 0, y: 0, radius: 240, burnRadius: 300, mass: 182784, coronaTime: 0
 };
 
+// ─── 3. SOLAR EFFECTS ───────────────────────────────────────────────────────
 export const solarTentacles = [];
 
-// ─── COLOR PALETTES ───────────────────────────────────────────────────
+// ─── 4. COLOR PALETTES ──────────────────────────────────────────────────────
 /** Planet color palette definitions. Each palette has hi/mid/lo colors + gc (gradient color) */
 export const PALS = [
     { hi: "#ffeeaa", mid: "#ff8800", lo: "#5a1800", gc: "255,140,50" },
@@ -45,40 +50,42 @@ export const AST_PALETTE = [
     { fill: "#6a8890", outline: "#384858", dot: "#90b8c0" }
 ];
 
-// ─── PHYSICS & GAMEPLAY STATE ─────────────────────────────────────────
-/** Gravity multiplier for all celestial bodies (0.05 - 2.0) */
-export let sunGravMult = 1.0;
-
-/** Simulation speed multiplier (0 - 12) */
-export let physSpeed = 1;
-
-/** Whether simulation is paused */
-export let paused = false;
-
-// ─── CONSTANTS ────────────────────────────────────────────────────────
+// ─── 5. CONSTANTS ───────────────────────────────────────────────────────────
 export const SPEED_MAX = 12;
-export const RING_MIN_RADIUS = 100;
-export const RING_PARTICLES = 5;
+export const RING_MIN_RADIUS = 0;
+export const RING_PARTICLES = 0;
 export const AST_SPAWN_INTERVAL = 600;
 export const AST_MAX = 3;
 
-// ─── SETTER FUNCTIONS (for reactive updates) ──────────────────────────
-/**
- * Set the sun's gravity multiplier
- * @param {number} v - Gravity multiplier (0.05 - 2.0)
- */
-export const setSunGravMult = (v) => { sunGravMult = v; };
-
-/**
- * Set the physics simulation speed
- * @param {number} v - Speed multiplier (0 - 12)
- */
-export const setPhysSpeed = (v) => { physSpeed = v; };
-
-/**
- * Toggle pause state. If unpausing from stop (physSpeed=0), set to 1×
- */
-export const togglePause = () => { 
-    paused = !paused; 
-    if (!paused && physSpeed === 0) physSpeed = 1; 
+// ─── 6. STATE MUTATORS (Used by UI, Input, and Config modules) ──────────────
+export const setSunGravMult = (v) => { 
+    state.sunGravMult = v; 
+    sunGravMult = v; // Sync standalone export
 };
+
+export const setPhysSpeed = (v) => { 
+    state.physSpeed = v; 
+    physSpeed = v; // Sync standalone export
+};
+
+export const togglePause = () => {
+    state.paused = !state.paused;
+    paused = state.paused; // Sync standalone export
+    if (!state.paused && state.physSpeed === 0) {
+        state.physSpeed = 1;
+        physSpeed = 1;
+    }
+};
+
+// Helper for screen shake (call this from collisions.js or creation.js)
+export const triggerShake = (force) => {
+    state.shake.intensity = Math.min(25, state.shake.intensity + force);
+};
+
+// ─── 7. BACKWARDS COMPATIBILITY EXPORTS ─────────────────────────────────────
+// 🔥 THIS PREVENTS CRASHES! 
+// These create standalone variables that sync with the 'state' object.
+// If your tick.js or config-menu.js imports 'paused' directly, it will still work!
+export let paused = state.paused;
+export let physSpeed = state.physSpeed;
+export let sunGravMult = state.sunGravMult;

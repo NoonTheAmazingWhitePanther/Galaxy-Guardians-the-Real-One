@@ -6,7 +6,7 @@
  * ARCHITECTURE:
  * - Core: Config, state, math utilities
  * - Modules: Organized by domain (camera, input, physics, rendering, ui, entities)
- * - Rendering pipeline: Physics → Rendering (every frame, physics skips optimized)
+ * - Rendering pipeline: Pre-calc Vault → Tween Interpolation → 60Hz+ Rendering
  * - No global pollution (except strategic window.Sim bridge for legacy input)
  */
 
@@ -14,7 +14,10 @@
 // 1. CORE IMPORTS (State & Configuration)
 // ─────────────────────────────────────────────────────────────────────────
 import { config } from './core/config.js';
-import { state, SUN, physSpeed, paused} from './core/state.js';
+// UPDATED: physSpeed and paused are now inside the state object
+import { state, SUN } from './core/state.js'; 
+import { StateCache } from './core/state-cache.js';
+import { TweenRenderer } from './modules/rendering/tween-renderer.js';
 
 // ─────────────────────────────────────────────────────────────────────────
 // 2. PRIME MODULE IMPORTS (Domain-driven architecture)
@@ -42,172 +45,158 @@ const pcountEl = document.getElementById("pcount");
 const uiEl = document.getElementById("ui");
 const gravSlider = document.getElementById("grav-slider");
 const gravVal = document.getElementById("grav-val");
-
 // ─────────────────────────────────────────────────────────────────────────
-// 4. RUNTIME STATE (Canvas & Animation)
-// ─────────────────────────────────────────────────────────────────────────
+// 4. RUNTIME STATE (Canvas & Animation)// ─────────────────────────────────────────────────────────────────────────
 let W = canvas.width = window.innerWidth;
 let H = canvas.height = window.innerHeight;
 let lastT = 0;
+let rawDt = 0;
 
-// 🔧 OPTIMIZED: Physics skipping (not rendering!)
-// Rendering happens EVERY frame for smooth visuals.
-// Physics ticks are skipped to reduce CPU load.
-let physicsFrameCounter = 0;
-const PHYSICS_FRAME_SKIP = 4; // Physics runs every Nth frame
-let renderFrameCounter = 0;
-const RENDER_FRAME_SKIP = 4;
+// 🔥 NEW: PREDICTIVE PHYSICS CACHE VARIABLES
+// We removed the old frame-skipping counters. The Cache handles timing now!
+let accumulator = 0;
+const PHYSICS_STEP = 1 / 60; // Fixed physics timestep (Change to 1/15 if you want 15fps physics)
+const PRE_CALC_FRAMES = 24;  // The "3, 2, 1" countdown target
+
+let isPreCalculating = true;
+let preCalcCounter = 0;
 
 // ─────────────────────────────────────────────────────────────────────────
 // 5. INITIALIZATION
 // ─────────────────────────────────────────────────────────────────────────
-/**
- * Initialize all prime modules and set up event bridges.
- * Called on DOMContentLoaded or immediately if document is ready.
- */
 function init() {
-    // Initialize all prime modules in dependency order
     CameraModule.init(canvas, ctx, W, H);
     EffectsModule.init(W, H);
     TrailsModule.init(W, H);
     ConfigMenuModule.init();
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
 
-    // Bridge: Connect InputModule's spawn trigger to OverlaysModule
-    // This allows input handling to trigger planet spawning
-    //InputModule._spawnPlanet = handlePlanetSpawn;
-
-    // Initial canvas clear
     ctx.fillStyle = '#04040c';
     ctx.fillRect(0, 0, W, H);
 
-    // Start animation loop
     requestAnimationFrame(mainLoop);
 }
 
-/**
- * Handle planet spawning from input.
- * Calculates spawn parameters based on charge and slider value.
- */
- /*
-function handlePlanetSpawn() {
-    const charge = Math.min((performance.now() - InputModule.holdT) / 2000, 1);
-    const sliderVal = parseFloat(slider.value);
-    const raw = sliderVal * (1 + charge * 4);
-    const t = Math.min(raw / 50, 1);
-    const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
-    const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
-    
-    const w = CameraModule.screenToWorld(InputModule.tx, InputModule.ty);
-    OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, pcountEl);
-}
-*/
 // ─────────────────────────────────────────────────────────────────────────
 // 6. MAIN ANIMATION LOOP
 // ─────────────────────────────────────────────────────────────────────────
-/**
- * Main rendering & physics loop.
- * Runs every frame for rendering, but physics is skipped for performance.
- * 
- * Flow:
- * 1. Calculate frame timing (dt)
- * 2. RENDER: Always (smooth visuals every frame)
- * 3. PHYSICS: Every Nth frame (reduces CPU load)
- * 4. Update UI overlays
- * 
- * @param {number} t - High-resolution timestamp from requestAnimationFrame
- */
 function mainLoop(t) {
-    // Request next frame early (better performance)
     requestAnimationFrame(mainLoop);
     
-    // Calculate frame timing
     const realFps = (t - lastT) / 1000;
-    const rawDt = Math.min(realFps, 0.05); // Cap dt to prevent spiral of death on lag
+    const rawDt = Math.min(realFps, 0.1); // Cap dt to prevent spiral of death
     lastT = t;
     
-    // Update FPS display
     OverlaysModule.updateFPS(realFps);
     
-    // skip render anyway and do not clean rhe screen render
-    if (renderFrameCounter++ >= RENDER_FRAME_SKIP){
-        renderFrameCounter = 0;
-        // ────────────────────────────────────────────────────────────
-        // RENDER: Every frame for smooth 60 FPS visuals
-        // ────────────────────────────────────────────────────────────
+    // =========================================================================
+    // PHASE 1: THE "3, 2, 1" PRE-CALCULATION (FILLING THE VAULT)
+    // =========================================================================
+    if (isPreCalculating) {
+        // Calculate 8 physics steps instantly per frame to fill the cache fast
+        for (let i = 0; i < 8; i++) { 
+            StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
+            if (!state.paused && state.physSpeed > 0) {                tickBodies(PHYSICS_STEP);
+                tickLoose(PHYSICS_STEP);
+            }
+        }
+        preCalcCounter += 8;
         
-        // 1. Update camera (for smooth zoom/pan interpolation)
-        CameraModule.tick();
+        if (preCalcCounter >= PRE_CALC_FRAMES) {
+            isPreCalculating = false;
+            StateCache.isReady = true;
+            console.log("🚀 VAULT FULL! ENGAGING SMOOTH PLAYBACK!");
+        }
+        return; // STOP HERE. Do not render until pre-calc is done.
+    }
+
+    // =========================================================================
+    // PHASE 2: PHYSICS ACCUMULATION (KEEPING THE VAULT FULL)
+    // =========================================================================
+    if (!state.paused && state.physSpeed > 0) {
+        // Add elapsed time to the accumulator (scaled by physics speed and config)
+        accumulator += rawDt * state.physSpeed * config.PHYS_SCALE;
         
-        // 2. Pan Pad update (legacy bridge - TODO: Refactor to pure imports)
-        if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
-            window.Sim.updatePanPad();
+        let stepsThisFrame = 0;
+        const MAX_STEPS_PER_FRAME = 8; // Prevent freezing if we fall behind
+        
+        // Run fixed-step physics to keep the cache full
+        while (accumulator >= PHYSICS_STEP && stepsThisFrame < MAX_STEPS_PER_FRAME) {
+            StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
+            tickBodies(PHYSICS_STEP);
+            tickLoose(PHYSICS_STEP);
+            AsteroidsModule.tick(PHYSICS_STEP); 
+            accumulator -= PHYSICS_STEP;
+            stepsThisFrame++;
         }
         
-        // 3. Background layers
-        ctx.fillStyle = 'rgba(4,4,12,.28)';
-        ctx.fillRect(0, 0, W, H);
-        EffectsModule.drawStars(ctx, t, W, H);
-        
-        // 4. World-space rendering (inside camera transform)
-        ctx.save();
-        CameraModule.apply(); // 🔥 APPLY CAMERA TRANSFORM
-        
-        EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
-        SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
-        SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
-        SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
-        ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
-        AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
-        
-        // 🔥 CRITICAL: Bodies MUST be drawn inside camera transform!
-        // If drawn outside, world coordinates don't map correctly to screen space,
-        // causing the "popping bigger planet" visual bug.
-        BodiesModule.drawBodies(ctx);
-        
-        // Orbit prediction preview
-        OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
-        
-        ctx.restore(); // 🔥 END CAMERA TRANSFORM
-        
-        // 5. Trail system (manages its own internal transforms)
-        TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
-        TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
-        
-        // 6. Screen-space overlays (UI, charge indicator, etc)
-        OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
-        OverlaysModule.drawFPS();
-        OverlaysModule.updateCount(pcountEl);
-    }   
-    // 7. Update cursor position
-    cursorEl.style.left = InputModule.tx + 'px';
-    cursorEl.style.top = InputModule.ty + 'px';
-    
-    // ────────────────────────────────────────────────────────────
-    // PHYSICS: Every Nth frame for performance optimization
-    // ────────────────────────────────────────────────────────────
-    if (physicsFrameCounter++ >= PHYSICS_FRAME_SKIP) {
-        physicsFrameCounter = 0;
-        
-        // Only run physics if simulation is active
-        if (!paused && physSpeed > 0 && rawDt > 0) {
-            // Adaptive substeps: Break large timesteps into smaller chunks
-            // for stability on slow frames
-            const MAX_SAFE_DT = rawDt * 3.0 * config.PHYS_SCALE;
-            const totalDt = rawDt * physSpeed * config.PHYS_SCALE;
-            const numTicks = Math.ceil(totalDt / MAX_SAFE_DT);
-            const dtPerTick = totalDt / numTicks;
-            
-            // Run physics ticks
-            for (let tick = 0; tick < numTicks; tick++) {
-                tickBodies(dtPerTick);
-                tickLoose(dtPerTick);
-            }
-            
-            // Update asteroids
-            AsteroidsModule.tick(rawDt * physSpeed * config.PHYS_SCALE);
+        // If we hit the max steps, reset accumulator to prevent "spiral of death"
+        if (stepsThisFrame >= MAX_STEPS_PER_FRAME) {
+            accumulator = 0; 
         }
     }
+
+    // =========================================================================
+    // PHASE 3: TWEEN INTERPOLATION (THE MAGIC)
+    // =========================================================================
+    // Calculate how far we are between the last physics step and the next (0.0 to 1.0)
+    const alpha = accumulator / PHYSICS_STEP;
+    const interpolationData = StateCache.getInterpolationData(alpha);
+    
+    // Overwrite live object coordinates with smooth, tweened visual coordinates
+  //  TweenRenderer.applyTween(state.bodies, state.loose, interpolationData);
+    // =========================================================================
+    // PHASE 4: RENDERING (EVERY SINGLE FRAME FOR MAXIMUM SMOOTHNESS)
+    // =========================================================================
+    
+    // 1. Update camera
+    CameraModule.tick();
+    if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
+        window.Sim.updatePanPad();
+    }
+
+
+    ctx.fillStyle = 'rgba(4, 4, 12, 0.28)'; 
+    ctx.fillRect(0, 0, W, H);
+  
+    EffectsModule.drawStars(ctx, t, W, H);
+    
+    // 3. World-space rendering (inside camera transform)
+    ctx.save();
+    CameraModule.apply(); 
+    
+    EffectsModule.drawFlashes(ctx, CameraModule.cam.zoom);
+    SunModule.drawSun(ctx, t, CameraModule.cam.zoom);
+    SunModule.drawSolarTentacles(ctx, t, CameraModule.cam.zoom);
+    SunModule.drawSolarRays(ctx, t, CameraModule.cam.zoom);
+    
+    // These now draw the TWEENED positions!
+    ParticlesModule.drawLoose(ctx, CameraModule.cam.zoom);
+    AsteroidsModule.draw(ctx, CameraModule.cam.zoom);
+    BodiesModule.drawBodies(ctx); 
+    
+    OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+    ctx.restore(); 
+    
+    // 4. Trail system
+    TrailsModule.renderToBuffer(ctx, W, H, CameraModule.cam, state.bodies);
+    TrailsModule.drawTrail(ctx, W, H, CameraModule.cam);
+    
+    // 5. Screen-space overlays
+    OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+    OverlaysModule.drawFPS();
+    OverlaysModule.updateCount(pcountEl);
+
+    // 6. Update cursor
+    cursorEl.style.left = InputModule.tx + 'px';
+    cursorEl.style.top = InputModule.ty + 'px';
+
+    // =========================================================================
+    // PHASE 5: REVERT TWEENING (CRITICAL FOR PHYSICS INTEGRITY)
+    // =========================================================================
+    // Restore the live objects to their TRUE physics coordinates so the next 
+    // physics calculation isn't messed up by the visual tweening.    
+   // TweenRenderer.revertTween();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -217,13 +206,11 @@ window.addEventListener('resize', () => {
     W = canvas.width = window.innerWidth;
     H = canvas.height = window.innerHeight;
     
-    // Update camera dimensions to prevent "popping" on resize
     CameraModule.width = W;
     CameraModule.height = H;
     
-    // Reinitialize canvas-dependent modules
-    EffectsModule.init(W, H); // Regenerate stars for new viewport
-    TrailsModule.resize(W, H); // Resize trail buffers
+    EffectsModule.init(W, H); 
+    TrailsModule.resize(W, H); 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -232,7 +219,6 @@ window.addEventListener('resize', () => {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
 } else {
-    // DOM already loaded
     init();
 }
 
@@ -243,14 +229,12 @@ if (typeof window !== 'undefined') {
     window.__GG = {
         state,
         config,
+        cache: StateCache, // Added cache to debug tools
         modules: {
             Camera: CameraModule,
             Input: InputModule,
             Physics: { tickBodies, tickLoose },
             Rendering: { Sun: SunModule, Bodies: BodiesModule, Particles: ParticlesModule }
-        },
-        togglePhysicsSkip() {
-            console.log(`Physics frame skip: ${PHYSICS_FRAME_SKIP} (change via config)`);
         }
     };
 }

@@ -44,17 +44,24 @@ export const TrailsModule = {
       // SIMPLIFIED TRAIL: hull only, no springs, no particles, no atmosphere
       for (const b of bodies) {
         if (b.dead) continue;
+                
+        // Initialize previous position if it doesn't exist
+        if (!b.prevCx) { b.prevCx = b.cx; b.prevCy = b.cy; }
         
-        // Fast bounding check: skip if too small on screen
-        const screenR = b.radius * cam.zoom;
-        if (screenR < 2) continue;
-        
-        // Simple circle approximation for trail (much cheaper than convexHull)
         bctx.beginPath();
-        bctx.arc(b.cx, b.cy, b.radius * 0.9, 0, PI2);
-        bctx.fillStyle = b.pal.lo + '44'; // Low opacity base color
-        bctx.fill();
-      }
+        bctx.moveTo(b.prevCx, b.prevCy); // Start at last frame's position
+        bctx.lineTo(b.cx, b.cy);         // Draw a line to the current position
+        
+        // Use a lower alpha ('44' is ~25% opacity) so it doesn't stack into a bulb at 60fps
+        bctx.strokeStyle = b.pal.lo + '44'; 
+        bctx.lineWidth = Math.max(1, b.radius * 0.3);
+        bctx.lineCap = 'round';
+        bctx.stroke();
+        
+        // Update previous position for the next frame
+        b.prevCx = b.cx;
+        b.prevCy = b.cy;
+              }
       
       bctx.restore();
       buf.camX = cam.x;

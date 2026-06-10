@@ -5,34 +5,64 @@
 import { rnd, rndR, clamp, PI2 } from '../../core/math.js';
 import { state, SUN } from '../../core/state.js';
 
+/**
+ * js/modules/rendering/effects.js
+ */
+
 export const EffectsModule = {
     stars: [],
-
+    starSprite: null, // Holds our pre-rendered bloom image
+    
+    // ─── 1. INITIALIZATION ─────────────────────────────────────────────────
     init(width, height) {
+        // Generate the stars
         this.stars = Array.from({ length: 90 }, () => ({
-            x: rnd() * width,
-            y: rnd() * height,
-            r: rnd() * 1.2 + 0.2,
-            bri: rnd() * 0.5 + 0.5,
-            ts: rnd() * 0.012 + 0.003,
-            to: rnd() * PI2,
-            hue: 200 + rnd() * 60
+            x: Math.random() * width,
+            y: Math.random() * height,
+            r: Math.random() * 1.2 + 0.2,
+            bri: Math.random() * 0.5 + 0.5,
+            ts: Math.random() * 0.012 + 0.003,
+            to: Math.random() * Math.PI * 2,
+            hue: 200 + Math.random() * 60
         }));
+        
+        // PRE-RENDER THE BLOOM SPRITE (Done ONLY ONCE for max performance)
+        this.starSprite = document.createElement('canvas');
+        this.starSprite.width = 5;
+        this.starSprite.height =5;
+        const sctx = this.starSprite.getContext('2d');
+        
+        // Create a soft, vivid radial gradient for the bloom
+        const grad = sctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 255)'); // Bright white center
+        grad.addColorStop(0.1, 'rgba(255, 255, 255, 0.7)'); // Soft blueish glow
+        grad.addColorStop(1.0, 'rgba(100, 100, 100, 0)'); // Fade to transparent
+        
+        sctx.fillStyle = grad;
+        sctx.fillRect(0, 0, this.starSprite.width, this.starSprite.height);
     },
-
-    drawStars: (ctx, t, width, height) => {
-        ctx.shadowBlur = 3;
-        for (const s of EffectsModule.stars) {
-            const a = s.bri * (0.55 + 0.45 * Math.sin(t * s.ts + s.to));
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, s.r, 0, PI2);
-            ctx.fillStyle = `hsla(${s.hue},75%,95%,${a})`;
-            ctx.shadowColor = `hsla(${s.hue},100%,95%,.3)`;
-            ctx.fill();
+    
+    // ─── 2. DRAW STARS (The new optimized version) ─────────────────────────
+    drawStars(ctx, t, width, height) {
+        const maxW = this.starSprite.width;
+        const maxH = this.starSprite.height;
+        const maxW2 = this.starSprite.width/2;
+        const maxH2 = this.starSprite.height/2;
+        
+        
+        for (const s of this.stars) {
+            // Twinkle math
+            const a = s.bri * (1 * Math.sin(t * s.ts + s.to));
+            ctx.globalAlpha = a;
+            
+            // Stamp the glowing sprite centered on the star's coordinates
+            ctx.drawImage(this.starSprite, s.x - maxW, s.y - maxH2, maxW, maxH);
         }
-        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1; // Reset alpha for the rest of the game
     },
+    
 
+    
     addFlash: (x, y, r, gc) => {
         state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc, life: 0.55, speed: 0.14, kind: "ring" });
         state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc, life: 0.45, speed: 0.12, kind: "fill" });
@@ -89,7 +119,7 @@ export const EffectsModule = {
                 ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, PI2); ctx.fill();
             }
             f.r += (f.maxR - f.r) * f.speed;
-            f.life -= 0.042;
+            f.life -= 0.010;
         }
     },
 

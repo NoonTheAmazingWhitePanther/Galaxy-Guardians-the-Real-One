@@ -95,26 +95,31 @@ export const BodiesModule = {
 
         renderParticles(ctx, alive, pal, burnFactor, config.PARTICLE_R, lerp);
 
-
-        // Atmosphere halo
-        ctx.save();
-        const atmColor = burnFactor > 0.1 ? `rgba(255,100,20,${0.15 + burnFactor * 0.4})` : `rgba(${pal.gc},.08)`;
-        const atm = ctx.createRadialGradient(body.cx, body.cy, body.radius * 0.7, body.cx, body.cy, body.radius * 1.8);
-        atm.addColorStop(0, atmColor);
-        atm.addColorStop(1, `rgba(${pal.gc},0)`);
-        ctx.fillStyle = atm;
-        ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 1.8, 0, PI2); ctx.fill();
-        
-        if (burnFactor > 0.3) {
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.globalAlpha = burnFactor * 0.3;            ctx.shadowBlur = 25 + burnFactor * 15;
-            ctx.shadowColor = `rgba(255,80,20,${burnFactor * 0.8})`;
-            const glowAtm = ctx.createRadialGradient(body.cx, body.cy, body.radius * 0.5, body.cx, body.cy, body.radius * 2.2);
-            glowAtm.addColorStop(0, `rgba(255,120,40,${burnFactor * 0.5})`);
-            glowAtm.addColorStop(1, `rgba(255,60,20,0)`);
-            ctx.fillStyle = glowAtm;
-            ctx.beginPath(); ctx.arc(body.cx, body.cy, body.radius * 2.2, 0, PI2); ctx.fill();
-        }
-        ctx.restore();
+// ─── PLANET AURA & GLOSS (Draw this BEFORE the solid planet body) ───
+    
+    // 1. Calculate Aura Size (50% larger than the planet)
+    const auraRadius = body.radius * 1.6;
+    
+    // 2. Create a Dynamic Radial Gradient for the Bloom
+    // Starts halfway into the planet, fades out to the aura edge
+    const auraGrad = ctx.createRadialGradient(
+        body.cx, body.cy, body.radius * 0.01, // Inner circle (starts inside the planet)
+        body.cx, body.cy, auraRadius*1.1
+        // Outer circle (the edge of the glow)
+    );
+    ctx.save();
+    // 3. Define the Glow Colors using the planet's own palette (body.pal)
+    // '66' is ~40% opacity, '33' is ~20% opacity, '00' is fully transparent
+    auraGrad.addColorStop(0, body.pal.hi + '66'); // Bright inner halo
+    auraGrad.addColorStop(0.5, body.pal.lo + '33'); // Soft outer atmosphere
+    auraGrad.addColorStop(1, body.pal.lo + '00'); // Fade to nothing
+    
+    // 4. Draw the Aura
+    ctx.fillStyle = auraGrad;
+    ctx.beginPath();
+    ctx.arc(body.cx, body.cy, auraRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
     }
 };
