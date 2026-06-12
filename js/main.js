@@ -144,7 +144,7 @@ function mainLoop(t) {
     const interpolationData = StateCache.getInterpolationData(alpha);
     
     // Overwrite live object coordinates with smooth, tweened visual coordinates
-  //  TweenRenderer.applyTween(state.bodies, state.loose, interpolationData);
+    TweenRenderer.applyTween(state.bodies, state.loose, interpolationData);
     // =========================================================================
     // PHASE 4: RENDERING (EVERY SINGLE FRAME FOR MAXIMUM SMOOTHNESS)
     // =========================================================================
@@ -196,7 +196,7 @@ function mainLoop(t) {
     // =========================================================================
     // Restore the live objects to their TRUE physics coordinates so the next 
     // physics calculation isn't messed up by the visual tweening.    
-   // TweenRenderer.revertTween();
+    TweenRenderer.revertTween();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
