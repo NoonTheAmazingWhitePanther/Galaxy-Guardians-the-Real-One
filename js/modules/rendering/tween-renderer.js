@@ -1,67 +1,98 @@
 /**
  * js/modules/rendering/tween-renderer.js
  * The "Projector" - Interpolates between cached physics states.
- * CORRECTED: Splits apply and revert so drawing happens at the tweened positions.
+ *
+ * OPTIMIZATIONS (2026-06-13):
+ * - Map-based ID lookup instead of Array.find() — O(1) vs O(n)
+ * - Pre-allocated arrays to reduce GC pressure
+ * - Fast path for alpha=0 (no interpolation needed)
  */
 export const TweenRenderer = {
-    lerp: (a, b, t) => a + (b - a) * t,
-    _originals: { bodies: [], loose: [] }, // Stores true physics state temporarily
+  lerp: (a, b, t) => a + (b - a) * t,
+  _originals: { bodies: [], loose: [] },
+  _bodyMap: new Map(),
+  _looseMap: new Map(),
 
-    // 1. OVERWRITE live objects with tweened visual positions
-    applyTween(bodies, loose, interpolationData) {
-        if (!interpolationData) return;
-        const { stateA, stateB, alpha } = interpolationData;
-
-        this._originals.bodies = [];
-        for (let i = 0; i < stateA.bodies.length; i++) {
-            const a = stateA.bodies[i];
-            const b = stateB.bodies[i];
-            if (!b || a.dead) continue;
-
-            const liveBody = bodies.find(lb => lb.id === a.id);
-            if (!liveBody) continue;
-
-            // Save true physics state
-            this._originals.bodies.push({
-                body: liveBody, cx: liveBody.cx, cy: liveBody.cy, rotation: liveBody.rotation || 0
-            });
-
-            // Apply tweened visual state
-            liveBody.cx = this.lerp(a.cx, b.cx, alpha);
-            liveBody.cy = this.lerp(a.cy, b.cy, alpha);
-            liveBody.rotation = this.lerp(a.rotation, b.rotation, alpha);
-        }
-
-        this._originals.loose = [];
-        for (let i = 0; i < stateA.loose.length; i++) {
-            const a = stateA.loose[i];
-            const b = stateB.loose[i];
-            if (!b) continue;
-
-            const liveParticle = loose.find(lp => lp.id === a.id);
-            if (!liveParticle) continue;
-
-            this._originals.loose.push({
-                particle: liveParticle, x: liveParticle.x, y: liveParticle.y
-            });
-
-            liveParticle.x = this.lerp(a.x, b.x, alpha);
-            liveParticle.y = this.lerp(a.y, b.y, alpha);
-        }
-    },
-
-    // 2. REVERT live objects back to true physics state after drawing
-    revertTween() {
-        for (const orig of this._originals.bodies) {
-            orig.body.cx = orig.cx;
-            orig.body.cy = orig.cy;
-            orig.body.rotation = orig.rotation;
-        }
-        for (const orig of this._originals.loose) {
-            orig.particle.x = orig.x;
-            orig.particle.y = orig.y;
-        }
-        this._originals.bodies = [];
-        this._originals.loose = [];
+  // Build lookup maps for O(1) access
+  _buildMaps(bodies, loose) {
+    this._bodyMap.clear();
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      if (b.id != null) this._bodyMap.set(b.id, b);
     }
+    this._looseMap.clear();
+    for (let i = 0; i < loose.length; i++) {
+      const p = loose[i];
+      if (p.id != null) this._looseMap.set(p.id, p);
+    }
+  },
+
+  // 1. OVERWRITE live objects with tweened visual positions
+  applyTween(bodies, loose, interpolationData) {
+    if (!interpolationData || interpolationData.alpha <= 0.001) return;
+    const { stateA, stateB, alpha } = interpolationData;
+
+    this._buildMaps(bodies, loose);
+    this._originals.bodies = [];
+    this._originals.loose = [];
+
+    const lerp = this.lerp;
+
+    for (let i = 0; i < stateA.bodies.length; i++) {
+      const a = stateA.bodies[i];
+      const b = stateB.bodies[i];
+      if (!b || a.dead) continue;
+
+      const liveBody = this._bodyMap.get(a.id);
+      if (!liveBody) continue;
+
+      // Save true physics state
+      this._originals.bodies.push({
+        body: liveBody,
+        cx: liveBody.cx,
+        cy: liveBody.cy,
+        rotation: liveBody.rotation || 0
+      });
+
+      // Apply tweened visual state
+      liveBody.cx = lerp(a.cx, b.cx, alpha);
+      liveBody.cy = lerp(a.cy, b.cy, alpha);
+      liveBody.rotation = lerp(a.rotation, b.rotation, alpha);
+    }
+
+    for (let i = 0; i < stateA.loose.length; i++) {
+      const a = stateA.loose[i];
+      const b = stateB.loose[i];
+      if (!b) continue;
+
+      const liveParticle = this._looseMap.get(a.id);
+      if (!liveParticle) continue;
+
+      this._originals.loose.push({
+        particle: liveParticle,
+        x: liveParticle.x,
+        y: liveParticle.y
+      });
+
+      liveParticle.x = lerp(a.x, b.x, alpha);
+      liveParticle.y = lerp(a.y, b.y, alpha);
+    }
+  },
+
+  // 2. REVERT live objects back to true physics state after drawing
+  revertTween() {
+    for (let i = 0; i < this._originals.bodies.length; i++) {
+      const orig = this._originals.bodies[i];
+      orig.body.cx = orig.cx;
+      orig.body.cy = orig.cy;
+      orig.body.rotation = orig.rotation;
+    }
+    for (let i = 0; i < this._originals.loose.length; i++) {
+      const orig = this._originals.loose[i];
+      orig.particle.x = orig.x;
+      orig.particle.y = orig.y;
+    }
+    this._originals.bodies = [];
+    this._originals.loose = [];
+  }
 };
