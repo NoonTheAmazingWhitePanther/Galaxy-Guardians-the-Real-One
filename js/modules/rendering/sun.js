@@ -19,6 +19,7 @@ let _sunCache = null;
 let _sunCacheRadius = 0;
 let _sunCacheColorKey = '';
 let _sunCacheTime = 0;
+let _sunCacheCanvas = null;  // FIX: reuse canvas instead of creating new ones
 
 export const SunModule = {
   getSolarColors: (t) => {
@@ -44,12 +45,21 @@ export const SunModule = {
     const colorKey = `${sunCol.r},${sunCol.g},${sunCol.b}`;
     const now = performance.now();
 
+    // FIX: Reuse canvas instead of creating new one every time
+    if (!_sunCacheCanvas) {
+      _sunCacheCanvas = document.createElement('canvas');
+    }
+
     // Re-render if color changed or radius changed or cache is old (> 100ms)
     if (!_sunCache || _sunCacheRadius !== radius || _sunCacheColorKey !== colorKey || (now - _sunCacheTime) > 100) {
       const size = Math.ceil(radius * 2.5);
-      const c = document.createElement('canvas');
-      c.width = size; c.height = size;
-      const sctx = c.getContext('2d');
+      // Only resize if needed
+      if (_sunCacheCanvas.width !== size || _sunCacheCanvas.height !== size) {
+        _sunCacheCanvas.width = size;
+        _sunCacheCanvas.height = size;
+      }
+      const sctx = _sunCacheCanvas.getContext('2d');
+      sctx.clearRect(0, 0, size, size);  // Clear before redraw
       const cx = size / 2, cy = size / 2;
       const sunBase = `rgba(${sunCol.r},${sunCol.g},${sunCol.b}`;
 
@@ -97,7 +107,7 @@ export const SunModule = {
       rim.addColorStop(1, `rgba(${sunCol.r},${Math.max(0, sunCol.g - 60)},0,0)`);
       sctx.fillStyle = rim; sctx.beginPath(); sctx.arc(cx, cy, radius * 1.18, 0, PI2); sctx.fill();
 
-      _sunCache = c;
+      _sunCache = _sunCacheCanvas;
       _sunCacheRadius = radius;
       _sunCacheColorKey = colorKey;
       _sunCacheTime = now;
@@ -196,8 +206,8 @@ export const SunModule = {
       const by = y + Math.sin(a) * radius;
       const tx = x + Math.cos(a) * (radius + len) + Math.cos(a + Math.PI / 2) * sway;
       const ty = y + Math.sin(a) * (radius + len) + Math.sin(a + Math.PI / 2) * sway;
-      const cx = x + Math.cos(a) * (radius + len * 0.55) + Math.cos(a + Math.PI / 2) * sway * 1.3;
-      const cy = y + Math.sin(a) * (radius + len * 0.55) + Math.sin(a + Math.PI / 2) * sway * 1.3;
+      const cx_ = x + Math.cos(a) * (radius + len * 0.55) + Math.cos(a + Math.PI / 2) * sway * 1.3;
+      const cy_ = y + Math.sin(a) * (radius + len * 0.55) + Math.sin(a + Math.PI / 2) * sway * 1.3;
 
       ctx.lineWidth = w;
       ctx.globalAlpha = tent.life * 0.65;
@@ -207,7 +217,7 @@ export const SunModule = {
       grad.addColorStop(0.65, `rgba(${Math.max(0, sunCol.r - 20)},${Math.max(0, sunCol.g - 40)},0,0.5)`);
       grad.addColorStop(1, `rgba(${Math.max(0, sunCol.r - 60)},0,0,0)`);
       ctx.strokeStyle = grad;
-      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cx, cy, tx, ty); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.quadraticCurveTo(cx_, cy_, tx, ty); ctx.stroke();
     };
     for (let i = solarTentacles.length - 1; i >= 0; i--) drawTentacle(i);
     ctx.globalAlpha = 1;

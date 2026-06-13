@@ -17,8 +17,9 @@ import { state } from '../../core/state.js';
  * @param {CanvasRenderingContext2D} ctx - the canvas context
  * @param {number} t - performance.now() timestamp
  * @param {number} alpha - 0..1 interpolation between physics states
+ * @param {boolean} didPhysicsTick - whether physics ran this frame (trails need update)
  */
-export function DrawAll(ctx, t, alpha) {
+export function DrawAll(ctx, t, alpha, didPhysicsTick = false) {
   const cam = CameraModule.cam;
   const w = CameraModule.width;
   const h = CameraModule.height;
@@ -27,8 +28,11 @@ export function DrawAll(ctx, t, alpha) {
   const interpData = StateCache.getInterpolationData(alpha);
   TweenRenderer.applyTween(state.bodies, state.loose, interpData);
 
-  // 2. Trails Buffer
-  TrailsModule.renderToBuffer(ctx, w, h, cam, state.bodies);
+  // 2. Trails Buffer — ONLY when physics actually ticked
+  // This prevents rendering trails every frame when we're just interpolating
+  if (didPhysicsTick) {
+    TrailsModule.renderToBuffer(ctx, w, h, cam, state.bodies);
+  }
 
   // 3. Clear Canvas
   ctx.fillStyle = '#04040c';

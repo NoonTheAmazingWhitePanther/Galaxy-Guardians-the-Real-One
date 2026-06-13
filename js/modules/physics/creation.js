@@ -8,136 +8,153 @@ import { state, SUN, RING_MIN_RADIUS, RING_PARTICLES } from '../../core/state.js
 
 // Internal helpers to keep physics self-contained from rendering
 const addFlash = (x, y, r, gc) => {
-    state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc, life: 0.55, speed: 0.14, kind: "ring" });
-    state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc, life: 0.45, speed: 0.12, kind: "fill" });
-    state.flashes.push({ x, y, r: 0, maxR: r * 0.8, gc, life: 0.60, speed: 0.10, kind: "core" });
+  state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc, life: 0.55, speed: 0.14, kind: "ring" });
+  state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc, life: 0.45, speed: 0.12, kind: "fill" });
+  state.flashes.push({ x, y, r: 0, maxR: r * 0.8, gc, life: 0.60, speed: 0.10, kind: "core" });
 };
 
 const addNova = (x, y, r, gc) => {
-    state.flashes.push({ x, y, r: r * 0.9, maxR: r * 1.6, gc, life: 0.9, speed: 0.18, kind: "white" });
-    state.flashes.push({ x, y, r: r * 0.04, maxR: r * 3.5, gc, life: 0.70, speed: 0.11, kind: "ring" });
-    state.flashes.push({ x, y, r: r * 0.08, maxR: r * 2.2, gc, life: 0.55, speed: 0.10, kind: "fill" });
-    state.flashes.push({ x, y, r: r * 0.15, maxR: r * 1.3, gc, life: 0.65, speed: 0.09, kind: "fill" });
-    state.flashes.push({ x, y, r: 0, maxR: r * 0.9, gc, life: 0.75, speed: 0.08, kind: "core" });
+  state.flashes.push({ x, y, r: r * 0.9, maxR: r * 1.6, gc, life: 0.9, speed: 0.18, kind: "white" });
+  state.flashes.push({ x, y, r: r * 0.04, maxR: r * 3.5, gc, life: 0.70, speed: 0.11, kind: "ring" });
+  state.flashes.push({ x, y, r: r * 0.08, maxR: r * 2.2, gc, life: 0.55, speed: 0.10, kind: "fill" });
+  state.flashes.push({ x, y, r: r * 0.15, maxR: r * 1.3, gc, life: 0.65, speed: 0.09, kind: "fill" });
+  state.flashes.push({ x, y, r: 0, maxR: r * 0.9, gc, life: 0.75, speed: 0.08, kind: "core" });
 };
 
+let _idCounter = 0;
+const nextId = () => `e_${Date.now()}_${(_idCounter++).toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+
 export const makeParticle = (x, y, mass, pal, isCore) => ({
-    x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
+  id: nextId(),
+  x, y, vx: 0, vy: 0, fx: 0, fy: 0, mass: mass || 1, pal, isCore: !!isCore, body: null, dead: false, heat: 0
 });
 
 export const makeSpring = (a, b, restLen, stiff, breakAt) => ({
-    a, b, restLen, stiff: stiff || config.SPRING_K, breakAt: breakAt || (restLen * config.BREAK_MULT), broken: false
+  a, b, restLen, stiff: stiff || config.SPRING_K, breakAt: breakAt || (restLen * config.BREAK_MULT), broken: false
 });
 
 export const makeBody = (cx, cy, radius, pal) => {
-    const particles = [], springs = [], grid = {};
-    const spacing = config.PARTICLE_R * 1.82;
-    const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
-    const ox = cx - (cols - 1) * spacing * 0.5, oy = cy - (rows - 1) * spacing * 0.5;
+  const particles = [], springs = [], grid = {};
+  const spacing = config.PARTICLE_R * 1.82;
+  const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
+  const ox = cx - (cols - 1) * spacing * 0.5, oy = cy - (rows - 1) * spacing * 0.5;
 
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
-            const dx = px - cx, dy = py - cy;
-            if (hypot(dx, dy) > radius + spacing * 0.3) continue;
-            const p = makeParticle(px, py, 1, pal, hypot(dx, dy) < radius * 0.3);
-            grid[`${col},${row}`] = particles.length;
-            particles.push(p);
-        }
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
+      const dx = px - cx, dy = py - cy;
+      if (hypot(dx, dy) > radius + spacing * 0.3) continue;
+      const p = makeParticle(px, py, 1, pal, hypot(dx, dy) < radius * 0.3);
+      grid[`${col},${row}`] = particles.length;
+      particles.push(p);
     }
+  }
 
-    const dirs = [[1, 0], [0, 1], [1, 1], [-1, 1], [2, 0], [0, 2]];
-    const seen = new Set();    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const ai = grid[`${col},${row}`];
-            if (ai === undefined) continue;
-            for (const [dc, dr] of dirs) {
-                const bi = grid[`${col + dc},${row + dr}`];
-                if (bi === undefined) continue;
-                const key = ai < bi ? `${ai}-${bi}` : `${bi}-${ai}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                const pa = particles[ai], pb = particles[bi];
-                const len = hypot(pb.x - pa.x, pb.y - pa.y);
-                const isDirect = len < spacing * 1.2;
-                springs.push(makeSpring(ai, bi, len, isDirect ? config.SPRING_K : config.SPRING_K * 0.6, isDirect ? len * config.BREAK_MULT : len * config.BREAK_MULT * 0.8));
-            }
-        }
+  const dirs = [[1, 0], [0, 1], [1, 1], [-1, 1], [2, 0], [0, 2]];
+  const seen = new Set(); for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const ai = grid[`${col},${row}`];
+      if (ai === undefined) continue;
+      for (const [dc, dr] of dirs) {
+        const bi = grid[`${col + dc},${row + dr}`];
+        if (bi === undefined) continue;
+        const key = ai < bi ? `${ai}-${bi}` : `${bi}-${ai}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const pa = particles[ai], pb = particles[bi];
+        const len = hypot(pb.x - pa.x, pb.y - pa.y);
+        const isDirect = len < spacing * 1.2;
+        springs.push(makeSpring(ai, bi, len, isDirect ? config.SPRING_K : config.SPRING_K * 0.6, isDirect ? len * config.BREAK_MULT : len * config.BREAK_MULT * 0.8));
+      }
     }
+  }
 
-    let tm = 0;
-    for (const p of particles) {
-        p.mass = lerp(2.0, 0.6, hypot(p.x - cx, p.y - cy) / radius);
-        tm += p.mass;
-    }
+  let tm = 0;
+  for (const p of particles) {
+    p.mass = lerp(2.0, 0.6, hypot(p.x - cx, p.y - cy) / radius);
+    tm += p.mass;
+  }
 
-    return { particles, springs, pal, cx, cy, mass: tm, radius, dead: false, gravMult: 1.0 };
+  return {
+    id: nextId(),
+    particles, springs, pal, cx, cy, mass: tm, radius, dead: false, gravMult: 1.0
+  };
 };
 
 export const spawnRing = (body) => {
-    const rx = body.cx, ry = body.cy;
-    const dist = hypot(rx - SUN.x, ry - SUN.y) || 1;
-    const ringW = body.radius * 0.6;
-    addFlash(rx, ry, body.radius * 4, body.pal.gc);
-    addNova(rx, ry, body.radius * 3, body.pal.gc);
-    
-    for (let i = 0; i < RING_PARTICLES; i++) {
-        const angle = (Math.PI * 2 / RING_PARTICLES) * i + rndR(-0.05, 0.05);
-        const r = dist + rndR(-ringW, ringW);
-        const px = SUN.x + Math.cos(angle) * r, py = SUN.y + Math.sin(angle) * r;
-        const gmLocal = config.GRAV_CONST * SUN.mass * (body.gravMult || 1.0);
-        const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
-        const scatter = rndR(0.96, 1.04);
-        state.loose.push({
-            x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter,
-            mass: rndR(0.4, 1.2), pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(4, 8), decay: rndR(0.003, 0.006),
-            isRing: true, isBurnt: false, burnedAt: 0, meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16), birthTime: performance.now()
-        });
-    }
+  const rx = body.cx, ry = body.cy;
+  const dist = hypot(rx - SUN.x, ry - SUN.y) || 1;
+  const ringW = body.radius * 0.6;
+  addFlash(rx, ry, body.radius * 4, body.pal.gc);
+  addNova(rx, ry, body.radius * 3, body.pal.gc);
+
+  for (let i = 0; i < RING_PARTICLES; i++) {
+    const angle = (Math.PI * 2 / RING_PARTICLES) * i + rndR(-0.05, 0.05);
+    const r = dist + rndR(-ringW, ringW);
+    const px = SUN.x + Math.cos(angle) * r, py = SUN.y + Math.sin(angle) * r;
+    const gmLocal = config.GRAV_CONST * SUN.mass * (body.gravMult || 1.0);
+    const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
+    const scatter = rndR(0.96, 1.04);
+    state.loose.push({
+      id: nextId(),
+      x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter, vy: Math.cos(angle) * vLocal * scatter,
+      mass: rndR(0.4, 1.2), pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(4, 8), decay: rndR(0.003, 0.006),
+      isRing: true, isBurnt: false, burnedAt: 0, meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16), birthTime: performance.now()
+    });
+  }
 };
 
-export const splitDeadParticles = (body) => {    const { particles: ps, springs: ss } = body;
-    const n = ps.length; if (!n) return;
-    const adj = Array.from({ length: n }, () => []);
-    for (const sp of ss) {
-        if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) {
-            adj[sp.a].push(sp.b); adj[sp.b].push(sp.a);
-        }
+export const splitDeadParticles = (body) => {
+  const { particles: ps, springs: ss } = body;
+  const n = ps.length; if (!n) return;
+  const adj = Array.from({ length: n }, () => []);
+  for (const sp of ss) {
+    if (!sp.broken && !ps[sp.a].dead && !ps[sp.b].dead) {
+      adj[sp.a].push(sp.b); adj[sp.b].push(sp.a);
     }
-    const vis = new Uint8Array(n);
-    let seed = -1;
-    for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
-    if (seed === -1) return;
-    
-    const q = [seed]; vis[seed] = 1;
-    while (q.length) {
-        const c = q.shift();
-        for (const nb of adj[c]) { if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
+  }
+  const vis = new Uint8Array(n);
+  let seed = -1;
+  for (let i = 0; i < n; i++) { if (!ps[i].dead) { seed = i; break; } }
+  if (seed === -1) return;
+
+  const q = [seed]; vis[seed] = 1;
+  while (q.length) {
+    const c = q.shift();
+    for (const nb of adj[c]) { if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
+  }
+
+  let alive = 0, debrisCount = 0;
+  const MAX_DEBRIS = 15;
+  for (let i = 0; i < n; i++) {
+    const p = ps[i];
+    if (p.dead) continue;
+    if (!vis[i]) {
+      if (debrisCount < MAX_DEBRIS && state.loose.length < 350) {
+        state.loose.push({
+          id: nextId(),
+          x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: rndR(0.004, 0.008),
+          isBurnt: false, burnedAt: 0, meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16), birthTime: performance.now()
+        });
+        debrisCount++;
+      }
+      p.dead = true;
+    } else { alive++; }
+  }
+
+  if (alive < Math.max(3, n * 0.08)) {
+    const remaining = n - debrisCount;
+    if (remaining > 0 && state.loose.length < 365) {
+      const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
+      for (let i = 0; i < burst; i++) {
+        state.loose.push({
+          id: nextId(),
+          x: ps[i].x, y: ps[i].y, vx: ps[i].vx, vy: ps[i].vy, mass: ps[i].mass, pal: ps[i].pal, heat: 1, life: 0.6,
+          decay: rndR(0.005, 0.01), isBurnt: false, burnedAt: 0, meltRate: rndR(0.005, 0.012), detachSpeed: rndR(12, 22), birthTime: performance.now()
+        });
+      }
     }
-    
-    let alive = 0, debrisCount = 0;
-    const MAX_DEBRIS = 15;
-    for (let i = 0; i < n; i++) {
-        const p = ps[i];
-        if (p.dead) continue;
-        if (!vis[i]) {
-            if (debrisCount < MAX_DEBRIS && state.loose.length < 350) {
-                state.loose.push({ x: p.x, y: p.y, vx: p.vx, vy: p.vy, mass: p.mass, pal: p.pal, heat: p.heat, life: 1, decay: rndR(0.004, 0.008), isBurnt: false, burnedAt: 0, meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16), birthTime: performance.now() });
-                debrisCount++;
-            }
-            p.dead = true;
-        } else { alive++; }
-    }
-    
-    if (alive < Math.max(3, n * 0.08)) {
-        const remaining = n - debrisCount;
-        if (remaining > 0 && state.loose.length < 365) {
-            const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
-            for (let i = 0; i < burst; i++) {
-                state.loose.push({ x: ps[i].x, y: ps[i].y, vx: ps[i].vx, vy: ps[i].vy, mass: ps[i].mass, pal: ps[i].pal, heat: 1, life: 0.6, decay: rndR(0.005, 0.01), isBurnt: false, burnedAt: 0, meltRate: rndR(0.005, 0.012), detachSpeed: rndR(12, 22), birthTime: performance.now() });
-            }
-        }
-        if (body.radius >= RING_MIN_RADIUS) spawnRing(body);
-        body.dead = true;
-    }
+    if (body.radius >= RING_MIN_RADIUS) spawnRing(body);
+    body.dead = true;
+  }
 };
