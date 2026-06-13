@@ -17,9 +17,10 @@ import { state } from '../../core/state.js';
  * @param {CanvasRenderingContext2D} ctx - the canvas context
  * @param {number} t - performance.now() timestamp
  * @param {number} alpha - 0..1 interpolation between physics states
- * @param {boolean} didPhysicsTick - whether physics ran this frame (trails need update)
+ * @param {boolean} didPhysicsTick - whether physics ran this frame
+ * @param {Function} onBeforeRestore - optional callback called inside camera transform before ctx.restore()
  */
-export function DrawAll(ctx, t, alpha, didPhysicsTick = false) {
+export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore = null) {
   const cam = CameraModule.cam;
   const w = CameraModule.width;
   const h = CameraModule.height;
@@ -29,7 +30,6 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false) {
   TweenRenderer.applyTween(state.bodies, state.loose, interpData);
 
   // 2. Trails Buffer — ONLY when physics actually ticked
-  // This prevents rendering trails every frame when we're just interpolating
   if (didPhysicsTick) {
     TrailsModule.renderToBuffer(ctx, w, h, cam, state.bodies);
   }
@@ -48,26 +48,31 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false) {
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.x, -cam.y);
 
-  // 6. Trails (world-space)
-  TrailsModule.drawTrail(ctx, w, h, cam);
-
-  // 7. Sun layers
+  // 6. Sun layers
   SunModule.drawSolarRays(ctx, t, cam.zoom);
   SunModule.drawSun(ctx, t, cam.zoom);
   SunModule.drawSolarTentacles(ctx, t, cam.zoom);
 
-  // 8. Planets
+  // 7. Planets
   BodiesModule.drawBodies(ctx);
 
-  // 9. Loose particles
+  // 8. Loose particles
   ParticlesModule.drawLoose(ctx, cam.zoom);
 
-  // 10. Flashes
+  // 9. Flashes
   EffectsModule.drawFlashes(ctx, cam.zoom);
+
+  // 10. World-space overlay callback (orbit preview)
+  if (typeof onBeforeRestore === 'function') {
+    onBeforeRestore(ctx);
+  }
 
   // 11. Restore camera
   ctx.restore();
 
-  // 12. Revert tween
+  // 12. Trails (screen-space — must be after restore!)
+  TrailsModule.drawTrail(ctx, w, h, cam);
+
+  // 13. Revert tween
   TweenRenderer.revertTween();
 }

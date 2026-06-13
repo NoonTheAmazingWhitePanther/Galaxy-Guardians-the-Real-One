@@ -1,10 +1,6 @@
 /**
  * js/main.js
  * Entry point: Sets up canvas, camera, input, and the main render loop.
- *
- * UNIFIED SERVER/CLIENT ARCHITECTURE
- * Physics runs at a FIXED timestep (60Hz, 8 substeps), independent of render FPS.
- * Render interpolates between physics states for smooth visuals at any framerate.
  */
 import { config } from './core/config.js';
 import { state, SUN } from './core/state.js';
@@ -23,12 +19,11 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
 
 // ═══════════════════════════════════════════════════════════════
-// FIXED PHYSICS CONSTANTS — NEVER CHANGE (server dictates these)
+// FIXED PHYSICS CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 const PHYSICS_HZ = 60;
-const PHYSICS_STEP = 1 / PHYSICS_HZ;        // 0.01667s — fixed forever
-const SUBSTEPS = 8;                          // Fixed forever
-const MAX_CATCHUP_STEPS = 16;                // Emergency cap to prevent spiral of death
+const PHYSICS_STEP = 1 / PHYSICS_HZ;
+const MAX_CATCHUP_STEPS = 16;
 
 // ═══════════════════════════════════════════════════════════════
 // STATE
@@ -41,6 +36,7 @@ const VAULT_SIZE = 48;
 
 let frameCount = 0;
 let lastFpsTime = 0;
+let lastFrameTime = 0;
 const fpsEl = document.getElementById("fpsCounter");
 
 // ═══════════════════════════════════════════════════════════════
@@ -54,7 +50,7 @@ const gravSlider = document.getElementById("grav-slider");
 const gravVal = document.getElementById("grav-val");
 
 // ═══════════════════════════════════════════════════════════════
-// RESIZE
+// RESIZE — only canvas sizing, no module init
 // ═══════════════════════════════════════════════════════════════
 function resize() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -63,31 +59,54 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   CameraModule.width = window.innerWidth;
   CameraModule.height = window.innerHeight;
-  TrailsModule.resize(CameraModule.width, CameraModule.height);
-  EffectsModule.init(CameraModule.width, CameraModule.height);
+  if (TrailsModule.resize) {
+    TrailsModule.resize(CameraModule.width, CameraModule.height);
+  }
 }
 window.addEventListener("resize", resize);
 
 // ═══════════════════════════════════════════════════════════════
-// INIT — Called once on DOM ready, before the loop starts
+// INIT — strict order: canvas → camera → effects → trails → input
 // ═══════════════════════════════════════════════════════════════
 function init() {
+  console.log("[init] starting...");
+
   resize();
+  console.log("[init] resize done. size:", CameraModule.width, "x", CameraModule.height);
 
+  // Camera FIRST — everything else depends on it
   CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
-  EffectsModule.init(CameraModule.width, CameraModule.height);
-  TrailsModule.init(CameraModule.width, CameraModule.height);
-  ConfigMenuModule.init();
-  InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
+  console.log("[init] CameraModule ready. ctx:", !!CameraModule.ctx, "cam:", CameraModule.cam);
 
+  // Effects next
+  if (EffectsModule.init) {
+    EffectsModule.init(CameraModule.width, CameraModule.height);
+    console.log("[init] EffectsModule ready");
+  }
+
+  // Trails
+  if (TrailsModule.init) {
+    TrailsModule.init(CameraModule.width, CameraModule.height);
+    console.log("[init] TrailsModule ready");
+  }
+
+  // UI modules
+  if (ConfigMenuModule.init) {
+    ConfigMenuModule.init();
+  }
+  InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
+  console.log("[init] InputModule ready");
+
+  // Initial clear
   ctx.fillStyle = '#04040c';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  console.log("[init] complete — starting loop");
 
   requestAnimationFrame(mainLoop);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PHYSICS TICK — IDENTICAL on server and client
+// PHYSICS TICK
 // ═══════════════════════════════════════════════════════════════
 function physicsTick() {
   StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
@@ -97,7 +116,7 @@ function physicsTick() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PRE-CALCULATION — Warm up the vault before rendering
+// PRE-CALCULATION
 // ═══════════════════════════════════════════════════════════════
 function runPreCalc() {
   const steps = 8;
@@ -109,12 +128,16 @@ function runPreCalc() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// MAIN LOOP — Render FPS is independent of physics rate
+// MAIN LOOP
 // ═══════════════════════════════════════════════════════════════
 function mainLoop(t) {
   requestAnimationFrame(mainLoop);
 
-  // ── FPS Counter ──
+  // ── Frame timing ──
+  const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
+  lastFrameTime = t;
+
+  // ── FPS Counter (main.js own counter) ──
   frameCount++;
   if (t - lastFpsTime >= 1000) {
     const fps = Math.round((frameCount * 1000) / (t - lastFpsTime));
@@ -126,7 +149,10 @@ function mainLoop(t) {
     lastFpsTime = t;
   }
 
-  // ── Advance physics by real elapsed time ──
+  // ── Smoothed FPS for overlays ──
+  OverlaysModule.updateFPS(rawDt);
+
+  // ── Advance physics ──
   const now = performance.now();
   const realDt = (now - lastPhysicsTime) / 1000;
   lastPhysicsTime = now;
@@ -157,17 +183,36 @@ function mainLoop(t) {
     }
   }
 
-  // ── Render with interpolation ──
-  const alpha = Math.min(1, physicsAccumulator / PHYSICS_STEP);
-  DrawAll(ctx, t, alpha, didPhysicsTick);  // ← pass didPhysicsTick for trail optimization
+  // ═══════════════════════════════════════════════════════════
+  // RENDERING
+  // ═══════════════════════════════════════════════════════════
 
-  // ── OVERLAYS (drawn in screen space, after renderer) ──
-  OverlaysModule.drawOrbitPreview(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+  // 1. Camera update (zoom interpolation)
+  CameraModule.tick();
+  if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
+    window.Sim.updatePanPad();
+  }
+
+  const alpha = Math.min(1, physicsAccumulator / PHYSICS_STEP);
+
+  // 2. Draw everything — renderer handles camera transform internally
+  //    Orbit preview is injected via callback so it draws in WORLD space
+  DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    OverlaysModule.drawOrbitPreview(
+      drawCtx,
+      InputModule.holding,
+      InputModule.holdT,
+      InputModule.tx,
+      InputModule.ty
+    );
+  });
+
+  // 3. Screen-space overlays (after renderer restores camera)
   OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
   OverlaysModule.drawFPS();
   OverlaysModule.updateCount(pcountEl);
 
-  // ── Cursor ──
+  // 4. Cursor
   if (cursorEl) {
     cursorEl.style.left = InputModule.tx + "px";
     cursorEl.style.top = InputModule.ty + "px";
@@ -175,7 +220,7 @@ function mainLoop(t) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BOOTSTRAP — Start the app when DOM is ready
+// BOOTSTRAP
 // ═══════════════════════════════════════════════════════════════
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
@@ -184,13 +229,11 @@ if (document.readyState === 'loading') {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DEVELOPMENT: Expose utilities to console for debugging
+// DEV EXPOSE
 // ═══════════════════════════════════════════════════════════════
 if (typeof window !== 'undefined') {
   window.__GG = {
-    state,
-    config,
-    cache: StateCache,
+    state, config, cache: StateCache,
     modules: {
       Camera: CameraModule,
       Input: InputModule,
