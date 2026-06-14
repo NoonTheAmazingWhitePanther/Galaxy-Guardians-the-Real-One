@@ -2,10 +2,10 @@
  * js/modules/rendering/tween-renderer.js
  * The "Projector" - Interpolates between cached physics states.
  *
- * OPTIMIZATIONS (2026-06-13):
- * - Map-based ID lookup instead of Array.find() — O(1) vs O(n)
- * - Pre-allocated arrays to reduce GC pressure
- * - Fast path for alpha=0 (no interpolation needed)
+ * FIX (2026-06-14):
+ * - Loose particles now matched by ID instead of array index
+ * - Prevents crash when tickLoose() hard-caps and shifts array indices
+ * - Added stateB loose particle Map for O(1) ID lookup
  */
 export const TweenRenderer = {
   lerp: (a, b, t) => a + (b - a) * t,
@@ -38,6 +38,7 @@ export const TweenRenderer = {
 
     const lerp = this.lerp;
 
+    // --- Bodies: match by ID (already correct) ---
     for (let i = 0; i < stateA.bodies.length; i++) {
       const a = stateA.bodies[i];
       const b = stateB.bodies[i];
@@ -60,13 +61,23 @@ export const TweenRenderer = {
       liveBody.rotation = lerp(a.rotation, b.rotation, alpha);
     }
 
+    // --- Loose particles: match by ID (FIXED) ---
+    // Build lookup map for stateB loose particles
+    const stateBLooseMap = new Map();
+    for (let i = 0; i < stateB.loose.length; i++) {
+      const p = stateB.loose[i];
+      if (p.id != null) stateBLooseMap.set(p.id, p);
+    }
+
     for (let i = 0; i < stateA.loose.length; i++) {
       const a = stateA.loose[i];
-      const b = stateB.loose[i];
-      if (!b) continue;
 
       const liveParticle = this._looseMap.get(a.id);
       if (!liveParticle) continue;
+
+      // FIX: Match stateB particle by ID, not by array index
+      const b = stateBLooseMap.get(a.id);
+      if (!b) continue;
 
       this._originals.loose.push({
         particle: liveParticle,
