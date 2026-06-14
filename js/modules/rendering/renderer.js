@@ -3,9 +3,9 @@
  * The "Stage" — Orchestrates all rendering passes.
  *
  * FIX (2026-06-14):
- * - Wrapped entire draw in try/finally so TweenRenderer.revertTween()
+ * - Wrapped draw calls in try/finally so TweenRenderer.revertTween()
  *   ALWAYS runs even if a Canvas operation throws DOMException.
- * - Uses correct EffectsModule method names: drawStars (not drawStarfield)
+ *   This prevents NaN from permanently poisoning the physics state.
  */
 import { TweenRenderer } from './tween-renderer.js';
 import { EffectsModule } from './effects.js';
@@ -38,11 +38,11 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   // corrupts the physics state by leaving tweened NaN values in place.
   // ═══════════════════════════════════════════════════════════════════════
   try {
-    // 3. Camera transform (save/restore handled by CameraModule)
+    // 3. Camera transform
     ctx.save();
     CameraModule.apply(ctx, w, h);
 
-    // 4. Draw starfield — CORRECTED: drawStars (not drawStarfield)
+    // 4. Draw starfield (world-space)
     EffectsModule.drawStars(ctx, t, w, h);
 
     // 5. Draw trails (world-space)
@@ -66,7 +66,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     // 11. Draw flashes (world-space)
     EffectsModule.drawFlashes(ctx, cam.zoom);
 
-    // 12. Draw orbit preview (injected via callback so it draws in WORLD space)
+    // 12. Draw orbit preview (injected via callback — world-space)
     if (onBeforeRestore) onBeforeRestore(ctx);
 
     // 13. Restore camera transform
@@ -76,7 +76,4 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     // This runs even if the try block threw a DOMException
     TweenRenderer.revertTween();
   }
-
-  // 15. Screen-space overlays (after camera restore)
-  EffectsModule.drawNova(ctx, t, cam.zoom);
 }
