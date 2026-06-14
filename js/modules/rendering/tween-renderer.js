@@ -3,9 +3,10 @@
  * The "Projector" - Interpolates between cached physics states.
  *
  * FIX (2026-06-14):
- * - Loose particles now matched by ID instead of array index
- * - Prevents crash when tickLoose() hard-caps and shifts array indices
- * - Added stateB loose particle Map for O(1) ID lookup
+ * - Loose particles matched by ID via stateBLooseMap (not blind index)
+ * - NaN-proof lerp: if any input is NaN, skip the tween for that object
+ * - This prevents NaN from poisoning live state and causing DOMException
+ *   in createRadialGradient during drawBody()
  */
 export const TweenRenderer = {
   lerp: (a, b, t) => a + (b - a) * t,
@@ -13,7 +14,6 @@ export const TweenRenderer = {
   _bodyMap: new Map(),
   _looseMap: new Map(),
 
-  // Build lookup maps for O(1) access
   _buildMaps(bodies, loose) {
     this._bodyMap.clear();
     for (let i = 0; i < bodies.length; i++) {
@@ -27,7 +27,15 @@ export const TweenRenderer = {
     }
   },
 
-  // 1. OVERWRITE live objects with tweened visual positions
+  /**
+   * NaN-safe lerp: returns null if any input is not finite.
+   * The caller must check for null and skip the tween.
+   */
+  _safeLerp(a, b, t) {
+    if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(t)) return null;
+    return a + (b - a) * t;
+  },
+
   applyTween(bodies, loose, interpolationData) {
     if (!interpolationData || interpolationData.alpha <= 0.001) return;
     const { stateA, stateB, alpha } = interpolationData;
@@ -36,9 +44,7 @@ export const TweenRenderer = {
     this._originals.bodies = [];
     this._originals.loose = [];
 
-    const lerp = this.lerp;
-
-    // --- Bodies: match by ID (already correct) ---
+    // --- Bodies: match by ID, NaN-safe lerp ---
     for (let i = 0; i < stateA.bodies.length; i++) {
       const a = stateA.bodies[i];
       const b = stateB.bodies[i];
@@ -47,7 +53,11 @@ export const TweenRenderer = {
       const liveBody = this._bodyMap.get(a.id);
       if (!liveBody) continue;
 
-      // Save true physics state
+      const cx = this._safeLerp(a.cx, b.cx, alpha);
+      const cy = this._safeLerp(a.cy, b.cy, alpha);
+      const rot = this._safeLerp(a.rotation, b.rotation, alpha);
+      if (cx === null || cy === null || rot === null) continue; // NaN guard
+
       this._originals.bodies.push({
         body: liveBody,
         cx: liveBody.cx,
@@ -55,14 +65,12 @@ export const TweenRenderer = {
         rotation: liveBody.rotation || 0
       });
 
-      // Apply tweened visual state
-      liveBody.cx = lerp(a.cx, b.cx, alpha);
-      liveBody.cy = lerp(a.cy, b.cy, alpha);
-      liveBody.rotation = lerp(a.rotation, b.rotation, alpha);
+      liveBody.cx = cx;
+      liveBody.cy = cy;
+      liveBody.rotation = rot;
     }
 
-    // --- Loose particles: match by ID (FIXED) ---
-    // Build lookup map for stateB loose particles
+    // --- Loose particles: match by ID via stateBLooseMap, NaN-safe lerp ---
     const stateBLooseMap = new Map();
     for (let i = 0; i < stateB.loose.length; i++) {
       const p = stateB.loose[i];
@@ -71,13 +79,15 @@ export const TweenRenderer = {
 
     for (let i = 0; i < stateA.loose.length; i++) {
       const a = stateA.loose[i];
-
       const liveParticle = this._looseMap.get(a.id);
       if (!liveParticle) continue;
 
-      // FIX: Match stateB particle by ID, not by array index
       const b = stateBLooseMap.get(a.id);
       if (!b) continue;
+
+      const x = this._safeLerp(a.x, b.x, alpha);
+      const y = this._safeLerp(a.y, b.y, alpha);
+      if (x === null || y === null) continue; // NaN guard
 
       this._originals.loose.push({
         particle: liveParticle,
@@ -85,12 +95,11 @@ export const TweenRenderer = {
         y: liveParticle.y
       });
 
-      liveParticle.x = lerp(a.x, b.x, alpha);
-      liveParticle.y = lerp(a.y, b.y, alpha);
+      liveParticle.x = x;
+      liveParticle.y = y;
     }
   },
 
-  // 2. REVERT live objects back to true physics state after drawing
   revertTween() {
     for (let i = 0; i < this._originals.bodies.length; i++) {
       const orig = this._originals.bodies[i];
