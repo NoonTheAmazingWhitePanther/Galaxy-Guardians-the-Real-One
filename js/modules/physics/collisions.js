@@ -2,11 +2,10 @@
  * js/modules/physics/collisions.js
  * Prime Module: Spatial hashing and collision resolution.
  *
- * OPTIMIZATIONS (2026-06-13):
- * - Cached config values to avoid repeated property lookups
- * - Pre-allocated cell pool to reduce GC pressure
- * - Reduced hash collisions with better hash function
- * - Early exit for distant body pairs
+ * FIX (2026-06-14):
+ * - Added null/undefined guards on particle access from cell arrays
+ * - Added mass validation before division
+ * - Added NaN guard on collision impulse
  */
 import { hypot, clamp, rnd, rndR } from '../../core/math.js';
 import { config } from '../../core/config.js';
@@ -82,11 +81,14 @@ export const interBodyCollisions = () => {
 
         for (let i = 0; i < len; i += 2) {
           const pa = cell[i];
-          if (cell[i + 1] !== 0) continue;
+          // FIX: Guard against undefined entries in cell
+          if (!pa || cell[i + 1] !== 0) continue;
 
           for (let j = 0; j < len; j += 2) {
             if (cell[j + 1] !== 1) continue;
             const pb = cell[j];
+            // FIX: Guard against undefined entries
+            if (!pb) continue;
 
             const dx = pb.x - pa.x, dy = pb.y - pa.y;
             const d2 = dx * dx + dy * dy;
@@ -95,14 +97,21 @@ export const interBodyCollisions = () => {
             const d = Math.sqrt(d2) || 0.001;
             const nx = dx / d, ny = dy / d;
             const ov = collisionR - d;
-            const ma = pa.mass, mb = pb.mass, mt = ma + mb;
+            const ma = pa.mass, mb = pb.mass;
+            const mt = ma + mb;
+
+            // FIX: Guard against zero total mass
+            if (mt <= 0 || !Number.isFinite(mt)) continue;
 
             pa.x -= nx * ov * (mb / mt); pa.y -= ny * ov * (mb / mt);
             pb.x += nx * ov * (ma / mt); pb.y += ny * ov * (ma / mt);
 
             const vn = (pa.vx - pb.vx) * nx + (pa.vy - pb.vy) * ny;
             if (vn < 0) {
-              const jVal = -(1.35) * vn / (1 / ma + 1 / mb);
+              const denom = (1 / ma + 1 / mb);
+              // FIX: Guard against division by zero in impulse
+              if (denom <= 0 || !Number.isFinite(denom)) continue;
+              const jVal = -(1.35) * vn / denom;
               pa.vx += jVal * nx / ma; pa.vy += jVal * ny / ma;
               pb.vx -= jVal * nx / mb; pb.vy -= jVal * ny / mb;
               const h = Math.min(0.4, Math.abs(vn) * 0.12);
@@ -127,7 +136,7 @@ export const looseVsPlanets = () => {
 
   for (let li = looseLen - 1; li >= 0; li -= step) {
     const lp = looseArr[li];
-    if (lp.life <= 0.1) continue;
+    if (!lp || lp.life <= 0.1) continue;
 
     const bodies = state.bodies;
     for (let bi = 0; bi < bodies.length; bi++) {
@@ -141,7 +150,7 @@ export const looseVsPlanets = () => {
       const bpArr = body.particles;
       for (let pi = 0; pi < bpArr.length; pi++) {
         const bp = bpArr[pi];
-        if (bp.dead) continue;
+        if (!bp || bp.dead) continue;
         const d2 = (bp.x - lp.x) ** 2 + (bp.y - lp.y) ** 2;
         if (d2 < nearD2) { nearD2 = d2; nearP = bp; }
       }
@@ -171,7 +180,9 @@ export const looseVsPlanets = () => {
         lp.x -= nx * (looseHitR - nearD) * 0.95;
         lp.y -= ny * (looseHitR - nearD) * 0.95;
         const ma = lp.mass, mb = nearP.mass;
-        const j = -(1 + 0.45) * vn / (1 / ma + 1 / mb);
+        const denom = (1 / ma + 1 / mb);
+        if (denom <= 0 || !Number.isFinite(denom)) continue;
+        const j = -(1 + 0.45) * vn / denom;
         lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
         nearP.vx += j * nx / mb; nearP.vy += j * ny / mb;
         const h = clamp(Math.abs(vn) * 0.12, 0, 1);

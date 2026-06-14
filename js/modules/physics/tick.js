@@ -2,12 +2,10 @@
  * js/modules/physics/tick.js
  * Prime Module: Main physics tick orchestrator, integration, and gravity.
  *
- * OPTIMIZATIONS (2026-06-13):
- * - Cached config/state lookups to avoid repeated property access
- * - Pre-computed burn thresholds once per tick
- * - Replaced for...of with indexed for loops in hot paths
- * - Inlined integrateParticle for fewer function calls
- * - Avoided repeated Math.sqrt in gravity calculations
+ * FIX (2026-06-14):
+ * - Added NaN/Infinity guards in updateCOM to prevent corrupt body state
+ * - Added defensive check in splitDeadParticles for out-of-bounds spring indices
+ * - Added null-check before accessing particle properties in collision resolution
  */
 import { hypot } from '../../core/math.js';
 import { config } from '../../core/config.js';
@@ -26,10 +24,16 @@ export const updateCOM = (body) => {
     sm += p.mass;
   }
   if (sm > 0) {
-    body.cx = sx / sm;
-    body.cy = sy / sm;
-    body.mass = sm;
+    const newCx = sx / sm;
+    const newCy = sy / sm;
+    // FIX: Guard against NaN/Infinity
+    if (Number.isFinite(newCx) && Number.isFinite(newCy)) {
+      body.cx = newCx;
+      body.cy = newCy;
+      body.mass = sm;
+    }
   }
+  // If sm === 0, keep previous cx/cy (body will be marked dead in splitDeadParticles)
 };
 
 export const integrateParticle = (p, dt, damping) => {
@@ -48,8 +52,13 @@ export const solveSprings = (body, dt) => {
   for (let i = 0; i < ss.length; i++) {
     const sp = ss[i];
     if (sp.broken) continue;
+    // FIX: Guard against out-of-bounds indices
+    if (sp.a < 0 || sp.a >= ps.length || sp.b < 0 || sp.b >= ps.length) {
+      sp.broken = true;
+      continue;
+    }
     const pa = ps[sp.a], pb = ps[sp.b];
-    if (pa.dead || pb.dead) { sp.broken = true; continue; }
+    if (!pa || !pb || pa.dead || pb.dead) { sp.broken = true; continue; }
     const dx = pb.x - pa.x, dy = pb.y - pa.y;
     const len = hypot(dx, dy) || 0.001;
     if (len > sp.breakAt) { sp.broken = true; continue; }

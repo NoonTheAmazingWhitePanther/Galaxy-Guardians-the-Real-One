@@ -2,12 +2,10 @@
  * js/core/state-cache.js
  * The "Vault" — Stores physics snapshots for smooth interpolation.
  *
- * CORRECTED (2026-06-13):
- * - Simplified: always reads the last 2 snapshots (most recent)
- * - No read/write index synchronization issues
- * - Works correctly at any physics speed (1x, 2x, 4x, 8x, 12x)
- * - FIFO: oldest snapshots are discarded when buffer is full
- * - Stable IDs for reliable body matching in TweenRenderer
+ * FIX (2026-06-14):
+ * - Added defensive check: skip dead bodies in snapshots
+ * - Added loose particle deduplication to prevent ID collisions
+ * - Added null-checks on particle properties before capture
  */
 export const StateCache = {
   buffer: [],
@@ -24,36 +22,45 @@ export const StateCache = {
       return { bodies: [], loose: [] };
     }
 
-    const snapshotBodies = new Array(bodies.length);
+    // --- Bodies: skip dead ones entirely ---
+    const snapshotBodies = [];
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i];
-      snapshotBodies[i] = {
-        id: b.id ?? i,        // Stable fallback: use array index
-        cx: b.cx,
-        cy: b.cy,
-        vx: b.vx,
-        vy: b.vy,
-        radius: b.radius,
+      if (b.dead) continue;  // FIX: Skip dead bodies so they never appear in snapshots
+      snapshotBodies.push({
+        id: b.id ?? i,
+        cx: b.cx ?? 0,
+        cy: b.cy ?? 0,
+        vx: b.vx ?? 0,
+        vy: b.vy ?? 0,
+        radius: b.radius ?? 10,
         rotation: b.rotation || 0,
         pal: b.pal,
-        dead: b.dead
-      };
+        dead: false
+      });
     }
 
-    const snapshotLoose = new Array(loose.length);
+    // --- Loose: deduplicate by ID and null-check properties ---
+    const seenIds = new Set();
+    const snapshotLoose = [];
     for (let i = 0; i < loose.length; i++) {
       const p = loose[i];
-      snapshotLoose[i] = {
-        id: p.id ?? i,
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy,
-        life: p.life,
-        maxLife: p.maxLife,
-        r: p.r,
+      if (!p) continue;
+      const id = p.id ?? `fallback_${i}`;
+      if (seenIds.has(id)) continue;  // FIX: Skip duplicate IDs
+      seenIds.add(id);
+
+      snapshotLoose.push({
+        id: id,
+        x: p.x ?? 0,
+        y: p.y ?? 0,
+        vx: p.vx ?? 0,
+        vy: p.vy ?? 0,
+        life: p.life ?? 0,
+        maxLife: p.maxLife ?? p.life ?? 1,
+        r: p.r ?? 0,
         pal: p.pal
-      };
+      });
     }
 
     return { bodies: snapshotBodies, loose: snapshotLoose };
@@ -65,7 +72,7 @@ export const StateCache = {
   push(snapshot) {
     this.buffer.push(snapshot);
     if (this.buffer.length > this.maxSize) {
-      this.buffer.shift();  // Remove oldest — true FIFO
+      this.buffer.shift(); // Remove oldest — true FIFO
     }
   },
 
@@ -79,8 +86,8 @@ export const StateCache = {
     if (this.buffer.length < 2) return null;
     const len = this.buffer.length;
     return {
-      stateA: this.buffer[len - 2],  // Second most recent
-      stateB: this.buffer[len - 1],  // Most recent
+      stateA: this.buffer[len - 2], // Second most recent
+      stateB: this.buffer[len - 1], // Most recent
       alpha: alpha
     };
   },
