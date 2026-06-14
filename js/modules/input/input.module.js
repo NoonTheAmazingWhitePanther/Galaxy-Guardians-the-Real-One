@@ -2,15 +2,21 @@
  * js/modules/input/input.module.js
  * Prime Module: Mouse, touch, keyboard, UI sliders, and Pan Pad.
  *
- * FIXES (2026-06-13):
- * - Store spLabel/spPause as instance properties so _bindKeyboard can access them
- * - _updateSpeedUI() now reads from this.* instead of taking arguments
- * - Keyboard [ ] and Space now call _updateSpeedUI() to sync the speed bar
- * - _updateSpeedUI() called at end of init() to initialize UI on load
+ * FIXES (2026-06-14):
+ * - Clear button now properly resets ALL game state:
+ *     * StateCache vault cleared
+ *     * TrailsModule buffers marked unused
+ *     * Solar tentacles cleared
+ *     * Physics accumulator reset
+ *     * Pre-calculation state reset
+ *   This prevents DOMException (InvalidStateError) from NaN propagation
+ *   into Canvas 2D operations after clearing.
  */
 import { clamp, hypot } from '../../core/math.js';
-import { state, physSpeed, paused, setPhysSpeed, setSunGravMult, togglePause, SPEED_MAX } from '../../core/state.js';
+import { state, physSpeed, paused, setPhysSpeed, setSunGravMult, togglePause, SPEED_MAX, solarTentacles, SUN } from '../../core/state.js';
 import { CameraModule } from '../camera/camera.module.js';
+import { StateCache } from '../../core/state-cache.js';
+import { TrailsModule } from '../rendering/trails.js';
 
 export const InputModule = {
   holding: false,
@@ -125,8 +131,41 @@ export const InputModule = {
 
     window.addEventListener("pointerup", () => { this.spDrag = false; this.zmDrag = false; });
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // CLEAR BUTTON — FIXED: Properly resets ALL game state to prevent
+    // DOMException from stale snapshot interpolation and NaN propagation
+    // ═══════════════════════════════════════════════════════════════════════
     document.getElementById("clear-btn")?.addEventListener("click", () => {
-      state.bodies = []; state.loose = []; state.flashes = [];
+      // 1. Clear live physics state
+      state.bodies = [];
+      state.loose = [];
+      state.flashes = [];
+
+      // 2. Clear the Vault (StateCache) — CRITICAL FIX
+      // Old snapshots with bodies would cause applyTween to try tweening
+      // non-existent objects, producing NaN that poisons Canvas 2D
+      StateCache.clear();
+
+      // 3. Clear solar tentacles — prevents stale tentacle references
+      solarTentacles.length = 0;
+
+      // 4. Reset sun corona time
+      SUN.coronaTime = 0;
+
+      // 5. Mark trail buffers as unused — prevents ghost trails from old bodies
+      for (const buf of TrailsModule.trailBufs) {
+        buf.used = false;
+      }
+
+      // 6. Reset physics timing — prevents immediate physics tick with empty state
+      // These are module-level vars in main.js; we access them via window.Sim
+      if (window.Sim) {
+        window.Sim.physicsAccumulator = 0;
+        window.Sim.isPreCalculating = true;
+        window.Sim.lastPhysicsTime = performance.now();
+      }
+
+      // 7. Update UI
       if (this.pcountEl) this.pcountEl.textContent = "—";
     });
   },

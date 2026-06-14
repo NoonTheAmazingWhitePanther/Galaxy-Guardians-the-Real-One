@@ -1,6 +1,10 @@
 /**
  * js/main.js
  * Entry point: Sets up canvas, camera, input, and the main render loop.
+ *
+ * FIX (2026-06-14):
+ * - Exposed physics timing variables on window.Sim so the Clear button
+ *   can properly reset them and prevent DOMException from stale state.
  */
 import { config } from './core/config.js';
 import { state, SUN } from './core/state.js';
@@ -97,6 +101,13 @@ function init() {
   InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
   console.log("[init] InputModule ready");
 
+  // FIX: Expose physics timing on window.Sim so Clear button can reset them
+  window.Sim = window.Sim || {};
+  window.Sim.physicsAccumulator = physicsAccumulator;
+  window.Sim.isPreCalculating = isPreCalculating;
+  window.Sim.lastPhysicsTime = lastPhysicsTime;
+  window.Sim.preCalcCounter = preCalcCounter;
+
   // Initial clear
   ctx.fillStyle = '#04040c';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -124,6 +135,8 @@ function runPreCalc() {
     physicsTick();
   }
   preCalcCounter += steps;
+  // FIX: Sync with window.Sim
+  if (window.Sim) window.Sim.preCalcCounter = preCalcCounter;
   return preCalcCounter >= VAULT_SIZE;
 }
 
@@ -156,11 +169,15 @@ function mainLoop(t) {
   const now = performance.now();
   const realDt = (now - lastPhysicsTime) / 1000;
   lastPhysicsTime = now;
+  // FIX: Sync with window.Sim
+  if (window.Sim) window.Sim.lastPhysicsTime = lastPhysicsTime;
 
   let didPhysicsTick = false;
 
   if (!state.paused && state.physSpeed > 0) {
     physicsAccumulator += realDt * state.physSpeed;
+    // FIX: Sync with window.Sim
+    if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
 
     let stepsThisFrame = 0;
     while (physicsAccumulator >= PHYSICS_STEP && stepsThisFrame < MAX_CATCHUP_STEPS) {
@@ -168,18 +185,24 @@ function mainLoop(t) {
         if (runPreCalc()) {
           isPreCalculating = false;
           StateCache.isReady = true;
+          // FIX: Sync with window.Sim
+          if (window.Sim) window.Sim.isPreCalculating = isPreCalculating;
           console.log("🚀 VAULT FULL! ENGAGING SMOOTH PLAYBACK!");
         }
       } else {
         physicsTick();
       }
       physicsAccumulator -= PHYSICS_STEP;
+      // FIX: Sync with window.Sim
+      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
       stepsThisFrame++;
       didPhysicsTick = true;
     }
 
     if (physicsAccumulator >= PHYSICS_STEP) {
       physicsAccumulator = physicsAccumulator % PHYSICS_STEP;
+      // FIX: Sync with window.Sim
+      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
     }
   }
 
@@ -196,7 +219,7 @@ function mainLoop(t) {
   const alpha = Math.min(1, physicsAccumulator / PHYSICS_STEP);
 
   // 2. Draw everything — renderer handles camera transform internally
-  //    Orbit preview is injected via callback so it draws in WORLD space
+  // Orbit preview is injected via callback so it draws in WORLD space
   DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
     OverlaysModule.drawOrbitPreview(
       drawCtx,
