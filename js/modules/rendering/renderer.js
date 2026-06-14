@@ -5,7 +5,7 @@
  * FIX (2026-06-14):
  * - Wrapped entire draw in try/finally so TweenRenderer.revertTween()
  *   ALWAYS runs even if a Canvas operation throws DOMException.
- *   This prevents NaN from permanently poisoning the physics state.
+ * - Uses correct EffectsModule method names: drawStars (not drawStarfield)
  */
 import { TweenRenderer } from './tween-renderer.js';
 import { EffectsModule } from './effects.js';
@@ -42,8 +42,8 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     ctx.save();
     CameraModule.apply(ctx, w, h);
 
-    // 4. Draw starfield
-    EffectsModule.drawStarfield(ctx, w, h, cam);
+    // 4. Draw starfield — CORRECTED: drawStars (not drawStarfield)
+    EffectsModule.drawStars(ctx, t, w, h);
 
     // 5. Draw trails (world-space)
     TrailsModule.drawTrail(ctx, w, h, cam);
