@@ -1,12 +1,9 @@
 /**
  * js/main.js
  * Entry point: Sets up canvas, camera, input, and the main render loop.
- *
- * FIX (2026-06-14):
- * - Exposed physics timing variables on window.Sim so the Clear button
- *   can properly reset them and prevent DOMException from stale state.
+ * UPDATED (2026-06-14): Data-Driven Config, resetGame(), no magic numbers.
  */
-import { config } from './core/config.js';
+import { CONFIG, setTheme } from './Config/config-index.js';
 import { state, SUN } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { InputModule } from './modules/input/input.module.js';
@@ -22,30 +19,20 @@ import { ConfigMenuModule } from './modules/ui/config-menu.js';
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
 
-// ═══════════════════════════════════════════════════════════════
-// FIXED PHYSICS CONSTANTS
-// ═══════════════════════════════════════════════════════════════
-const PHYSICS_HZ = 60;
-const PHYSICS_STEP = 1 / PHYSICS_HZ;
-const MAX_CATCHUP_STEPS = 16;
+// Dynamic Physics Constants (Driven by Active CONFIG Profile)
+let currentPhysicsStep = CONFIG.physics.TIMESTEP;
+let maxCatchupSteps = CONFIG.physics.MAX_FRAME_SKIP;
 
-// ═══════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════
+// State
 let physicsAccumulator = 0;
 let lastPhysicsTime = performance.now();
 let isPreCalculating = true;
 let preCalcCounter = 0;
-const VAULT_SIZE = 48;
-
 let frameCount = 0;
 let lastFpsTime = 0;
 let lastFrameTime = 0;
 const fpsEl = document.getElementById("fpsCounter");
-
-// ═══════════════════════════════════════════════════════════════
-// DOM REFERENCES
-// ═══════════════════════════════════════════════════════════════
+// DOM References
 const cursorEl = document.getElementById("cursor");
 const uiEl = document.getElementById("ui");
 const slider = document.getElementById("size-slider");
@@ -53,216 +40,203 @@ const pcountEl = document.getElementById("pcount");
 const gravSlider = document.getElementById("grav-slider");
 const gravVal = document.getElementById("grav-val");
 
-// ═══════════════════════════════════════════════════════════════
 // RESIZE — only canvas sizing, no module init
-// ═══════════════════════════════════════════════════════════════
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = window.innerWidth * dpr;
-  canvas.height = window.innerHeight * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  CameraModule.width = window.innerWidth;
-  CameraModule.height = window.innerHeight;
-  if (TrailsModule.resize) {
-    TrailsModule.resize(CameraModule.width, CameraModule.height);
-  }
+    const dpr = Math.min(window.devicePixelRatio || 1, CONFIG.render.PIXEL_RATIO_CAP);
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    
+    CameraModule.width = window.innerWidth;
+    CameraModule.height = window.innerHeight;
+    
+    if (TrailsModule.resize) {
+        TrailsModule.resize(CameraModule.width, CameraModule.height);
+    }
 }
 window.addEventListener("resize", resize);
 
-// ═══════════════════════════════════════════════════════════════
 // INIT — strict order: canvas → camera → effects → trails → input
-// ═══════════════════════════════════════════════════════════════
-function init() {
-  console.log("[init] starting...");
+export function init() {
+    console.log(`[init] starting with profile bg: ${CONFIG.render.BACKGROUND_COLOR}`);
+    
+    // 1. SYNC CORE STATE WITH ACTIVE CONFIG
+    state.physicsStep = CONFIG.physics.TIMESTEP;
+    state.vaultSize = CONFIG.physics.VAULT_SIZE;
+    state.maxBodies = CONFIG.physics.MAX_BODIES;
+    
+    // Sync local loop variables
+    currentPhysicsStep = CONFIG.physics.TIMESTEP;
+    maxCatchupSteps = CONFIG.physics.MAX_FRAME_SKIP;
 
-  resize();
-  console.log("[init] resize done. size:", CameraModule.width, "x", CameraModule.height);
+    // 2. CANVAS & ENVIRONMENT SETUP
+    resize();
+    document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
+    // 3. INITIALIZE MODULES
+    CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
+    if (EffectsModule.init) EffectsModule.init(CameraModule.width, CameraModule.height);
+    if (TrailsModule.init) TrailsModule.init(CameraModule.width, CameraModule.height);
+    if (ConfigMenuModule.init) ConfigMenuModule.init();
+    InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
 
-  // Camera FIRST — everything else depends on it
-  CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
-  console.log("[init] CameraModule ready. ctx:", !!CameraModule.ctx, "cam:", CameraModule.cam);
+    // 4. DEBUG EXPOSURE (For Clear button / Dev Tools)
+    window.Sim = window.Sim || {};
+    window.Sim.physicsAccumulator = physicsAccumulator;
+    window.Sim.isPreCalculating = isPreCalculating;
+    window.Sim.lastPhysicsTime = lastPhysicsTime;
+    window.Sim.preCalcCounter = preCalcCounter;
 
-  // Effects next
-  if (EffectsModule.init) {
-    EffectsModule.init(CameraModule.width, CameraModule.height);
-    console.log("[init] EffectsModule ready");
-  }
-
-  // Trails
-  if (TrailsModule.init) {
-    TrailsModule.init(CameraModule.width, CameraModule.height);
-    console.log("[init] TrailsModule ready");
-  }
-
-  // UI modules
-  if (ConfigMenuModule.init) {
-    ConfigMenuModule.init();
-  }
-  InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
-  console.log("[init] InputModule ready");
-
-  // FIX: Expose physics timing on window.Sim so Clear button can reset them
-  window.Sim = window.Sim || {};
-  window.Sim.physicsAccumulator = physicsAccumulator;
-  window.Sim.isPreCalculating = isPreCalculating;
-  window.Sim.lastPhysicsTime = lastPhysicsTime;
-  window.Sim.preCalcCounter = preCalcCounter;
-
-  // Initial clear
-  ctx.fillStyle = '#04040c';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  console.log("[init] complete — starting loop");
-
-  requestAnimationFrame(mainLoop);
+    // 5. INITIAL CLEAR
+    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    console.log("[init] complete — starting loop");
+    requestAnimationFrame(mainLoop);
 }
 
-// ═══════════════════════════════════════════════════════════════
+// SESSION RESET (New Feature)
+// Call this to start a fresh simulation, optionally with a new theme.
+export function resetGame(newThemeName = null) {
+    console.log("[Main] Resetting game session...");
+    
+    // 1. Switch theme if requested (updates CONFIG object and CSS instantly)
+    if (newThemeName) {
+        setTheme(newThemeName);
+    }
+
+    // 2. Re-sync state and loop variables with the (potentially new) config
+    state.physicsStep = CONFIG.physics.TIMESTEP;
+    state.vaultSize = CONFIG.physics.VAULT_SIZE;
+    state.maxBodies = CONFIG.physics.MAX_BODIES;
+    
+    currentPhysicsStep = CONFIG.physics.TIMESTEP;
+    maxCatchupSteps = CONFIG.physics.MAX_FRAME_SKIP;
+    // 3. Reset simulation variables
+    physicsAccumulator = 0;
+    lastPhysicsTime = performance.now();
+    isPreCalculating = true;
+    preCalcCounter = 0;
+    
+    if (window.Sim) {
+        window.Sim.physicsAccumulator = 0;
+        window.Sim.isPreCalculating = true;
+        window.Sim.lastPhysicsTime = lastPhysicsTime;
+        window.Sim.preCalcCounter = 0;
+    }
+
+    // 4. Clear existing entities
+    state.bodies = [];
+    state.loose = [];
+    state.flashes = [];
+    state.asteroids = [];
+    state.astTimer = 0;
+    
+    // 5. Clear the Vault and mark trails unused
+    StateCache.clear();
+    if (TrailsModule.trailBufs) {
+        for (const buf of TrailsModule.trailBufs) buf.used = false;
+    }
+
+    // 6. Update background
+    document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
+    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    console.log(`[Main] Session reset complete. Running with ${CONFIG.physics.MAX_BODIES} max bodies.`);
+}
+
 // PHYSICS TICK
-// ═══════════════════════════════════════════════════════════════
 function physicsTick() {
-  StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
-  tickBodies(PHYSICS_STEP);
-  tickLoose(PHYSICS_STEP);
-  AsteroidsModule.tick(PHYSICS_STEP);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// PRE-CALCULATION
-// ═══════════════════════════════════════════════════════════════
+    StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
+    tickBodies(currentPhysicsStep);
+    tickLoose(currentPhysicsStep);
+    AsteroidsModule.tick(currentPhysicsStep);
+}// PRE-CALCULATION
 function runPreCalc() {
-  const steps = 8;
-  for (let i = 0; i < steps; i++) {
-    physicsTick();
-  }
-  preCalcCounter += steps;
-  // FIX: Sync with window.Sim
-  if (window.Sim) window.Sim.preCalcCounter = preCalcCounter;
-  return preCalcCounter >= VAULT_SIZE;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MAIN LOOP
-// ═══════════════════════════════════════════════════════════════
-function mainLoop(t) {
-  requestAnimationFrame(mainLoop);
-
-  // ── Frame timing ──
-  const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
-  lastFrameTime = t;
-
-  // ── FPS Counter (main.js own counter) ──
-  frameCount++;
-  if (t - lastFpsTime >= 1000) {
-    const fps = Math.round((frameCount * 1000) / (t - lastFpsTime));
-    if (fpsEl) {
-      fpsEl.textContent = fps + " FPS";
-      fpsEl.className = "fps-counter " + (fps >= 55 ? "good" : fps >= 30 ? "okay" : "low");
-    }
-    frameCount = 0;
-    lastFpsTime = t;
-  }
-
-  // ── Smoothed FPS for overlays ──
-  OverlaysModule.updateFPS(rawDt);
-
-  // ── Advance physics ──
-  const now = performance.now();
-  const realDt = (now - lastPhysicsTime) / 1000;
-  lastPhysicsTime = now;
-  // FIX: Sync with window.Sim
-  if (window.Sim) window.Sim.lastPhysicsTime = lastPhysicsTime;
-
-  let didPhysicsTick = false;
-
-  if (!state.paused && state.physSpeed > 0) {
-    physicsAccumulator += realDt * state.physSpeed;
-    // FIX: Sync with window.Sim
-    if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
-
-    let stepsThisFrame = 0;
-    while (physicsAccumulator >= PHYSICS_STEP && stepsThisFrame < MAX_CATCHUP_STEPS) {
-      if (isPreCalculating) {
-        if (runPreCalc()) {
-          isPreCalculating = false;
-          StateCache.isReady = true;
-          // FIX: Sync with window.Sim
-          if (window.Sim) window.Sim.isPreCalculating = isPreCalculating;
-          console.log("🚀 VAULT FULL! ENGAGING SMOOTH PLAYBACK!");
-        }
-      } else {
+    const steps = 8;
+    for (let i = 0; i < steps; i++) {
         physicsTick();
-      }
-      physicsAccumulator -= PHYSICS_STEP;
-      // FIX: Sync with window.Sim
-      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
-      stepsThisFrame++;
-      didPhysicsTick = true;
     }
-
-    if (physicsAccumulator >= PHYSICS_STEP) {
-      physicsAccumulator = physicsAccumulator % PHYSICS_STEP;
-      // FIX: Sync with window.Sim
-      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  // RENDERING
-  // ═══════════════════════════════════════════════════════════
-
-  // 1. Camera update (zoom interpolation)
-  CameraModule.tick();
-  if (typeof window.Sim !== 'undefined' && typeof window.Sim.updatePanPad === 'function') {
-    window.Sim.updatePanPad();
-  }
-
-  const alpha = Math.min(1, physicsAccumulator / PHYSICS_STEP);
-
-  // 2. Draw everything — renderer handles camera transform internally
-  // Orbit preview is injected via callback so it draws in WORLD space
-  DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
-    OverlaysModule.drawOrbitPreview(
-      drawCtx,
-      InputModule.holding,
-      InputModule.holdT,
-      InputModule.tx,
-      InputModule.ty
-    );
-  });
-
-  // 3. Screen-space overlays (after renderer restores camera)
-  OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
-  OverlaysModule.drawFPS();
-  OverlaysModule.updateCount(pcountEl);
-
-  // 4. Cursor
-  if (cursorEl) {
-    cursorEl.style.left = InputModule.tx + "px";
-    cursorEl.style.top = InputModule.ty + "px";
-  }
+    preCalcCounter += steps;
+    
+    if (window.Sim) window.Sim.preCalcCounter = preCalcCounter;
+    return preCalcCounter >= CONFIG.physics.VAULT_SIZE;
 }
 
-// ═══════════════════════════════════════════════════════════════
+// MAIN LOOP
+function mainLoop(t) {
+    requestAnimationFrame(mainLoop);
+    
+    // Frame timing
+    const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
+    lastFrameTime = t;
+    
+    // FPS Counter
+    frameCount++;
+    if (t - lastFpsTime >= 1000) {
+        const fps = Math.round((frameCount * 1000) / (t - lastFpsTime));
+        if (fpsEl) {
+            fpsEl.textContent = fps + " FPS";
+            fpsEl.className = "fps-counter " + (fps >= 55 ? "good" : fps >= 30 ? "okay" : "low");
+        }
+        frameCount = 0;
+        lastFpsTime = t;
+    }
+    
+    OverlaysModule.updateFPS(rawDt);
+    
+    // Advance physics
+    const now = performance.now();
+    const realDt = (now - lastPhysicsTime) / 1000;
+    lastPhysicsTime = now;
+    
+    if (window.Sim) window.Sim.lastPhysicsTime = lastPhysicsTime;
+    
+    let didPhysicsTick = false;if (!state.paused && state.physSpeed > 0) {
+        physicsAccumulator += realDt * state.physSpeed;
+        if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+        let stepsThisFrame = 0;
+        while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < maxCatchupSteps) {
+            if (isPreCalculating) {
+                if (runPreCalc()) {
+                    isPreCalculating = false;
+                    StateCache.isReady = true;
+                    if (window.Sim) window.Sim.isPreCalculating = isPreCalculating;
+                    console.log("🚀 VAULT FULL! ENGAGING SMOOTH PLAYBACK!");
+                }
+            } else { physicsTick(); }
+            physicsAccumulator -= currentPhysicsStep;
+            if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+            stepsThisFrame++; didPhysicsTick = true;
+        }
+        if (physicsAccumulator >= currentPhysicsStep) {
+            physicsAccumulator = physicsAccumulator % currentPhysicsStep;
+            if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+        }
+    }
+    
+    // RENDERING
+    CameraModule.tick();
+    if (window.Sim?.updatePanPad) window.Sim.updatePanPad();
+    const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
+    
+    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+        OverlaysModule.drawOrbitPreview(drawCtx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+    });
+    OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+    OverlaysModule.drawFPS();
+    OverlaysModule.updateCount(pcountEl);
+    if (cursorEl) { cursorEl.style.left = InputModule.tx + "px"; cursorEl.style.top = InputModule.ty + "px"; }
+}
+
 // BOOTSTRAP
-// ═══════════════════════════════════════════════════════════════
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
-} else {
-  init();
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
 
-// ═══════════════════════════════════════════════════════════════
 // DEV EXPOSE
-// ═══════════════════════════════════════════════════════════════
 if (typeof window !== 'undefined') {
-  window.__GG = {
-    state, config, cache: StateCache,
-    modules: {
-      Camera: CameraModule,
-      Input: InputModule,
-      Physics: { tickBodies, tickLoose },
-      Rendering: { DrawAll },
-      Overlays: OverlaysModule
-    }
-  };
+    window.__GG = { state, config: CONFIG, cache: StateCache, resetGame, modules: { Camera: CameraModule, Input: InputModule, Physics: { tickBodies, tickLoose }, Rendering: { DrawAll }, Overlays: OverlaysModule } };
 }

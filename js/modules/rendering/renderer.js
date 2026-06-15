@@ -38,12 +38,15 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   // corrupts the physics state by leaving tweened NaN values in place.
   // ═══════════════════════════════════════════════════════════════════════
   try {
-    // 3. Camera transform
+    
+    // 3. Draw starfield (world-space)
+    EffectsModule.drawStars(ctx, t, w, h);
+  
+    // 4. Camera transform
     ctx.save();
     CameraModule.apply(ctx, w, h);
 
-    // 4. Draw starfield (world-space)
-    EffectsModule.drawStars(ctx, t, w, h);
+  
 
     // 5. Draw trails (world-space)
     TrailsModule.drawTrail(ctx, w, h, cam);
