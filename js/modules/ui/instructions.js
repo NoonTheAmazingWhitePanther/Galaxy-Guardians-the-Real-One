@@ -3,7 +3,7 @@
  * Moddable Gaming Instructions Plugin.
  * UPDATED: Now pulls text dynamically from CONFIG.game.INSTRUCTIONS
  */
-import { CONFIG } from '../../Config/config-index.js';
+import { CONFIG } from '../../config/config-index.js';
 
 export const InstructionsPlugin = {
     isVisible: false,

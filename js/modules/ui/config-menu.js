@@ -3,7 +3,7 @@
  * Handles the physics tuning menu interactions and real-time config updates.
  * UPDATED: Now reads/writes to the global CONFIG router.
  */
-import { CONFIG } from '../../Config/config-index.js';
+import { CONFIG } from '../../config/config-index.js';
 
 export const ConfigMenuModule = {
     isOpen: false,

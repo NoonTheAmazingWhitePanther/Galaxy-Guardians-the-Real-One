@@ -4,7 +4,7 @@
  * UPDATED: Imports spawn limits from CONFIG.game for data-driven modding.
  */
 import { state, SUN, sunGravMult, physSpeed, AST_PALETTE } from '../../core/state.js';
-import { CONFIG } from '../../Config/config-index.js';
+import { CONFIG } from '../../config/config-index.js';
 import { hypot, clamp } from '../../core/math.js';
 
 export const AsteroidsModule = {

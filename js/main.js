@@ -3,7 +3,7 @@
  * Entry point: Sets up canvas, camera, input, and the main render loop.
  * UPDATED (2026-06-14): Data-Driven Config, resetGame(), no magic numbers.
  */
-import { CONFIG, setTheme } from './Config/config-index.js';
+import { CONFIG, setTheme } from './config/config-index.js';
 import { state, SUN } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { InputModule } from './modules/input/input.module.js';
