@@ -15,6 +15,7 @@ import { TrailsModule } from './modules/rendering/trails.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
+import { DrawCallCounter } from './modules/debug/draw-call-counter.js';
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -90,6 +91,7 @@ export function init() {
     ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
+    DrawCallCounter.install();
     console.log("[init] complete — starting loop");
     requestAnimationFrame(mainLoop);
 }
@@ -165,6 +167,7 @@ function runPreCalc() {
 
 // MAIN LOOP
 function mainLoop(t) {
+    DrawCallCounter.reset()
     requestAnimationFrame(mainLoop);
     
     // Frame timing
@@ -229,7 +232,10 @@ function mainLoop(t) {
     OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
     OverlaysModule.drawFPS();
     OverlaysModule.updateCount(pcountEl);
+    DrawCallCounter.draw(ctx);
+    
     if (cursorEl) { cursorEl.style.left = InputModule.tx + "px"; cursorEl.style.top = InputModule.ty + "px"; }
+    
 }
 
 // BOOTSTRAP
