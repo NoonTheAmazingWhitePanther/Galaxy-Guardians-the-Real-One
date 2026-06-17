@@ -1,87 +1,24 @@
 /**
  * js/modules/debug/draw-call-counter.js
- *
  * Counts every Canvas 2D draw operation per frame by wrapping the
- * CanvasRenderingContext2D prototype.  Drop this module anywhere and
- * call  DrawCallCounter.draw(ctx)  at the end of your render loop
- * to see real-time draw-call statistics on screen.
- *
- * ── What counts as a "draw call"? ────────────────────────────────────
- *   fill()          –  fills the current path
- *   fillRect()      –  fills a rectangle
- *   stroke()        –  strokes the current path
- *   strokeRect()    –  strokes a rectangle
- *   drawImage()     –  draws an Image / Canvas / Video element
- *   fillText()      –  fills a string of text
- *   strokeText()    –  strokes a string of text
- *   clearRect()     –  clears a rectangular region (writes to canvas)
- *
- *   (Path-building methods like beginPath, moveTo, lineTo, arc,
- *    bezierCurveTo etc. are NOT draw calls but are counted separately
- *    as "path ops" for diagnostics.)
- *
- * ── Usage ───────────────────────────────────────────────────────────
- *   import { DrawCallCounter } from './modules/debug/draw-call-counter.js';
- *
- *   // 1. Install the wrappers (do this once, before any drawing):
- *   DrawCallCounter.install();
- *
- *   // 2. At the start of every frame:  DrawCallCounter.reset()
- *   //    (automatically called by resetBeforeNextDraw)
- *
- *   // 3. After all rendering, overlay the stats:
- *   DrawCallCounter.draw(ctx);
- *
- *   // Or read the numbers programmatically:
- *   console.log(DrawCallCounter.drawCalls);       // total draw calls this frame
- *   console.log(DrawCallCounter.calls.fill);      // per-method breakdown
- *   console.log(DrawCallCounter.pathOps);         // path-building ops
- * ─────────────────────────────────────────────────────────────────────
+ * CanvasRenderingContext2D prototype.
  */
 export const DrawCallCounter = {
-  /** Raw tally — incremented by the wrapped methods. */
   calls: {},
-
-  /** Convenience total: sum of all wrapped draw-method counts. */
   drawCalls: 0,
-
-  /** Number of path-building operations (beginPath, moveTo, lineTo, arc, etc.). */
   pathOps: 0,
-
-  /** True after install() has been called. */
   _installed: false,
-
-  /** Internal flag: reset() sets this so the first draw method clears tallies. */
   _resetBeforeNextDraw: true,
 
-  // ─── Public API ────────────────────────────────────────────────────
-
-  /**
-   * Patch CanvasRenderingContext2D.prototype so every draw call is counted.
-   * Call ONCE at startup, before any canvas drawing occurs.
-   */
   install() {
     if (this._installed) return;
     this._installed = true;
-
     const self = this;
 
-    // ── DRAW CALLS (these write pixels to the canvas) ────────────────
-    const drawMethods = [
-      'fill',
-      'fillRect',
-      'stroke',
-      'strokeRect',
-      'drawImage',
-      'fillText',
-      'strokeText',
-      'clearRect',
-    ];
-
+    const drawMethods = ['fill', 'fillRect', 'stroke', 'strokeRect', 'drawImage', 'fillText', 'strokeText', 'clearRect'];
     for (const name of drawMethods) {
       const orig = CanvasRenderingContext2D.prototype[name];
-      if (!orig) continue; // safety
-
+      if (!orig) continue;
       CanvasRenderingContext2D.prototype[name] = function (...args) {
         if (self._resetBeforeNextDraw) {
           self._resetBeforeNextDraw = false;
@@ -93,55 +30,24 @@ export const DrawCallCounter = {
       };
     }
 
-    // ── PATH-BUILDING OPERATIONS (not draw calls, but useful to see) ─
-    const pathMethods = [
-      'beginPath',
-      'closePath',
-      'moveTo',
-      'lineTo',
-      'arc',
-      'arcTo',
-      'bezierCurveTo',
-      'quadraticCurveTo',
-      'rect',
-      'ellipse',
-      'roundRect',
-    ];
-
+    const pathMethods = ['beginPath', 'closePath', 'moveTo', 'lineTo', 'arc', 'arcTo', 'bezierCurveTo', 'quadraticCurveTo', 'rect', 'ellipse', 'roundRect'];
     for (const name of pathMethods) {
       const orig = CanvasRenderingContext2D.prototype[name];
       if (!orig) continue;
-
       CanvasRenderingContext2D.prototype[name] = function (...args) {
-        // NOTE: path ops do NOT trigger the frame-first-reset because
-        // they are not draw calls — they only describe a shape.
         self.pathOps++;
         return orig.apply(this, args);
       };
     }
-
     console.log('[DrawCallCounter] installed — tracking all canvas 2D draw calls.');
   },
 
-  /**
-   * Reset counters for a new frame.  Call at the start of your render
-   * loop (before any drawing).  If you forget, the first draw method
-   * of the frame auto-resets anyway.
-   */
   reset() {
     this._resetBeforeNextDraw = true;
-    // The actual zeroing happens lazily on the first draw call to
-    // avoid a double-reset if reset() is called manually AND the
-    // auto-reset triggers.  Force it now:
     this._resetCounts();
   },
 
-  /** Un-patch (restore originals).  Useful if you want to disable
-   *  overhead at runtime without a page reload. */
-  uninstall() {
-    if (!this._installed) return;
-    // Restore is tricky because we overwrote the prototype methods.
-    // For a clean exit, just disable counting.
+  uninstall() {    if (!this._installed) return;
     this._installed = false;
     this.drawCalls = 0;
     this.pathOps = 0;
@@ -149,100 +55,147 @@ export const DrawCallCounter = {
     console.log('[DrawCallCounter] uninstalled.');
   },
 
-  // ─── Overlay draw ──────────────────────────────────────────────────
-
   /**
    * Draw the current stats onto the canvas.
-   * Call AFTER all game rendering, with a plain (non-transformed)
-   * context if possible.
-   *
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {object} [opts]  Optional styling overrides.
-   * @param {string} [opts.color]       Text colour.       Default '#0ff'
-   * @param {string} [opts.bg]          Background colour. Default 'rgba(0,0,0,0.55)'
-   * @param {number} [opts.x]           Screen X.          Default 10
-   * @param {number} [opts.y]           Screen Y.          Default 10
-   * @param {number} [opts.fontSize]    Font size in px.   Default 11
-   * @param {boolean}[opts.compact]     Single-line mode.  Default false
+   * Uses a `scale` multiplier to increase size while keeping perfect ratios.
    */
   draw(ctx, opts = {}) {
+    // 🔹 SCALE FACTOR: 1.25 = 25% larger. Change to 1.5 for 50%, 2.0 for double.
+    const scale = opts.scale !== undefined ? opts.scale : 1.5; 
+
     const {
-      color = '#0ff',
-      bg = 'rgba(0,0,0,0.55)',
-      x = 10,
-      y = 10,
-      fontSize = 11,
-      compact = false,
+      color = 'rgba(240, 245, 255, 0.92)',
+      accent = 'rgba(130, 210, 255, 0.9)',
+      bg = 'rgba(8, 8, 18, 0.88)',
+      border = 'rgba(255, 255, 255, 0.18)',
+      fontSize = Math.round(11 * scale),       // Base 11px
+      fontFamily = '"Space Mono", ui-monospace, monospace',
+      padX = Math.round(10 * scale),           // Base 10px
+      padY = Math.round(6 * scale),            // Base 6px
+      radius = Math.round(10 * scale),         // Base 10px
+      safeMargin = Math.round(16 * scale),     // Base 16px
     } = opts;
 
     const total = this.drawCalls;
     const pathCount = this.pathOps;
+    const breakdown = Object.entries(this.calls).filter(([, v]) => v > 0);
+    breakdown.sort((a, b) => b[1] - a[1]);
 
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // screen-space identity
+    // Force screen-space identity so it ignores camera zoom/pan
+    ctx.setTransform(1, 0, 0, 1, 0, 0); 
 
-    if (compact) {
+    // Helper to draw rounded rectangles
+    const drawRoundedRect = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);      ctx.closePath();
+    };
+
+    if (opts.compact) {
       // ── Single-line display ──
-      const text = `draw calls: ${total}  (path ops: ${pathCount})`;
-      ctx.font = `bold ${fontSize}px "Space Mono",monospace,sans-serif`;
+      const text = `Draw Calls: ${total} | Path Ops: ${pathCount}`;
+      ctx.font = `bold ${fontSize}px ${fontFamily}`;
       const m = ctx.measureText(text);
-      const pad = 6;
+      const panelW = m.width + padX * 2;
+      const panelH = fontSize + padY * 2;
+      
+      const x = safeMargin;
+      const y = (ctx.canvas.height / 2) - (panelH / 2);
+
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = Math.round(12 * scale);
+      ctx.shadowOffsetY = Math.round(4 * scale);
+      
       ctx.fillStyle = bg;
-      ctx.fillRect(x, y, m.width + pad * 2, fontSize + pad * 2);
+      drawRoundedRect(x, y, panelW, panelH, radius);
+      ctx.fill();
+      
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      drawRoundedRect(x + 0.5, y + 0.5, panelW - 1, panelH - 1, radius);
+      ctx.stroke();
+
       ctx.fillStyle = color;
       ctx.textBaseline = 'middle';
-      ctx.fillText(text, x + pad, y + pad + fontSize / 2);
+      ctx.textAlign = 'left';
+      ctx.fillText(text, x + padX, y + panelH / 2);
+
     } else {
       // ── Multi-line panel ──
-      ctx.font = `bold ${fontSize}px "Space Mono",monospace,sans-serif`;
-      const lineH = fontSize + 3;
-      const pad = 6;
-      const labelW = 90;
-      const valW = 40;
-      const panelW = labelW + valW + pad * 2;
-      const breakdown = Object.entries(this.calls).filter(([, v]) => v > 0);
-      const panelH = pad * 2 + lineH * (2 + breakdown.length);
+      const lineH = fontSize + Math.round(4 * scale);
+      const labelW = Math.round(95 * scale);
+      const valW = Math.round(45 * scale);
+      const panelW = labelW + valW + padX * 2;
+      const totalLines = 1 + breakdown.length + 1; 
+      const panelH = padY * 2 + lineH * totalLines;
 
-      // Background
+      // Position: Middle Left (Fixed)
+      const x = safeMargin;
+      const y = (ctx.canvas.height / 2) - (panelH / 2);
+
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = Math.round(12 * scale);
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = Math.round(4 * scale);
       ctx.fillStyle = bg;
-      ctx.fillRect(x, y, panelW, panelH);
+      drawRoundedRect(x, y, panelW, panelH, radius);
+      ctx.fill();
+
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 1;
+      drawRoundedRect(x + 0.5, y + 0.5, panelW - 1, panelH - 1, radius);
+      ctx.stroke();
+
+      // Text Rendering
+      ctx.textBaseline = 'middle';
+      let ly = y + padY + lineH / 2;
+
+      // Header
+      ctx.font = `bold ${fontSize}px ${fontFamily}`;
+      ctx.fillStyle = accent;
+      ctx.textAlign = 'left';
+      ctx.fillText('DRAW CALLS', x + padX, ly);
       ctx.fillStyle = color;
-
-      let ly = y + pad;
-
-      // Header: total draw calls
-      ctx.font = `bold ${fontSize}px "Space Mono",monospace,sans-serif`;
-      ctx.fillStyle = '#fff';
-      ctx.fillText('DRAW CALLS', x + pad, ly);
+      ctx.textAlign = 'right';
+      ctx.fillText(String(total), x + panelW - padX, ly);
+      ctx.textAlign = 'left';
       ly += lineH;
 
-      ctx.fillStyle = color;
-      ctx.fillText(String(total), x + pad + labelW, ly - lineH);
-
-      // Per-method breakdown (sorted by count descending)
-      breakdown.sort((a, b) => b[1] - a[1]);
+      // Breakdown
+      ctx.font = `${fontSize}px ${fontFamily}`;
       for (const [method, count] of breakdown) {
-        ctx.fillStyle = '#888';
-        ctx.fillText(method, x + pad, ly);
+        ctx.fillStyle = 'rgba(240, 245, 255, 0.6)';
+        ctx.fillText(method, x + padX, ly);
         ctx.fillStyle = color;
-        ctx.fillText(String(count), x + pad + labelW, ly);
+        ctx.textAlign = 'right';
+        ctx.fillText(String(count), x + panelW - padX, ly);
+        ctx.textAlign = 'left';
         ly += lineH;
       }
 
       // Path ops
-      ctx.fillStyle = '#666';
-      ctx.font = `${fontSize - 1}px "Space Mono",monospace,sans-serif`;
-      ctx.fillText(`path ops: ${pathCount}`, x + pad, ly);
+      ctx.fillStyle = 'rgba(240, 245, 255, 0.4)';
+      ctx.font = `${fontSize - 1}px ${fontFamily}`;
+      ctx.fillText(`path ops: ${pathCount}`, x + padX, ly);
     }
 
     ctx.restore();
   },
-
-  // ─── Internal helpers ──────────────────────────────────────────────
-
   _resetCounts() {
     this.calls = {};
-    for (const k of Object.keys(this.calls)) this.calls[k] = 0;
     this.drawCalls = 0;
     this.pathOps = 0;
   },
