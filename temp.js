@@ -99,3 +99,44 @@ document.addEventListener('keydown', (e) => {
     DebugRouter.togglePanel('physics');
   }
 });
+
+// ... inside mainLoop(t) ...
+
+// 1. REPOSITION (Tweak these numbers to move them above/below the UI bars)
+DebugRouter.panels.drawCalls.offsetY = -120; // Moves Draw Calls UP
+DebugRouter.panels.physics.offsetY = 80;     // Moves Physics DOWN
+
+// 2. DRAW (The normal command handles the rest)
+DebugRouter.drawAll(ctx, debugCounters);
+
+// ... rest of your loop ...
+
+// 1. Update the import at the top of main.js
+import { InputModule, InputState } from './modules/input/input.module.js';
+
+// 2. Update the DrawAll and drawCharge calls (around line 250)
+DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    // Changed from InputModule.holding to InputState.isHolding
+    OverlaysModule.drawOrbitPreview(drawCtx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY);
+});
+
+// Changed from InputModule.holding to InputState.isHolding
+OverlaysModule.drawCharge(ctx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY, slider.value);
+
+// 3. Update the cursor position at the very bottom of mainLoop
+if (cursorEl) { 
+    cursorEl.style.left = InputState.mouseX + "px"; 
+    cursorEl.style.top = InputState.mouseY + "px"; 
+}
+
+// CHANGE FROM:
+DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    OverlaysModule.drawOrbitPreview(drawCtx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
+});
+OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+
+// CHANGE TO:
+DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    OverlaysModule.drawOrbitPreview(drawCtx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY);
+});
+OverlaysModule.drawCharge(ctx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY, slider.value);

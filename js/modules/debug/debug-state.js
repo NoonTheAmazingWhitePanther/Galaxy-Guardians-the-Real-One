@@ -1,45 +1,39 @@
 /**
  * js/modules/debug/debug-state.js
- * Central configuration for all debug overlays.
- * Change these constants to adjust all debug panels at once.
+ * Central configuration for debug panels.
  */
-
-export const DEBUG_CONFIG = {
-  // ── VISUAL CONSTANTS ──
-  SCALE: 1.5,                    // Global scale multiplier (1.0 = normal, 1.5 = 50% larger)
-  FONT_SIZE: 11,                  // Base font size in pixels
-  FONT_FAMILY: '"Space Mono", ui-monospace, monospace',
+export const DEBUG_STATE = {
+  // ── THE RATIO KEEPER ──
+  // 1.0 = normal, 1.25 = 25% larger, 1.5 = 50% larger.
+  // All padding, fonts, and widths multiply by this to keep exact proportions.
+  scale: 1.0,
   
-  // ── COLORS (matching CSS variables) ──
-  COLOR: 'rgba(240, 245, 255, 0.92)',      // --text-color
-  ACCENT: 'rgba(130, 210, 255, 0.9)',      // --accent-color
-  BG: 'rgba(8, 8, 18, 0.88)',              // --glass-bg
-  BORDER: 'rgba(255, 255, 255, 0.18)',     // --glass-border
+  style: {
+    bg: 'rgba(8, 8, 18, 0.88)',
+    border: 'rgba(255, 255, 255, 0.18)',
+    textDim: 'rgba(240, 245, 255, 0.6)',
+    textFaint: 'rgba(240, 245, 255, 0.4)',
+    accent: 'rgba(130, 210, 255, 0.9)',
+    font: '"Space Mono", ui-monospace, monospace',
+    
+    // Base values (multiplied by 'scale' in the renderer)
+    fontSize: 11,
+    padX: 10,
+    padY: 6,
+    radius: 10,
+    lineHeight: 15,
+    labelW: 95,
+    valW: 45,
+    shadowBlur: 12,
+    shadowOffsetY: 4,
+    shadowColor: 'rgba(0, 0, 0, 0.4)'
+  },
   
-  // ── SPACING ──
-  PAD_X: 10,                      // Horizontal padding
-  PAD_Y: 6,                       // Vertical padding
-  RADIUS: 10,                     // Border radius
-  SAFE_MARGIN: 16,                // Distance from screen edges
-  
-  // ── SHADOW ──
-  SHADOW_BLUR: 12,
-  SHADOW_OFFSET_Y: 4,
-  SHADOW_COLOR: 'rgba(0, 0, 0, 0.4)',
-  
-  // ── PANEL SPECIFIC ──
-  LINE_HEIGHT_EXTRA: 4,           // Extra space between lines
-  LABEL_WIDTH: 95,                // Width for method/label column
-  VALUE_WIDTH: 45,                // Width for value column
-  
-  // ── POSITIONING ──
-  POSITION_X: 'LEFT',             // 'LEFT' or 'RIGHT'
-  POSITION_Y: 'CENTER',           // 'TOP', 'CENTER', or 'BOTTOM'
-};
-
-/**
- * Helper to calculate scaled values
- */
-export const scaled = (value, scale = DEBUG_CONFIG.SCALE) => {
-  return Math.round(value * scale);
+  resolutionScale: 1.0, // Strictly for offscreen canvas pixel density
+  defaultPositions: {
+    drawCalls: { x: 16, y: 80 },
+    physics: { x: 16, y: 220 }
+  },
+  refreshRates: [16, 33, 100, 250, 500],
+  defaultRefreshIdx: 2
 };

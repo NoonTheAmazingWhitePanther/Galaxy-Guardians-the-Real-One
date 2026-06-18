@@ -29,7 +29,13 @@ body {
     color: var(--ui-text); font-family: var(--ui-font); touch-action: none;
     user-select: none; -webkit-tap-highlight-color: transparent;
 }
-canvas#c { display: block; width: 100vw; height: 100vh; z-index: 0; }
+canvas#c { 
+  display: block; 
+  width: 100vw; 
+  height: 100vh; 
+  z-index: 0; 
+  touch-action: none; /* Forces browser to let JS handle all touch drags */
+}
 /* ========================================
 3. SHARED BAR DESIGN
 ======================================== */

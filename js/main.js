@@ -6,7 +6,7 @@
 import { CONFIG, setTheme } from './config/config-index.js';
 import { state, SUN } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
-import { InputModule } from './modules/input/input.module.js';
+import { InputModule, InputState } from './modules/input/input.module.js';
 import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
@@ -15,8 +15,6 @@ import { TrailsModule } from './modules/rendering/trails.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
-import { DrawCallCounter } from './modules/debug/draw-call-counter.js';
-import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 
 const canvas = document.getElementById("c");
@@ -43,8 +41,8 @@ const pcountEl = document.getElementById("pcount");
 const gravSlider = document.getElementById("grav-slider");
 const gravVal = document.getElementById("grav-val");
 const debugCounters = {
-      drawCalls: DrawCallCounter,
-  physics: PhysicsCounter,
+      DebugdrawCalls: DebugRouter.DrawCallCounter,
+  physics: DebugRouter.PhysicsCounter,
 };
 
 // RESIZE — only canvas sizing, no module init
@@ -81,6 +79,7 @@ export function init() {
     document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
     // 3. INITIALIZE MODULES
     CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
+    DebugRouter.init(canvas);
     if (EffectsModule.init) EffectsModule.init(CameraModule.width, CameraModule.height);
     if (TrailsModule.init) TrailsModule.init(CameraModule.width, CameraModule.height);
     if (ConfigMenuModule.init) ConfigMenuModule.init();
@@ -97,7 +96,7 @@ export function init() {
     ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    DrawCallCounter.install();
+    //DrawCallCounter.install();
 
     console.log("[init] complete — starting loop");
     requestAnimationFrame(mainLoop);
@@ -175,7 +174,7 @@ function runPreCalc() {
 // MAIN LOOP
 function mainLoop(t) {
     // Resetting stuff.
-    DebugRouter.resetAll(debugCounters);
+    DebugRouter.resetAll();
     
     requestAnimationFrame(mainLoop);
     
@@ -236,19 +235,22 @@ function mainLoop(t) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
-        OverlaysModule.drawOrbitPreview(drawCtx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty);
-    });
-    OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
+    OverlaysModule.drawOrbitPreview(drawCtx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY);
+});
+    OverlaysModule.drawCharge(ctx, InputState.isHolding, InputState.holdTime, InputState.mouseX, InputState.mouseY, slider.value);
     OverlaysModule.drawFPS();
     OverlaysModule.updateCount(pcountEl);
     
     // Individual debug overlays
     //DrawCallCounter.draw(ctx, { offsetY: -90 });
     //PhysicsCounter.draw(ctx, { offsetY: 90 });
-    // All debug overlays
-    DebugRouter.drawAll(ctx, debugCounters);
+
+    DebugRouter.drawAll(ctx);
     
-    if (cursorEl) { cursorEl.style.left = InputModule.tx + "px"; cursorEl.style.top = InputModule.ty + "px"; }
+    if (cursorEl) {
+    cursorEl.style.left = InputState.mouseX + "px";
+    cursorEl.style.top = InputState.mouseY + "px";
+}
     
 }
 
