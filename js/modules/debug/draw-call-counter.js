@@ -1,8 +1,10 @@
 /**
  * js/modules/debug/draw-call-counter.js
- * Counts every Canvas 2D draw operation per frame by wrapping the
- * CanvasRenderingContext2D prototype.
+ * Now reads from DEBUG_CONFIG instead of hardcoding values.
  */
+
+import { DEBUG_CONFIG, scaled } from './debug-state.js';
+
 export const DrawCallCounter = {
   calls: {},
   drawCalls: 0,
@@ -46,8 +48,8 @@ export const DrawCallCounter = {
     this._resetBeforeNextDraw = true;
     this._resetCounts();
   },
-
-  uninstall() {    if (!this._installed) return;
+  uninstall() {
+    if (!this._installed) return;
     this._installed = false;
     this.drawCalls = 0;
     this.pathOps = 0;
@@ -57,23 +59,24 @@ export const DrawCallCounter = {
 
   /**
    * Draw the current stats onto the canvas.
-   * Uses a `scale` multiplier to increase size while keeping perfect ratios.
+   * Now accepts pre-computed options from DebugRouter.
    */
   draw(ctx, opts = {}) {
-    // 🔹 SCALE FACTOR: 1.25 = 25% larger. Change to 1.5 for 50%, 2.0 for double.
-    const scale = opts.scale !== undefined ? opts.scale : 1.5; 
+    // Use provided options or fall back to DEBUG_CONFIG
+    const scale = opts.scale !== undefined ? opts.scale : DEBUG_CONFIG.SCALE;
+    const offsetY = opts.offsetY || 0;
 
     const {
-      color = 'rgba(240, 245, 255, 0.92)',
-      accent = 'rgba(130, 210, 255, 0.9)',
-      bg = 'rgba(8, 8, 18, 0.88)',
-      border = 'rgba(255, 255, 255, 0.18)',
-      fontSize = Math.round(11 * scale),       // Base 11px
-      fontFamily = '"Space Mono", ui-monospace, monospace',
-      padX = Math.round(10 * scale),           // Base 10px
-      padY = Math.round(6 * scale),            // Base 6px
-      radius = Math.round(10 * scale),         // Base 10px
-      safeMargin = Math.round(16 * scale),     // Base 16px
+      color = DEBUG_CONFIG.COLOR,
+      accent = DEBUG_CONFIG.ACCENT,
+      bg = DEBUG_CONFIG.BG,
+      border = DEBUG_CONFIG.BORDER,
+      fontSize = scaled(DEBUG_CONFIG.FONT_SIZE, scale),
+      fontFamily = DEBUG_CONFIG.FONT_FAMILY,
+      padX = scaled(DEBUG_CONFIG.PAD_X, scale),
+      padY = scaled(DEBUG_CONFIG.PAD_Y, scale),
+      radius = scaled(DEBUG_CONFIG.RADIUS, scale),
+      safeMargin = scaled(DEBUG_CONFIG.SAFE_MARGIN, scale),
     } = opts;
 
     const total = this.drawCalls;
@@ -82,10 +85,8 @@ export const DrawCallCounter = {
     breakdown.sort((a, b) => b[1] - a[1]);
 
     ctx.save();
-    // Force screen-space identity so it ignores camera zoom/pan
-    ctx.setTransform(1, 0, 0, 1, 0, 0); 
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Helper to draw rounded rectangles
     const drawRoundedRect = (x, y, w, h, r) => {
       ctx.beginPath();
       ctx.moveTo(x + r, y);
@@ -95,12 +96,11 @@ export const DrawCallCounter = {
       ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
       ctx.lineTo(x + r, y + h);
       ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);      ctx.closePath();
+      ctx.lineTo(x, y + r);      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
     };
 
     if (opts.compact) {
-      // ── Single-line display ──
       const text = `Draw Calls: ${total} | Path Ops: ${pathCount}`;
       ctx.font = `bold ${fontSize}px ${fontFamily}`;
       const m = ctx.measureText(text);
@@ -108,11 +108,11 @@ export const DrawCallCounter = {
       const panelH = fontSize + padY * 2;
       
       const x = safeMargin;
-      const y = (ctx.canvas.height / 2) - (panelH / 2);
+      const y = (ctx.canvas.height / 2) - (panelH / 2) + offsetY;
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = Math.round(12 * scale);
-      ctx.shadowOffsetY = Math.round(4 * scale);
+      ctx.shadowColor = DEBUG_CONFIG.SHADOW_COLOR;
+      ctx.shadowBlur = scaled(DEBUG_CONFIG.SHADOW_BLUR, scale);
+      ctx.shadowOffsetY = scaled(DEBUG_CONFIG.SHADOW_OFFSET_Y, scale);
       
       ctx.fillStyle = bg;
       drawRoundedRect(x, y, panelW, panelH, radius);
@@ -130,24 +130,22 @@ export const DrawCallCounter = {
       ctx.fillText(text, x + padX, y + panelH / 2);
 
     } else {
-      // ── Multi-line panel ──
-      const lineH = fontSize + Math.round(4 * scale);
-      const labelW = Math.round(95 * scale);
-      const valW = Math.round(45 * scale);
+      const lineH = fontSize + scaled(DEBUG_CONFIG.LINE_HEIGHT_EXTRA, scale);
+      const labelW = scaled(DEBUG_CONFIG.LABEL_WIDTH, scale);
+      const valW = scaled(DEBUG_CONFIG.VALUE_WIDTH, scale);
       const panelW = labelW + valW + padX * 2;
-      const totalLines = 1 + breakdown.length + 1; 
+      const totalLines = 1 + breakdown.length + 1;
       const panelH = padY * 2 + lineH * totalLines;
 
-      // Position: Middle Left (Fixed)
       const x = safeMargin;
-      const y = (ctx.canvas.height / 2) - (panelH / 2);
+      const y = (ctx.canvas.height / 2) - (panelH / 2) + offsetY;
 
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-      ctx.shadowBlur = Math.round(12 * scale);
+      ctx.shadowColor = DEBUG_CONFIG.SHADOW_COLOR;
+      ctx.shadowBlur = scaled(DEBUG_CONFIG.SHADOW_BLUR, scale);
       ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = Math.round(4 * scale);
-      ctx.fillStyle = bg;
-      drawRoundedRect(x, y, panelW, panelH, radius);
+      ctx.shadowOffsetY = scaled(DEBUG_CONFIG.SHADOW_OFFSET_Y, scale);
+
+      ctx.fillStyle = bg;      drawRoundedRect(x, y, panelW, panelH, radius);
       ctx.fill();
 
       ctx.shadowColor = 'transparent';
@@ -159,22 +157,19 @@ export const DrawCallCounter = {
       drawRoundedRect(x + 0.5, y + 0.5, panelW - 1, panelH - 1, radius);
       ctx.stroke();
 
-      // Text Rendering
       ctx.textBaseline = 'middle';
       let ly = y + padY + lineH / 2;
 
-      // Header
       ctx.font = `bold ${fontSize}px ${fontFamily}`;
       ctx.fillStyle = accent;
       ctx.textAlign = 'left';
-      ctx.fillText('DRAW CALLS', x + padX, ly);
+      ctx.fillText(opts.label || 'DRAW CALLS', x + padX, ly);
       ctx.fillStyle = color;
       ctx.textAlign = 'right';
       ctx.fillText(String(total), x + panelW - padX, ly);
       ctx.textAlign = 'left';
       ly += lineH;
 
-      // Breakdown
       ctx.font = `${fontSize}px ${fontFamily}`;
       for (const [method, count] of breakdown) {
         ctx.fillStyle = 'rgba(240, 245, 255, 0.6)';
@@ -186,7 +181,6 @@ export const DrawCallCounter = {
         ly += lineH;
       }
 
-      // Path ops
       ctx.fillStyle = 'rgba(240, 245, 255, 0.4)';
       ctx.font = `${fontSize - 1}px ${fontFamily}`;
       ctx.fillText(`path ops: ${pathCount}`, x + padX, ly);
@@ -194,6 +188,7 @@ export const DrawCallCounter = {
 
     ctx.restore();
   },
+
   _resetCounts() {
     this.calls = {};
     this.drawCalls = 0;

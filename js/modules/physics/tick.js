@@ -12,6 +12,7 @@ import { config } from '../../core/config.js';
 import { state, SUN, sunGravMult } from '../../core/state.js';
 import { interBodyCollisions, looseVsPlanets } from './collisions.js';
 import { splitDeadParticles } from './creation.js';
+import { PhysicsCounter } from '../debug/physics-counter.js'
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -52,6 +53,7 @@ export const solveSprings = (body, dt) => {
   for (let i = 0; i < ss.length; i++) {
     const sp = ss[i];
     if (sp.broken) continue;
+    PhysicsCounter.stats.springsSolved++;
     // FIX: Guard against out-of-bounds indices
     if (sp.a < 0 || sp.a >= ps.length || sp.b < 0 || sp.b >= ps.length) {
       sp.broken = true;
@@ -74,6 +76,7 @@ export const solveSprings = (body, dt) => {
 };
 
 export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodies, sunGrav) => {
+  PhysicsCounter.stats.gravityChecks++;
   const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : sunGrav;
   const sdx = sunX - p.x, sdy = sunY - p.y;
   const sd2 = sdx * sdx + sdy * sdy;
@@ -112,6 +115,7 @@ export const tickLoose = (dt) => {
   for (let li = looseArr.length - 1; li >= 0; li--) {
     const lp = looseArr[li];
     if (lp.life <= 0.02) continue;
+    PhysicsCounter.stats.looseTicked++;
     if (hardCap && survivors.length >= maxSurvivors) break;
 
     const sdx = sunX - lp.x, sdy = sunY - lp.y;
@@ -218,6 +222,7 @@ export const tickBodies = (scaledDt) => {
       for (let pi = 0; pi < particles.length; pi++) {
         const p = particles[pi];
         if (p.dead) continue;
+        PhysicsCounter.stats.particlesIntegrated++;
 
         // 1. Gravity
         applyGravity(p, na, gravConst, sunMass, sunX, sunY, bodies, sunGrav);

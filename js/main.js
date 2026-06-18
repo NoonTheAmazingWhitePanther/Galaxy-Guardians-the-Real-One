@@ -16,6 +16,8 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DrawCallCounter } from './modules/debug/draw-call-counter.js';
+import { PhysicsCounter } from './modules/debug/physics-counter.js';
+import { DebugRouter } from './modules/debug/debug-router.js';
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -40,6 +42,10 @@ const slider = document.getElementById("size-slider");
 const pcountEl = document.getElementById("pcount");
 const gravSlider = document.getElementById("grav-slider");
 const gravVal = document.getElementById("grav-val");
+const debugCounters = {
+      drawCalls: DrawCallCounter,
+  physics: PhysicsCounter,
+};
 
 // RESIZE — only canvas sizing, no module init
 function resize() {
@@ -92,6 +98,7 @@ export function init() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
     DrawCallCounter.install();
+
     console.log("[init] complete — starting loop");
     requestAnimationFrame(mainLoop);
 }
@@ -167,7 +174,9 @@ function runPreCalc() {
 
 // MAIN LOOP
 function mainLoop(t) {
-    DrawCallCounter.reset()
+    // Resetting stuff.
+    DebugRouter.resetAll(debugCounters);
+    
     requestAnimationFrame(mainLoop);
     
     // Frame timing
@@ -232,7 +241,12 @@ function mainLoop(t) {
     OverlaysModule.drawCharge(ctx, InputModule.holding, InputModule.holdT, InputModule.tx, InputModule.ty, slider.value);
     OverlaysModule.drawFPS();
     OverlaysModule.updateCount(pcountEl);
-    DrawCallCounter.draw(ctx);
+    
+    // Individual debug overlays
+    //DrawCallCounter.draw(ctx, { offsetY: -90 });
+    //PhysicsCounter.draw(ctx, { offsetY: 90 });
+    // All debug overlays
+    DebugRouter.drawAll(ctx, debugCounters);
     
     if (cursorEl) { cursorEl.style.left = InputModule.tx + "px"; cursorEl.style.top = InputModule.ty + "px"; }
     

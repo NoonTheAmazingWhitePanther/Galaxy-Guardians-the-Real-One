@@ -10,6 +10,7 @@
 import { hypot, clamp, rnd, rndR } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
+import { PhysicsCounter } from '../debug/physics-counter.js';
 
 // Persistent objects to avoid GC pressure
 const _grid = new Map();
@@ -112,6 +113,7 @@ export const interBodyCollisions = () => {
               // FIX: Guard against division by zero in impulse
               if (denom <= 0 || !Number.isFinite(denom)) continue;
               const jVal = -(1.35) * vn / denom;
+              PhysicsCounter.stats.collisionsResolved++;
               pa.vx += jVal * nx / ma; pa.vy += jVal * ny / ma;
               pb.vx -= jVal * nx / mb; pb.vy -= jVal * ny / mb;
               const h = Math.min(0.4, Math.abs(vn) * 0.12);
@@ -183,6 +185,7 @@ export const looseVsPlanets = () => {
         const denom = (1 / ma + 1 / mb);
         if (denom <= 0 || !Number.isFinite(denom)) continue;
         const j = -(1 + 0.45) * vn / denom;
+        PhysicsCounter.stats.collisionsResolved++;
         lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
         nearP.vx += j * nx / mb; nearP.vy += j * ny / mb;
         const h = clamp(Math.abs(vn) * 0.12, 0, 1);

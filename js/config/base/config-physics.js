@@ -5,7 +5,7 @@ export default {
     GRAVITY_CONSTANT: 120,
     SPRING_K: 0.40,
     DAMPING: 1.0,
-    SUBSTEPS: 8,
+    SUBSTEPS: 4,
     PARTICLE_R: 9,
     BREAK_MULT: 2.8,
     COLLISION_R_BASE_MULT: 1.15,
