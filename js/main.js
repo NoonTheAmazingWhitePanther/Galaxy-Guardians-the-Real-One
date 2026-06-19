@@ -16,6 +16,7 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
+import { DEBUG_STATE } from './modules/debug/debug-state.js';
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -50,6 +51,7 @@ function resize() {
     canvas.width  = window.innerWidth  * dpr;
     canvas.height = window.innerHeight * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    DEBUG_STATE.setDpr(dpr);
 
     CameraModule.width  = window.innerWidth;
     CameraModule.height = window.innerHeight;

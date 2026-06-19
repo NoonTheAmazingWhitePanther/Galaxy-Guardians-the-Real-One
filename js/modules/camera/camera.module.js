@@ -1,12 +1,15 @@
 /**
  * js/modules/camera/camera.module.js
  * Prime Module: Viewport math, zoom, pan, and screen-to-world conversions.
+ *
+ * REFACTOR (2026-06-19): Removed _bindEvents() entirely.
+ * All input listeners now live in in-camera.js inside the InputModule priority chain.
+ * CameraModule is pure state + math — no event listeners whatsoever.
  */
 import { clamp } from '../../core/math.js';
 import { state, SUN } from '../../core/state.js';
 
 export const CameraModule = {
-    // Internal state
     cam: { x: 0, y: 0, zoom: 0.08, targetZoom: 0.08, minZoom: 0.01, maxZoom: 4 },
     isPanning: false,
     panStart: { x: 0, y: 0 },
@@ -17,11 +20,10 @@ export const CameraModule = {
         this.ctx = ctx;
         this.width = width;
         this.height = height;
-        this._bindEvents();
+        // No _bindEvents() call — input is handled by in-camera.js
     },
 
     tick() {
-        // Smooth zoom interpolation
         this.cam.zoom += (this.cam.targetZoom - this.cam.zoom) * 0.1;
     },
 
@@ -58,42 +60,5 @@ export const CameraModule = {
             this.cam.minZoom,
             this.cam.maxZoom
         );
-    },
-
-    _bindEvents() {
-        // Wheel Zoom
-        this.canvas.addEventListener("wheel", e => {
-            e.preventDefault();
-            const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-            const newZoom = clamp(this.cam.targetZoom * factor, this.cam.minZoom, this.cam.maxZoom);
-            const wb = this.screenToWorld(e.clientX, e.clientY);
-            
-            this.cam.targetZoom = newZoom;
-            this.cam.x = wb.x - (e.clientX - this.width / 2) / newZoom;
-            this.cam.y = wb.y - (e.clientY - this.height / 2) / newZoom;
-        }, { passive: false });
-
-        // Mouse Panning
-        this.canvas.addEventListener("mousedown", e => {
-            if (e.button === 1 || e.button === 2) {
-                this.isPanning = true;
-                this.panStart = { x: e.clientX, y: e.clientY };
-                this.camStart = { x: this.cam.x, y: this.cam.y };
-                e.preventDefault();
-            }
-        });
-
-        window.addEventListener("mousemove", e => {
-            if (this.isPanning) {
-                this.cam.x = this.camStart.x - (e.clientX - this.panStart.x) / this.cam.zoom;
-                this.cam.y = this.camStart.y - (e.clientY - this.panStart.y) / this.cam.zoom;
-            }
-        });
-
-        window.addEventListener("mouseup", e => {
-            if (e.button === 1 || e.button === 2) this.isPanning = false;
-        });
-
-        this.canvas.addEventListener("contextmenu", e => e.preventDefault());
     }
 };
