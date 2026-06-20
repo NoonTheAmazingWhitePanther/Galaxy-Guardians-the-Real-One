@@ -21,7 +21,7 @@ export const config = {
 
   // Display
   RESOLUTION_MULT: 1.0,
-  FPS_CAP: 60,
+  FPS_CAP: 120,
   FRAME_SKIPPING: 1,
   DAY_NIGHT_CYCLE: false,
   SHOW_STARS: true,

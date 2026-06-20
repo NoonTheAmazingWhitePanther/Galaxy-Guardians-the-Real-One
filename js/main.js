@@ -11,12 +11,16 @@ import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
 import { AsteroidsModule } from './modules/entities/asteroids.js';
-import { TrailsModule } from './modules/rendering/trails.js';
+import { Accumulator }  from './modules/rendering/accumulator.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
+import { PhysicsGovernor } from './core/physics-governor.js';
+import { RenderGovernor }  from './core/render-governor.js';
+import { PhysicsCounter }  from './modules/debug/physics-counter.js';
+import { QueOps }          from './core/que-ops.js';
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -56,9 +60,7 @@ function resize() {
     CameraModule.width  = window.innerWidth;
     CameraModule.height = window.innerHeight;
 
-    if (TrailsModule.resize) {
-        TrailsModule.resize(CameraModule.width, CameraModule.height);
-    }
+    Accumulator.resize(CameraModule.width, CameraModule.height);
 }
 window.addEventListener("resize", resize);
 
@@ -86,10 +88,11 @@ export function init() {
     DebugRouter.init(canvas);
 
     if (EffectsModule.init)     EffectsModule.init(CameraModule.width, CameraModule.height);
-    if (TrailsModule.init)      TrailsModule.init(CameraModule.width, CameraModule.height);
+    Accumulator.init(CameraModule.width, CameraModule.height);
     if (ConfigMenuModule.init)  ConfigMenuModule.init();
 
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
+    QueOps.init({ maxFrameTimeMs: 12, enableStagger: true });
 
     // 4. Debug exposure (for DevTools)
     window.Sim = window.Sim || {};
@@ -99,8 +102,7 @@ export function init() {
     window.Sim.preCalcCounter     = preCalcCounter;
 
     // 5. Initial clear
-    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
 
     console.log("[init] complete — starting loop");
     requestAnimationFrame(mainLoop);
@@ -132,6 +134,7 @@ export function resetGame(newThemeName = null) {
     preCalcCounter     = 0;
 
     if (window.Sim) {
+        window.Sim.QueOps = QueOps;
         window.Sim.physicsAccumulator = 0;
         window.Sim.isPreCalculating   = true;
         window.Sim.lastPhysicsTime    = lastPhysicsTime;
@@ -147,14 +150,11 @@ export function resetGame(newThemeName = null) {
 
     // 5. Clear the vault and mark trails unused
     StateCache.clear();
-    if (TrailsModule.trailBufs) {
-        for (const buf of TrailsModule.trailBufs) buf.used = false;
-    }
+    Accumulator.clear();
 
     // 6. Update background
     document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
-    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
 
     console.log(`[Main] Session reset complete. Running with ${CONFIG.physics.MAX_BODIES} max bodies.`);
 }
@@ -187,6 +187,7 @@ function runPreCalc() {
 function mainLoop(t) {
     // 1. Reset debug counters
     DebugRouter.resetAll();
+    QueOps.tick();
     requestAnimationFrame(mainLoop);
 
     // 2. Frame timing
@@ -206,12 +207,18 @@ function mainLoop(t) {
     }
     OverlaysModule.updateFPS(rawDt);
 
-    // 4. Advance physics
-    const now   = performance.now();
+    // 4. Advance physics — governed by PhysicsGovernor
+    const now    = performance.now();
     const realDt = (now - lastPhysicsTime) / 1000;
     lastPhysicsTime = now;
 
     if (window.Sim) window.Sim.lastPhysicsTime = lastPhysicsTime;
+
+    // Feed chaos signal to governor (collisions + breaks from last frame)
+    const _phChaos = (PhysicsCounter?.stats?.collisionsResolved ?? 0)
+                   + (PhysicsCounter?.stats?.springsSolved ?? 0) * 0.1;
+    PhysicsGovernor.feedChaos(_phChaos, 0, 0);
+    currentPhysicsStep = PhysicsGovernor.step;
 
     let didPhysicsTick = false;
 
@@ -243,37 +250,41 @@ function mainLoop(t) {
         }
     }
 
-    // 5. Rendering
+    // 5. Rendering — governed by RenderGovernor
     CameraModule.tick();
     if (window.Sim?.updatePanPad) window.Sim.updatePanPad();
 
-    const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
+    // Feed render chaos signal
+    const _camVel = Math.abs(CameraModule.cam.zoom - CameraModule.cam.targetZoom) * 100
+                  + (CameraModule.isPanning ? 30 : 0);
+    RenderGovernor.feedChaos(_camVel, 0, didPhysicsTick);
 
-    ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (RenderGovernor.shouldRender()) {
+        const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
-    DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
-        OverlaysModule.drawOrbitPreview(
-            drawCtx,
+        DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+            OverlaysModule.drawOrbitPreview(
+                drawCtx,
+                InputState.isHolding,
+                InputState.holdTime,
+                InputState.mouseX,
+                InputState.mouseY
+            );
+        });
+
+        OverlaysModule.drawCharge(
+            ctx,
             InputState.isHolding,
             InputState.holdTime,
             InputState.mouseX,
-            InputState.mouseY
+            InputState.mouseY,
+            slider.value
         );
-    });
 
-    OverlaysModule.drawCharge(
-        ctx,
-        InputState.isHolding,
-        InputState.holdTime,
-        InputState.mouseX,
-        InputState.mouseY,
-        slider.value
-    );
-
-    OverlaysModule.drawFPS();
-    OverlaysModule.updateCount(pcountEl);
-    DebugRouter.drawAll(ctx);
+        OverlaysModule.drawFPS();
+        OverlaysModule.updateCount(pcountEl);
+        DebugRouter.drawAll(ctx);
+    }
 
     // 6. Cursor position
     if (cursorEl) {

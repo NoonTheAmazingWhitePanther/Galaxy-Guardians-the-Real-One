@@ -1,11 +1,14 @@
 /**
  * js/modules/debug/debug-router.js
  * Central Hub. STATE & RENDERING ONLY. No input listeners.
+ *
+ * UPDATED (2026-06-19): Added third panel — QueOps queue monitor.
  */
 import { DrawCallCounter } from './draw-call-counter.js';
-import { PhysicsCounter } from './physics-counter.js';
-import { DebugRenderer } from '../rendering/debug-renderer.js';
-import { DEBUG_STATE } from './debug-state.js';
+import { PhysicsCounter }  from './physics-counter.js';
+import { DebugRenderer }   from '../rendering/debug-renderer.js';
+import { DEBUG_STATE }     from './debug-state.js';
+import { QueOps }          from '../../core/que-ops.js';
 
 export const DebugRouter = {
   panels: [],
@@ -32,6 +35,15 @@ export const DebugRouter = {
         lastUpdate: 0,
         refreshRates: DEBUG_STATE.refreshRates,
         currentRateIdx: DEBUG_STATE.defaultRefreshIdx
+      },
+      {
+        id: 'queops', type: 'queops', visible: true,
+        x: DEBUG_STATE.defaultPositions.queops.x,
+        y: DEBUG_STATE.defaultPositions.queops.y,
+        refreshRate: DEBUG_STATE.refreshRates[DEBUG_STATE.defaultRefreshIdx],
+        lastUpdate: 0,
+        refreshRates: DEBUG_STATE.refreshRates,
+        currentRateIdx: DEBUG_STATE.defaultRefreshIdx
       }
     ];
   },
@@ -49,7 +61,10 @@ export const DebugRouter = {
       if (now - panel.lastUpdate >= panel.refreshRate) {
         panel.lastUpdate = now;
       }
-      const data = panel.type === 'drawCalls' ? DrawCallCounter : PhysicsCounter;
+      let data;
+      if      (panel.type === 'drawCalls') data = DrawCallCounter;
+      else if (panel.type === 'physics')   data = PhysicsCounter;
+      else if (panel.type === 'queops')    data = QueOps.getDebugInfo();
       if (data) DebugRenderer.renderPanel(ctx, panel, data);
     }
   },

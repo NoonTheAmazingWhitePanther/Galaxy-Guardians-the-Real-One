@@ -3,6 +3,7 @@ js/modules/physics/creation.js
 Prime Module: Entity creation, ring spawning, and debris splitting.
 */
 import { hypot, lerp, rnd, rndR } from '../../core/math.js';
+import { QueOps } from '../../core/que-ops.js';
 import { config } from '../../core/config.js';
 import { state, SUN, RING_MIN_RADIUS, RING_PARTICLES } from '../../core/state.js';
 
@@ -85,20 +86,36 @@ export const spawnRing = (body) => {
     // SAFETY: Ensure body.pal.gc exists
     const gc = (body.pal && body.pal.gc) ? body.pal.gc : '255,255,255';    addFlash(rx, ry, body.radius * 4, gc);
     addNova(rx, ry, body.radius * 3, gc);
+    // Queue ring particles through QueOps — metered at 30/frame so a big
+    // ring spawn doesn't spike a single frame. With the accumulator trail
+    // system, deferred particles smear in visually rather than popping.
     for (let i = 0; i < RING_PARTICLES; i++) {
         const angle = (Math.PI * 2 / RING_PARTICLES) * i + rndR(-0.05, 0.05);
-        const r = dist + rndR(-ringW, ringW);
-        const px = SUN.x + Math.cos(angle) * r, py = SUN.y + Math.sin(angle) * r;
+        const r     = dist + rndR(-ringW, ringW);
         const gmLocal = config.GRAV_CONST * SUN.mass * (body.gravMult || 1.0);
-        const vLocal = Math.sqrt(gmLocal / Math.max(r, 1));
+        const vLocal  = Math.sqrt(gmLocal / Math.max(r, 1));
         const scatter = rndR(0.96, 1.04);
-        state.loose.push({
-            id: nextId(), x: px, y: py, vx: -Math.sin(angle) * vLocal * scatter,
-            vy: Math.cos(angle) * vLocal * scatter, mass: rndR(0.4, 1.2),
-            pal: body.pal, heat: rndR(0.3, 0.8), life: rndR(4, 8),
-            decay: rndR(0.003, 0.006), isRing: true, isBurnt: false,
-            burnedAt: 0, meltRate: rndR(0.003, 0.008),
-            detachSpeed: rndR(8, 16), birthTime: performance.now()
+        const pal     = body.pal;
+        const gMult   = body.gravMult || 1.0;
+        QueOps.add({
+            subject:  'particles',
+            priority: 2,
+            cost:     1,
+            fn: () => {
+                if (state.loose.length >= 400) return;
+                const px = SUN.x + Math.cos(angle) * r;
+                const py = SUN.y + Math.sin(angle) * r;
+                state.loose.push({
+                    id: nextId(), x: px, y: py,
+                    vx: -Math.sin(angle) * vLocal * scatter,
+                    vy:  Math.cos(angle) * vLocal * scatter,
+                    mass: rndR(0.4, 1.2), pal, heat: rndR(0.3, 0.8),
+                    life: rndR(4, 8), decay: rndR(0.003, 0.006),
+                    isRing: true, isBurnt: false, burnedAt: 0,
+                    meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16),
+                    birthTime: performance.now()
+                });
+            }
         });
     }
 };
@@ -128,11 +145,19 @@ export const splitDeadParticles = (body) => {
         if (p.dead) continue;
         if (!vis[i]) {
             if (debrisCount < MAX_DEBRIS && state.loose.length < 350) {
-                state.loose.push({
-                    id: nextId(), x: p.x, y: p.y, vx: p.vx, vy: p.vy,
-                    mass: p.mass, pal: p.pal, heat: p.heat, life: 1,
-                    decay: rndR(0.004, 0.008), isBurnt: false, burnedAt: 0,
-                    meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16),                    birthTime: performance.now()
+                const _p = p;
+                QueOps.add({
+                    subject: 'particles', priority: 2, cost: 1,
+                    fn: () => {
+                        if (state.loose.length >= 350) return;
+                        state.loose.push({
+                            id: nextId(), x: _p.x, y: _p.y, vx: _p.vx, vy: _p.vy,
+                            mass: _p.mass, pal: _p.pal, heat: _p.heat, life: 1,
+                            decay: rndR(0.004, 0.008), isBurnt: false, burnedAt: 0,
+                            meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16),
+                            birthTime: performance.now()
+                        });
+                    }
                 });
                 debrisCount++;
             }
@@ -144,12 +169,19 @@ export const splitDeadParticles = (body) => {
         if (remaining > 0 && state.loose.length < 365) {
             const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
             for (let i = 0; i < burst; i++) {
-                state.loose.push({
-                    id: nextId(), x: ps[i].x, y: ps[i].y, vx: ps[i].vx, vy: ps[i].vy,
-                    mass: ps[i].mass, pal: ps[i].pal, heat: 1, life: 0.6,
-                    decay: rndR(0.005, 0.01), isBurnt: false, burnedAt: 0,
-                    meltRate: rndR(0.005, 0.012), detachSpeed: rndR(12, 22),
-                    birthTime: performance.now()
+                const _pi = ps[i];
+                QueOps.add({
+                    subject: 'particles', priority: 3, cost: 1,
+                    fn: () => {
+                        if (state.loose.length >= 365) return;
+                        state.loose.push({
+                            id: nextId(), x: _pi.x, y: _pi.y, vx: _pi.vx, vy: _pi.vy,
+                            mass: _pi.mass, pal: _pi.pal, heat: 1, life: 0.6,
+                            decay: rndR(0.005, 0.01), isBurnt: false, burnedAt: 0,
+                            meltRate: rndR(0.005, 0.012), detachSpeed: rndR(12, 22),
+                            birthTime: performance.now()
+                        });
+                    }
                 });
             }
         }

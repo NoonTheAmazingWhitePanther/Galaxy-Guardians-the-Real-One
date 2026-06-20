@@ -7,7 +7,7 @@
  */
 export const DEBUG_STATE = {
   // ── THE RATIO KEEPER ──
-  scale: 0.78,
+  scale: 1.0,
 
   // Device pixel ratio — set by main.js resize(), read by renderer + hit-test
   dpr: 1,
@@ -35,8 +35,9 @@ export const DEBUG_STATE = {
 
   resolutionScale: 1.0,
   defaultPositions: {
-    drawCalls: { x: 16, y: 80 },
-    physics:   { x: 16, y: 220 }
+    drawCalls: { x: 16, y: 80  },
+    physics:   { x: 16, y: 220 },
+    queops:    { x: 16, y: 360 }
   },
   refreshRates: [16, 33, 100, 250, 500],
   defaultRefreshIdx: 2

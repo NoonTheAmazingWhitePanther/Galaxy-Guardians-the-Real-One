@@ -11,39 +11,116 @@ stars: [],
 starSprite: null,
 
 init(width, height) {
-    this.stars = Array.from({ length: 90 }, () => ({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        r: Math.random() * 1.2 + 0.2,
-        bri: Math.random() * 0.5 + 0.5,
-        ts: Math.random() * 0.012 + 0.003,
-        to: Math.random() * Math.PI * 2,
-        hue: 200 + Math.random() * 60
-    }));
-    
-    const SPRITE_SIZE = 16;
-    this.starSprite = document.createElement('canvas');
-    this.starSprite.width = SPRITE_SIZE;
-    this.starSprite.height = SPRITE_SIZE;
-    const sctx = this.starSprite.getContext('2d');
-    const cx = SPRITE_SIZE / 2, cy = SPRITE_SIZE / 2;
-    const grad = sctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(0.3, 'rgba(200, 220, 255, 0.7)');
-    grad.addColorStop(1.0, 'rgba(100, 100, 100, 0)');
-    sctx.fillStyle = grad;
-    sctx.fillRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
+    // ── Star field — 3 layers, varied types ───────────────────────────────
+    const COUNTS = [55, 28, 12];
+    const SIZES  = [[0.2, 0.6], [0.6, 1.2], [1.1, 2.2]];
+    const BRIS   = [[0.15, 0.4], [0.3, 0.65], [0.55, 1.0]];
+    const TYPES  = ['dot', 'dot', 'dot', 'glow', 'glow', 'cross'];
+
+    this.stars = [];
+    for (let layer = 0; layer < 3; layer++) {
+        for (let i = 0; i < COUNTS[layer]; i++) {
+            const [rMin, rMax] = SIZES[layer];
+            const [bMin, bMax] = BRIS[layer];
+            this.stars.push({
+                x:    Math.random() * width,
+                y:    Math.random() * height,
+                r:    rMin + Math.random() * (rMax - rMin),
+                bri:  bMin + Math.random() * (bMax - bMin),
+                ts:   Math.random() * 0.008 + 0.001,
+                to:   Math.random() * Math.PI * 2,
+                type: TYPES[Math.floor(Math.random() * TYPES.length)],
+                layer
+            });
+        }
+    }
+
+    this._sprites = {
+        dot:   this._makeSpriteDot(14),
+        glow:  this._makeSpriteGlow(22),
+        cross: this._makeSpriteCross(28)
+    };
+},
+
+_makeSpriteDot(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const cx = size / 2;
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+    g.addColorStop(0,    'rgba(255, 255, 255, 1)');
+    g.addColorStop(0.18, 'rgba(220, 235, 255, 0.85)');
+    g.addColorStop(0.45, 'rgba(180, 210, 255, 0.3)');
+    g.addColorStop(1,    'rgba(140, 180, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    return c;
+},
+
+_makeSpriteGlow(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const cx = size / 2;
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx);
+    g.addColorStop(0,    'rgba(255, 255, 255, 1)');
+    g.addColorStop(0.08, 'rgba(240, 248, 255, 0.95)');
+    g.addColorStop(0.2,  'rgba(200, 225, 255, 0.55)');
+    g.addColorStop(0.5,  'rgba(160, 200, 255, 0.15)');
+    g.addColorStop(0.75, 'rgba(120, 160, 255, 0.05)');
+    g.addColorStop(1,    'rgba(100, 140, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    ctx.beginPath();
+    ctx.arc(cx, cx, cx * 0.55, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(180, 220, 255, 0.12)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    return c;
+},
+
+_makeSpriteCross(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const cx = size / 2;
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, cx * 0.4);
+    g.addColorStop(0,   'rgba(255, 255, 255, 1)');
+    g.addColorStop(0.3, 'rgba(220, 240, 255, 0.8)');
+    g.addColorStop(1,   'rgba(180, 220, 255, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+    const drawSpike = (angle) => {
+        ctx.save();
+        ctx.translate(cx, cx);
+        ctx.rotate(angle);
+        const sg = ctx.createLinearGradient(-cx, 0, cx, 0);
+        sg.addColorStop(0,   'rgba(200, 230, 255, 0)');
+        sg.addColorStop(0.4, 'rgba(220, 240, 255, 0.18)');
+        sg.addColorStop(0.5, 'rgba(255, 255, 255, 0.55)');
+        sg.addColorStop(0.6, 'rgba(220, 240, 255, 0.18)');
+        sg.addColorStop(1,   'rgba(200, 230, 255, 0)');
+        ctx.fillStyle = sg;
+        ctx.fillRect(-cx, -0.8, size, 1.6);
+        ctx.restore();
+    };
+    drawSpike(0);
+    drawSpike(Math.PI / 2);
+    drawSpike(Math.PI / 4);
+    drawSpike(-Math.PI / 4);
+    return c;
 },
 
 drawStars(ctx, t, width, height) {
-    if (!this.starSprite) return;
-    const spriteW = this.starSprite.width;
-    const spriteH = this.starSprite.height;
-    const halfW = spriteW / 2, halfH = spriteH / 2;
+    if (!this._sprites) return;
     for (const s of this.stars) {
-        const a = s.bri * (0.5 + 0.5 * Math.sin(t * s.ts + s.to));
+        const twinkle = 0.55 + 0.45 * Math.sin(t * s.ts + s.to);
+        const a = s.bri * twinkle;
+        if (a < 0.02) continue;
+        const sprite = this._sprites[s.type];
+        const drawR  = s.r * (sprite.width / 8);
         ctx.globalAlpha = a;
-        ctx.drawImage(this.starSprite, s.x - halfW, s.y - halfH, spriteW, spriteH);
+        ctx.drawImage(sprite, s.x - drawR, s.y - drawR, drawR * 2, drawR * 2);
     }
     ctx.globalAlpha = 1;
 },addFlash: (x, y, r, gc) => {

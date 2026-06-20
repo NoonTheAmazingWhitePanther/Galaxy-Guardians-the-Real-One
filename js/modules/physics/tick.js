@@ -12,7 +12,8 @@ import { config } from '../../core/config.js';
 import { state, SUN, sunGravMult } from '../../core/state.js';
 import { interBodyCollisions, looseVsPlanets } from './collisions.js';
 import { splitDeadParticles } from './creation.js';
-import { PhysicsCounter } from '../debug/physics-counter.js'
+import { PhysicsCounter } from '../debug/physics-counter.js';
+import { QueOps } from '../../core/que-ops.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -85,11 +86,15 @@ export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodi
   p.fx += (sdx / sd) * sf * p.mass;
   p.fy += (sdy / sd) * sf * p.mass;
 
+  // Distance cull: skip bodies whose gravity contribution < threshold
+  // Saves significant work when bodies are spread far apart
   for (let bi = 0; bi < bodies.length; bi++) {
     const b = bodies[bi];
     if (p.body === b) continue;
     const dx = b.cx - p.x, dy = b.cy - p.y;
     const d2 = dx * dx + dy * dy;
+    // Skip if force would be negligible (b.mass / d2 < 0.0001)
+    if (d2 > b.mass * 10000) continue;
     const d = Math.sqrt(d2) + 0.1;
     const f = (gravConst * b.mass / (d2 + 300)) / nParticles;
     p.fx += (dx / d) * f * p.mass;
@@ -155,10 +160,12 @@ export const tickLoose = (dt) => {
     lp.vx += sdx / sd * sf * dt;
     lp.vy += sdy / sd * sf * dt;
 
+    // Distance cull for loose particles — skip bodies too far to matter
     for (let bi = 0; bi < bodies.length; bi++) {
       const b = bodies[bi];
       const dx = b.cx - lp.x, dy = b.cy - lp.y;
       const d2 = dx * dx + dy * dy;
+      if (d2 > b.mass * 8000) continue; // negligible force
       const d = Math.sqrt(d2) + 0.1;
       const f = gravConst * b.mass * (lp.isRing ? 0.01 : 0.06) / (d2 + 150);
       lp.vx += dx / d * f * dt;
@@ -265,8 +272,25 @@ export const tickBodies = (scaledDt) => {
   for (let bi = 0; bi < numBodies; bi++) {
     updateCOM(bodies[bi]);
   }
+  // Queue splitDeadParticles only for bodies that had spring breaks this tick
+  // Stable bodies with no breaks skip this entirely — big win at scale
   for (let bi = 0; bi < numBodies; bi++) {
-    splitDeadParticles(bodies[bi]);
+    const body = bodies[bi];
+    const ss = body.springs;
+    let hasActivity = false;
+    for (let si = 0; si < ss.length; si++) {
+      if (ss[si].broken) { hasActivity = true; break; }
+    }
+    if (hasActivity) {
+      // Run immediately — split must happen before filter
+      splitDeadParticles(body);
+    } else {
+      // Defer — queue at low priority, runs next frame if budget allows
+      QueOps.add({
+        subject: 'physics', priority: 1, cost: 2,
+        fn: splitDeadParticles, args: [body]
+      });
+    }
   }
 
   // Filter dead bodies
@@ -278,5 +302,8 @@ export const tickBodies = (scaledDt) => {
   }
   bodies.length = writeIdx;
 
-  looseVsPlanets();
+  // Skip looseVsPlanets when there's almost nothing loose — saves a full O(n*m) loop
+  if (state.loose.length >= 5) {
+    looseVsPlanets();
+  }
 };
