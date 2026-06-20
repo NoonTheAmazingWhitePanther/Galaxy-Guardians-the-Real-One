@@ -193,3 +193,12 @@ InKeyboard.bind('escape', 'tap', () => {
     menu.style.display = 'none';
   }
 });
+
+// Tab — toggle AIMS on/off
+InKeyboard.bind('tab', 'tap', () => {
+  const a = window._InAims;
+  if (!a) return;
+  if (a.enabled) a.disable();
+  else           a.enable();
+  console.log('[InKeyboard] AIMS ' + (a.enabled ? 'ON' : 'OFF'));
+});

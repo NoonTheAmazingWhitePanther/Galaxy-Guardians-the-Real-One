@@ -51,11 +51,16 @@ export const InDebug = {
   _fireBtn(panel, label) {
     const gov = this._getGov(panel);
     if (panel.type === 'physics') {
-      if (label === '✕') gov.multiply();
+      // Timestep row: ✕ = ÷
+      if      (label === '✕') gov.multiply();
       else if (label === '=') gov.idle();
       else if (label === '÷') gov.divide();
+      // Substep row: sub:+ sub:= sub:−
+      else if (label === 'sub:+') gov.subAdd();
+      else if (label === 'sub:=') gov.subIdle();
+      else if (label === 'sub:−') gov.subSubtract();
     } else {
-      if (label === '+') gov.add();
+      if      (label === '+') gov.add();
       else if (label === '=') gov.idle();
       else if (label === '−') gov.subtract();
     }

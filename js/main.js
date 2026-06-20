@@ -6,7 +6,7 @@
 import { CONFIG, setTheme } from './config/config-index.js';
 import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
-import { InputModule, InputState } from './modules/input/input.module.js';
+import { InputModule, InputState, InAims } from './modules/input/input.module.js';
 import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
@@ -61,6 +61,7 @@ function resize() {
     CameraModule.height = window.innerHeight;
 
     Accumulator.resize(CameraModule.width, CameraModule.height);
+    if (typeof InAims !== 'undefined') InAims.onResize();
 }
 window.addEventListener("resize", resize);
 
@@ -92,6 +93,7 @@ export function init() {
     if (ConfigMenuModule.init)  ConfigMenuModule.init();
 
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
+    //InAims.enable();
     QueOps.init({ maxFrameTimeMs: 12, enableStagger: true });
 
     // 4. Debug exposure (for DevTools)
@@ -135,6 +137,7 @@ export function resetGame(newThemeName = null) {
 
     if (window.Sim) {
         window.Sim.QueOps = QueOps;
+        window._InAims = InAims;
         window.Sim.physicsAccumulator = 0;
         window.Sim.isPreCalculating   = true;
         window.Sim.lastPhysicsTime    = lastPhysicsTime;
@@ -227,7 +230,7 @@ function mainLoop(t) {
         if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
 
         let stepsThisFrame = 0;
-        while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < maxCatchupSteps) {
+        while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < PhysicsGovernor.substeps) {
             if (isPreCalculating) {
                 if (runPreCalc()) {
                     isPreCalculating = false;

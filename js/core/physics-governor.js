@@ -2,71 +2,96 @@
  * js/core/physics-governor.js
  * Real Time Engine Tuning — Physics side.
  *
- * Controls how many physics ticks run per second by scaling
- * the physicsStep (timestep). Bigger step = fewer ticks = cheaper.
+ * Controls TWO things independently:
  *
- * Tuning buttons on debug panel: ✖️ (multiply) and ➗ (divide)
- * Idle (🟰) resets to baseline.
+ * 1. TIMESTEP (✖️ ➗) — how big each physics step is.
+ *    Bigger = fewer ticks per second = cheaper but less precise.
  *
- * Chaos signal: collisions + spring breaks + burn zones active per frame.
- * High chaos → auto pulls toward baseline (more precision).
- * Low chaos  → auto drifts toward skip (save energy).
+ * 2. SUBSTEPS (+ −) — max catchup steps allowed per frame.
+ *    More = smoother under load but more CPU per frame.
+ *    Fewer = cheaper but physics can lag behind real time.
  *
- * pressure: 0.0 = full coast (max skip), 1.0 = full burn (no skip)
+ * Both have manual override + auto mode.
+ * Auto-chaos signal: collisions + spring breaks + burn zones.
  */
 
-const STEP_BASE   = 1 / 60;   // baseline timestep (matches CONFIG.physics.TIMESTEP)
-const STEP_MIN    = 1 / 120;  // max precision (smallest step, most ticks)
-const STEP_MAX    = 1 / 8;    // max skip (largest step, fewest ticks)
-const MULT_FACTOR = 2.0;      // ✖️ / ➗ jump multiplier
-const AUTO_LERP   = 0.02;     // how fast auto-chaos pulls step back to base
+import { CONFIG } from '../config/config-index.js';
+
+// ── Timestep ──────────────────────────────────────────────────────────────
+const STEP_BASE   = 1 / 60;
+const STEP_MIN    = 1 / 120;
+const STEP_MAX    = 1 / 8;
+const MULT_FACTOR = 2.0;
+const AUTO_LERP   = 0.02;
+
+// ── Substeps ──────────────────────────────────────────────────────────────
+const SUB_BASE    = 16;   // matches CONFIG.physics.MAX_FRAME_SKIP
+const SUB_MIN     = 1;
+const SUB_MAX     = 32;
+const SUB_STEP    = 1;    // + / − increment
 
 let _step        = STEP_BASE;
-let _manual      = false; // true = user locked it, auto-chaos paused
-let _chaosSignal = 0;     // set each frame by main.js
+let _stepManual  = false;
+let _sub         = SUB_BASE;
+let _subManual   = false;
+let _chaosSignal = 0;
 
 export const PhysicsGovernor = {
 
-  get step()     { return _step; },
-  get pressure() { return 1 - (_step - STEP_MIN) / (STEP_MAX - STEP_MIN); },
-  get isManual() { return _manual; },
+  // ── Timestep ─────────────────────────────────────────────────────────────
+  get step()          { return _step; },
+  get pressure()      { return 1 - (_step - STEP_MIN) / (STEP_MAX - STEP_MIN); },
+  get isManual()      { return _stepManual; },
 
-  /** Call from main.js each frame with raw chaos count */
   feedChaos(collisions, springBreaks, burnZones) {
     _chaosSignal = collisions + springBreaks * 2 + burnZones;
-    if (!_manual) this._autoAdjust();
+    if (!_stepManual) this._autoAdjustStep();
   },
 
-  _autoAdjust() {
-    // High chaos → pull step toward STEP_BASE (more precision)
-    // Low chaos  → let step drift toward STEP_MAX (coast)
-    const chaos = Math.min(_chaosSignal / 20, 1); // normalize 0..1
+  _autoAdjustStep() {
+    const chaos  = Math.min(_chaosSignal / 20, 1);
     const target = STEP_BASE + (1 - chaos) * (STEP_MAX - STEP_BASE) * 0.3;
-    _step += (target - _step) * AUTO_LERP;
-    _step = Math.max(STEP_MIN, Math.min(STEP_MAX, _step));
+    _step = Math.max(STEP_MIN, Math.min(STEP_MAX, _step + (target - _step) * AUTO_LERP));
   },
 
-  /** ✖️ — multiply step (skip more, cheaper) */
-  multiply() {
-    _manual = true;
-    _step = Math.min(_step * MULT_FACTOR, STEP_MAX);
-  },
+  /** ✖️ — bigger timestep, fewer ticks, cheaper */
+  multiply() { _stepManual = true; _step = Math.min(_step * MULT_FACTOR, STEP_MAX); },
 
-  /** ➗ — divide step (skip less, more precise) */
-  divide() {
-    _manual = true;
-    _step = Math.max(_step / MULT_FACTOR, STEP_MIN);
-  },
+  /** ➗ — smaller timestep, more ticks, more precise */
+  divide()   { _stepManual = true; _step = Math.max(_step / MULT_FACTOR, STEP_MIN); },
 
-  /** 🟰 — reset to baseline, re-enable auto */
-  idle() {
-    _manual = false;
-    _step   = STEP_BASE;
-  },
+  /** 🟰 — reset timestep to baseline */
+  idle()     { _stepManual = false; _step = STEP_BASE; },
 
-  /** Human-readable current rate */
   get label() {
     const hz = Math.round(1 / _step);
-    return `${hz}hz${_manual ? ' 🔒' : ''}`;
+    return `${hz}hz${_stepManual ? ' 🔒' : ''}`;
+  },
+
+  // ── Substeps ──────────────────────────────────────────────────────────────
+  get substeps()        { return _sub; },
+  get subManual()       { return _subManual; },
+  get substepPressure() { return (_sub - SUB_MIN) / (SUB_MAX - SUB_MIN); },
+
+  /** + — one more substep per frame (more precise, more CPU) */
+  subAdd() {
+    _subManual = true;
+    _sub = Math.min(_sub + SUB_STEP, SUB_MAX);
+  },
+
+  /** − — one fewer substep per frame (cheaper, may lag) */
+  subSubtract() {
+    _subManual = true;
+    _sub = Math.max(_sub - SUB_STEP, SUB_MIN);
+  },
+
+  /** 🟰 — reset substeps to baseline */
+  subIdle() {
+    _subManual = false;
+    _sub = SUB_BASE;
+  },
+
+  get substepLabel() {
+    return `${_sub}sub${_subManual ? ' 🔒' : ''}`;
   }
 };

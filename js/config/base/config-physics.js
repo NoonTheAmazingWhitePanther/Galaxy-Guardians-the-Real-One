@@ -9,6 +9,6 @@ export default {
     PARTICLE_R: 9,
     BREAK_MULT: 2.8,
     COLLISION_R_BASE_MULT: 1.15,
-    MAX_BODIES: 8,
+    MAX_BODIES: 800,
     MAX_LOOSE_PARTICLES: 400
 };

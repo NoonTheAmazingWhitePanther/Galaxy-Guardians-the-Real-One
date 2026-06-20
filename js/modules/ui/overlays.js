@@ -4,6 +4,7 @@
  */
 import { hypot, clamp, lerp, PI2 } from '../../core/math.js';
 import { config } from '../../core/config.js';
+import { CONFIG } from '../../../js/config/config-index.js';
 import { state, SUN, sunGravMult, physSpeed, PALS } from '../../core/state.js';
 import { makeBody } from '../physics/creation.js';
 import { CameraModule } from '../camera/camera.module.js';
@@ -39,7 +40,7 @@ export const OverlaysModule = {
 
   // ── Spawn Planet ──
   spawnPlanet: (x, y, size, pcountEl) => {
-    if (state.bodies.length >= 8) return;
+    if (state.bodies.length >= CONFIG.physics.MAX_BODIES) return;
     const radius = clamp(size * 8, 16, 110);
     const pal = PALS[Math.floor(Math.random() * PALS.length)];
     const body = makeBody(x, y, radius, pal);

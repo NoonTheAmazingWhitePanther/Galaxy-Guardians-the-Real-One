@@ -277,6 +277,7 @@ export const tickBodies = (scaledDt) => {
   for (let bi = 0; bi < numBodies; bi++) {
     const body = bodies[bi];
     const ss = body.springs;
+    if (!ss) continue; // body not yet fully initialized
     let hasActivity = false;
     for (let si = 0; si < ss.length; si++) {
       if (ss[si].broken) { hasActivity = true; break; }
@@ -286,9 +287,10 @@ export const tickBodies = (scaledDt) => {
       splitDeadParticles(body);
     } else {
       // Defer — queue at low priority, runs next frame if budget allows
+      const _body = body;
       QueOps.add({
         subject: 'physics', priority: 1, cost: 2,
-        fn: splitDeadParticles, args: [body]
+        fn: () => { if (_body && !_body.dead && _body.springs) splitDeadParticles(_body); }
       });
     }
   }

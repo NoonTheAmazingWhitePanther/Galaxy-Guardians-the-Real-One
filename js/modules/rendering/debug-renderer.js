@@ -114,15 +114,23 @@ export const DebugRenderer = {
       const total = Object.values(data.stats).reduce((a, b) => a + b, 0);
       lines = [
         { label: `PHYSICS  ${govLabel}`, value: String(total), color: s.accent, bold: true },
+        { label: 'substeps', value: gov.substepLabel, color: s.textDim },
         ...b.map(([k, c]) => ({ label: data._labels?.[k] || k, value: String(c), color: s.textDim }))
       ];
     }
 
     // ── Panel dimensions ──────────────────────────────────────────────────
-    const pw = labelW + valW + padX * 2;
-    // Extra height for button strip
-    const btnStripH = BTN_H + padY;
-    const ph = padY * 2 + lineHeight * lines.length + btnStripH;
+    const pw          = labelW + valW + padX * 2;
+    const hasSubRow   = panel.type === 'physics';
+    const btnRows     = hasSubRow ? 2 : 1;
+    const btnStripH   = (BTN_H * btnRows) + (BTN_GAP * (btnRows - 1)) + padY;
+    const ph          = padY * 2 + lineHeight * lines.length + btnStripH;
+
+    // Shared button geometry — declared before any use
+    const totalBtnsW  = 3 * BTN_W + 2 * BTN_GAP;
+    const bx0         = pw - BTN_PAD - totalBtnsW;
+    const byRow1      = ph - padY - BTN_H - (hasSubRow ? BTN_H + BTN_GAP : 0);
+    const byRow2      = byRow1 + BTN_H + BTN_GAP;
 
     const off = this.getOffscreen(panel.id, pw, ph);
     const ctx = off.getContext('2d');
@@ -157,62 +165,52 @@ export const DebugRenderer = {
       ly += lineHeight;
     }
 
-    // ── Button strip ──────────────────────────────────────────────────────
-    // Physics:  ✖️  🟰  ➗    Render: ➕  🟰  ➖
-    // queops panel has no governor buttons
+    // ── queops: no buttons, early blit ───────────────────────────────────
     if (panel.type === 'queops') {
       panel._btns = [];
       ctx.restore();
       mainCtx.save();
       mainCtx.setTransform(1, 0, 0, 1, 0, 0);
-      mainCtx.drawImage(
-        off,
-        (panel.x - 15) * dpr, (panel.y - 15) * dpr,
-        off.width * dpr, off.height * dpr
-      );
+      mainCtx.drawImage(off, (panel.x - 15) * dpr, (panel.y - 15) * dpr,
+        off.width * dpr, off.height * dpr);
       mainCtx.restore();
       return;
     }
-    const btnLabels = panel.type === 'physics'
-      ? ['✕', '=', '÷']
-      : ['+', '=', '−'];
 
-    const totalBtnsW = 3 * BTN_W + 2 * BTN_GAP;
-    const bx0 = pw - BTN_PAD - totalBtnsW;
-    const by  = ph - padY - BTN_H;
-
-    // Pressure bar (left of buttons)
-    const barW = bx0 - padX - 4;
-    const barH = 4;
-    const barY = by + (BTN_H - barH) / 2;
+    // ── Pressure bar ─────────────────────────────────────────────────────
+    const barW  = bx0 - padX - 4;
+    const barH  = 4;
+    const barY  = byRow1 + (BTN_H - barH) / 2;
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     ctx.beginPath(); ctx.roundRect(padX, barY, barW, barH, 2); ctx.fill();
-    const pressure = gov.pressure;
-    const barColor = pressure > 0.7
-      ? 'rgba(130, 210, 255, 0.8)'
-      : pressure > 0.4
-        ? 'rgba(255, 200, 80, 0.8)'
-        : 'rgba(255, 100, 80, 0.8)';
+    const pressure = gov ? gov.pressure : 0;
+    const barColor = pressure > 0.7 ? 'rgba(130,210,255,0.8)'
+                   : pressure > 0.4 ? 'rgba(255,200,80,0.8)'
+                                    : 'rgba(255,100,80,0.8)';
     ctx.fillStyle = barColor;
     ctx.beginPath(); ctx.roundRect(padX, barY, barW * pressure, barH, 2); ctx.fill();
 
-    // Buttons
-    const isIdle = !gov.isManual;
+    // ── Row 1 buttons — timestep (physics) or render skip ────────────────
+    const btnLabels1 = panel.type === 'physics' ? ['✕', '=', '÷'] : ['+', '=', '−'];
+    const isIdle1    = gov ? !gov.isManual : false;
+    panel._btns = [];
     for (let i = 0; i < 3; i++) {
       const bx = bx0 + i * (BTN_W + BTN_GAP);
-      this._drawBtn(ctx, btnLabels[i], bx, by, i === 1 && isIdle);
+      this._drawBtn(ctx, btnLabels1[i], bx, byRow1, i === 1 && isIdle1);
+      panel._btns.push({ label: btnLabels1[i], x: bx + 15, y: byRow1 + 15, w: BTN_W, h: BTN_H });
     }
 
-    // Store button screen rects on panel (in CSS px, relative to panel.x/y)
-    // Used by in-debug.js for hit detection
-    panel._btns = btnLabels.map((lbl, i) => ({
-      label: lbl,
-      // +15 for the shadow pad translate
-      x: (bx0 + i * (BTN_W + BTN_GAP)) + 15,
-      y: by + 15,
-      w: BTN_W,
-      h: BTN_H
-    }));
+    // ── Row 2 buttons — substeps (physics only) ───────────────────────────
+    if (hasSubRow) {
+      const sub        = PhysicsGovernor;
+      const btnLabels2 = ['+', '=', '−'];
+      const isIdle2    = !sub.subManual;
+      for (let i = 0; i < 3; i++) {
+        const bx = bx0 + i * (BTN_W + BTN_GAP);
+        this._drawBtn(ctx, btnLabels2[i], bx, byRow2, i === 1 && isIdle2);
+        panel._btns.push({ label: `sub:${btnLabels2[i]}`, x: bx + 15, y: byRow2 + 15, w: BTN_W, h: BTN_H });
+      }
+    }
 
     ctx.restore();
 
