@@ -2,7 +2,7 @@
 
 Fun first. Education later. Explosions always.
 
-Galaxy Guardians is an experimental HTML5 physics sandbox and game engine focused on making science, creativity, and chaos enjoyable.
+Galaxy Guardians is an experimental Vanilla HTML5 physics sandbox and game engine focused on making science, creativity, and chaos enjoyable.
 
 Spawn planets. Break planets. Build systems. Test ideas. Learn naturally while having fun.
 
