@@ -105,10 +105,15 @@ export const InUI = {
 
   // ── ROUTER HANDLERS ──
   handleDown: function(e) {
+    // Sticky pan lock — all canvas touches become pan direction input
+    if (InputState.panLocked && !e.target.closest('#speed-bar, #zoom-bar, #pan-pad, #debug-btn, #aims-btn, #config-btn')) {
+      InputState.panPadActive = true;
+      this._handlePanPadMoveRaw(e.clientX, e.clientY);
+      return true;
+    }
     // If clicking on any UI element, consume it.
     if (this.uiEl && this.uiEl.contains(e.target)) return true;
     if (e.target.closest('#speed-bar, #zoom-bar, #pan-pad, #debug-toggle-btn, #config-btn, #cursor, .fps-counter')) return true;
-    
     // Handle track drags
     if (InputState.spDrag || InputState.zmDrag) return true;
     return false;
@@ -117,6 +122,11 @@ export const InUI = {
   handleMove: function(e) {
     if (InputState.spDrag) { this._spTrackPos(e.clientY); return true; }
     if (InputState.zmDrag) { this._zmTrackPos(e.clientY); return true; }
+    // In locked mode route all moves to pan
+    if (InputState.panLocked && InputState.panPadActive) {
+      this._handlePanPadMoveRaw(e.clientX, e.clientY);
+      return true;
+    }
     if (this._handlePanPadMove(e)) return true;
     return false;
   },
@@ -126,6 +136,8 @@ export const InUI = {
       InputState.spDrag = false; InputState.zmDrag = false;
       return true;
     }
+    // In locked mode — keep pan active on release, don't deactivate
+    if (InputState.panLocked) return false;
     if (this._handlePanPadUp()) return true;
     return false;
   },
@@ -145,11 +157,28 @@ export const InUI = {
   },
 
   _handlePanPadUp: function() {
-    if (!InputState.panPadActive) return false;    InputState.panPadActive = false; 
-    InputState.panPadPower = 0;
-    InputState.panPadDir = { x: 0, y: 0 }; 
+    if (!InputState.panPadActive) return false;
+    InputState.panPadActive = false;
+    InputState.panLocked    = false;
+    InputState.panPadPower  = 0;
+    InputState.panPadDir    = { x: 0, y: 0 };
     const panPad = document.getElementById('pan-pad');
-    if (panPad) panPad.classList.remove('active');
+    if (panPad) panPad.classList.remove('active', 'locked');
+    return true;
+  },
+
+  // Move using raw x,y (not from event — used by locked mode and AIMS)
+  _handlePanPadMoveRaw: function(cx, cy) {
+    if (!InputState.panPadActive) return false;
+    const panPad = document.getElementById('pan-pad');
+    if (!panPad) return false;
+    const rect   = panPad.getBoundingClientRect();
+    const pcx    = rect.left + rect.width / 2;
+    const pcy    = rect.top  + rect.height / 2;
+    const angle  = Math.atan2(cy - pcy, cx - pcx);
+    const sector = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    InputState.panPadDir.x = Math.cos(sector);
+    InputState.panPadDir.y = Math.sin(sector);
     return true;
   }
 };
@@ -159,12 +188,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const panPad = document.getElementById('pan-pad');
   if (panPad) {
     panPad.addEventListener('pointerdown', (e) => {
-      InputState.panPadActive = true; 
-      InputState.panPadPower = 0;
-      panPad.classList.add('active'); 
+      // Toggle sticky lock on tap vs drag
+      // If already locked and tapping pad — unlock
+      if (InputState.panLocked) {
+        InputState.panLocked   = false;
+        InputState.panPadActive = false;
+        InputState.panPadPower  = 0;
+        InputState.panPadDir    = { x: 0, y: 0 };
+        panPad.classList.remove('active', 'locked');
+        e.preventDefault();
+        return;
+      }
+      // Normal activation
+      InputState.panPadActive = true;
+      InputState.panPadPower  = 0;
+      panPad.classList.add('active');
       panPad.setPointerCapture(e.pointerId);
       InUI._handlePanPadMove(e);
       e.preventDefault();
+    });
+
+    // Tap detection — if finger lifted quickly on the pad, lock it
+    panPad.addEventListener('pointerup', (e) => {
+      if (!InputState.panLocked && InputState.panPadActive) {
+        // Lock — sticky pan mode on
+        InputState.panLocked    = true;
+        InputState.panPadActive = true;
+        panPad.classList.add('locked');
+        e.preventDefault();
+      }
     });
   }
   

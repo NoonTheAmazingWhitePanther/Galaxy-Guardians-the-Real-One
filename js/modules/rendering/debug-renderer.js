@@ -14,6 +14,7 @@
 import { DEBUG_STATE } from '../debug/debug-state.js';
 import { PhysicsGovernor } from '../../core/physics-governor.js';
 import { Accumulator }     from './accumulator.js';
+import { Aims }            from '../../core/aims.js';
 import { RenderGovernor }  from '../../core/render-governor.js';
 
 const BTN_W  = 22;
@@ -107,6 +108,24 @@ export const DebugRenderer = {
         { label: acc.inRamp ? 'ramping…' : 'clears in', value: String(acc.nextClear), color: acc.inRamp ? 'rgba(255,200,80,0.9)' : acc.nextClear <= 4 ? 'rgba(130,210,255,0.9)' : s.textFaint, small: true },
         { label: '🛡 guardian', value: acc.guardianActive ? `α${acc.guardianAlpha}` : 'idle', color: acc.guardianActive ? 'rgba(130,255,180,0.9)' : s.textFaint, small: true },
       ];
+    } else if (panel.type === 'aim') {
+      gov      = null;
+      govLabel = '';
+      const ai = data; // Aims.debugInfo
+      const aim = Aims.aim;
+      lines = [
+        { label: 'AIM CURSOR',  value: ai.aimPos,    color: s.accent, bold: true },
+        { label: 'effective',   value: ai.aimEff,    color: s.textDim },
+        { label: 'offset X',    value: String(aim.offsetX), color: s.textDim },
+        { label: 'offset Y',    value: String(aim.offsetY), color: s.textDim },
+        { label: 'radius',      value: String(aim.radius),  color: s.textDim },
+        { label: 'map scale',   value: `1:${Aims.mapScale}`, color: s.textFaint, small: true },
+        { label: 'map size',    value: ai.mapSize,   color: s.textFaint, small: true },
+        { label: 'map KB',      value: `${ai.mapKB}KB`, color: s.textFaint, small: true },
+        { label: 'items',       value: String(ai.items),    color: s.textFaint, small: true },
+        { label: 'layers',      value: String(ai.activeLayers), color: s.textFaint, small: true },
+        { label: 'AIMS',        value: ai.dirty ? 'dirty' : 'clean', color: ai.dirty ? 'rgba(255,180,80,0.9)' : s.textFaint, small: true },
+      ];
     } else {
       gov      = PhysicsGovernor;
       govLabel = gov.label;
@@ -165,9 +184,35 @@ export const DebugRenderer = {
       ly += lineHeight;
     }
 
-    // ── queops: no buttons, early blit ───────────────────────────────────
-    if (panel.type === 'queops') {
-      panel._btns = [];
+    // ── queops + aim: no governor buttons, early blit ──────────────────
+    if (panel.type === 'queops' || panel.type === 'aim') {
+      // Aim panel gets 3 rows of tuning buttons
+      if (panel.type === 'aim') {
+        const aim     = Aims.aim;
+        const rows    = [
+          { label: 'offX', minus: () => { aim.offsetX -= 2; }, plus: () => { aim.offsetX += 2; }, reset: () => { aim.offsetX = 0; } },
+          { label: 'offY', minus: () => { aim.offsetY -= 2; }, plus: () => { aim.offsetY += 2; }, reset: () => { aim.offsetY = 0; } },
+          { label: 'r',    minus: () => { aim.radius = Math.max(4, aim.radius - 2); }, plus: () => { aim.radius += 2; }, reset: () => { aim.radius = 18; } },
+        ];
+        const bx0r = pw - BTN_PAD - (3 * BTN_W + 2 * BTN_GAP);
+        panel._btns = [];
+        rows.forEach((row, ri) => {
+          const by = padY + lineHeight * (1 + ri * 1.8);
+          // label
+          ctx.font = `9px ${s.font}`;
+          ctx.fillStyle = s.textFaint;
+          ctx.textAlign = 'left';
+          ctx.fillText(row.label, padX, by + BTN_H / 2);
+          // − = +
+          ['+', '=', '−'].forEach((lbl, i) => {
+            const bx = bx0r + i * (BTN_W + BTN_GAP);
+            this._drawBtn(ctx, lbl, bx, by, false);
+            panel._btns.push({ label: `aim:${row.label}:${lbl}`, x: bx + 15, y: by + 15, w: BTN_W, h: BTN_H, _row: row, _lbl: lbl });
+          });
+        });
+      } else {
+        panel._btns = [];
+      }
       ctx.restore();
       mainCtx.save();
       mainCtx.setTransform(1, 0, 0, 1, 0, 0);

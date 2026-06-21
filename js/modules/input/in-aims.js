@@ -3,232 +3,212 @@
  * AIMS binding layer for Galaxy Guardians.
  *
  * Registers every interactive element into the Aims pixel map.
- * Replaces DOM hit testing with pixel-perfect layer resolution.
+ * Sits at top of InputModule priority chain.
+ * Toggle: InAims.enable() / InAims.disable() / Tab key
  *
  * LAYERS:
  *   1 — debug panels (canvas-drawn, highest priority)
- *   2 — HUD: speed bar, zoom bar, pan pad, UI toolbar, config menu
- *   3 — canvas world: sun touch zone, planet spawn area
- *
- * TOGGLE:
- *   InAims.enable()  — activates AIMS as primary pointer resolver
- *   InAims.disable() — falls back to normal DOM + InputModule routing
- *   InAims.enabled   — current state
- *
- * Called from input.module.js after all elements exist in DOM.
+ *   2 — HUD: speed, zoom, pan pad, sliders, config menu
+ *   3 — canvas world: planet spawn area
  */
 
 import { Aims }          from '../../core/aims.js';
 import { CameraModule }  from '../camera/camera.module.js';
 import { DebugRouter }   from '../debug/debug-router.js';
+import { clamp }         from '../../core/math.js';
+import { Accumulator }   from '../rendering/accumulator.js';
 import {
-  state, setPhysSpeed, setSunGravMult,
-  togglePause, SPEED_MAX
+  state, setPhysSpeed, togglePause
 } from '../../core/state.js';
-import { clamp } from '../../core/math.js';
-import { Accumulator } from '../rendering/accumulator.js';
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-const el  = (id) => document.getElementById(id);
-const reg = (cfg) => Aims.register(cfg);
+// ── Injected deps (no circular imports) ──────────────────────────────────
+let _canvas     = null;
+let _InputState = null;
+let _InUI       = null;
+let _InDebug    = null;
+let _enabled    = false;
+let _built      = false;
 
-let _canvas      = null;
-let _enabled     = false;
-let _built       = false;
-let _InputState  = null;
-let _InUI        = null;
-let _InDebug     = null;
+const el = (id) => document.getElementById(id);
 
-// ── Registration ──────────────────────────────────────────────────────────
-// Safe registerElement — skips null/missing DOM elements silently
+// ── Safe registration helpers ─────────────────────────────────────────────
 function _safeReg(id, cfg) {
   const e = el(id);
-  if (!e) { console.warn(`[InAims] element not found: #${id}`); return; }
+  if (!e) return;
   Aims.registerElement(e, { id, ...cfg });
 }
 
+function _safeRegEl(e, cfg) {
+  if (!e) return;
+  Aims.registerElement(e, cfg);
+}
+
+// ── Registration ──────────────────────────────────────────────────────────
 function _registerAll() {
-  // ── DEPTH 2: HUD buttons ─────────────────────────────────────────────
+  // ── Depth 2: Speed bar ───────────────────────────────────────────────
+  _safeReg('sp-fast', { depth: 2, on: { tap: () => {
+    setPhysSpeed(parseFloat((state.physSpeed + 0.5).toFixed(1)));
+    _InUI?._updateSpeedUI?.();
+  }}});
 
-  // Speed bar
-  _safeReg('sp-fast',  { depth: 2, on: { tap: () => { setPhysSpeed(parseFloat((state.physSpeed + 0.5).toFixed(1))); _InUI?._updateSpeedUI?.(); } } });
-  _safeReg('sp-slow',  { depth: 2, on: { tap: () => { setPhysSpeed(parseFloat((state.physSpeed - 0.5).toFixed(1))); _InUI?._updateSpeedUI?.(); } } });
-  _safeReg('sp-pause', { depth: 2, on: { tap: () => { togglePause(); _InUI?._updateSpeedUI?.(); } } });
+  _safeReg('sp-slow', { depth: 2, on: { tap: () => {
+    setPhysSpeed(parseFloat((state.physSpeed - 0.5).toFixed(1)));
+    _InUI?._updateSpeedUI?.();
+  }}});
 
-  // Speed track — drag zone
-  const spTrack = el('sp-track');
-  if (spTrack) {
-    Aims.registerElement(spTrack, { id: 'sp-track',
-      id: 'sp-track', depth: 2,
-      on: {
-        pointerdown: ({ aim }) => {
-          _InputState.spDrag = true;
-          _InUI._spTrackPos(aim.ey);
-        },
-        pointermove: ({ aim }) => {
-          if (_InputState.spDrag) _InUI._spTrackPos(aim.ey);
-        },
-        pointerup: () => { _InputState.spDrag = false; }
-      }
-    });
-  }
+  _safeReg('sp-pause', { depth: 2, on: { tap: () => {
+    togglePause();
+    _InUI?._updateSpeedUI?.();
+  }}});
 
-  // Zoom bar
-  _safeReg('zm-in',  { depth: 2, on: { tap: () => { CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom * 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); } } });
-  _safeReg('zm-out', { depth: 2, on: { tap: () => { CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom / 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); } } });
-  _safeReg('zm-fit', { depth: 2, on: { tap: () => CameraModule.frameBodies() } });
-
-  // Zoom track — drag zone
-  const zmTrack = el('zm-track');
-  if (zmTrack) {
-    Aims.registerElement(zmTrack, {
-      id: 'zm-track', depth: 2,
-      on: {
-        pointerdown: ({ aim }) => {
-          _InputState.zmDrag = true;
-          _InUI._zmTrackPos(aim.ey);
-        },
-        pointermove: ({ aim }) => {
-          if (_InputState.zmDrag) _InUI._zmTrackPos(aim.ey);
-        },
-        pointerup: () => { _InputState.zmDrag = false; }
-      }
-    });
-  }
-
-  // Pan pad
-  const panPad = el('pan-pad');
-  if (panPad) {
-    Aims.registerElement(panPad, {
-      id: 'pan-pad', depth: 2,
-      on: {
-        pointerdown: ({ aim }) => {
-          _InputState.panPadActive = true;
-          _InputState.panPadPower  = 0;
-          panPad.classList.add('active');
-          _InUI._handlePanPadMove({ clientX: aim.ex, clientY: aim.ey });
-        },
-        pointermove: ({ aim }) => {
-          if (_InputState.panPadActive)
-            _InUI._handlePanPadMove({ clientX: aim.ex, clientY: aim.ey });
-        },
-        pointerup: () => {
-          _InputState.panPadActive = false;
-          _InputState.panPadPower  = 0;
-          _InputState.panPadDir    = { x: 0, y: 0 };
-          panPad.classList.remove('active');
-        }
-      }
-    });
-  }
-
-  // UI toolbar — clear, config, sliders
-  _safeReg('clear-btn', { depth: 2,
-    on: {
-      tap: () => {
-        state.bodies = []; state.loose = []; state.flashes = [];
-        Accumulator.clear();
-        const pc = el('pcount'); if (pc) pc.textContent = '—';
-      }
+  _safeRegEl(el('sp-track'), { id: 'sp-track', depth: 2, on: {
+    pointerdown: ({ aim }) => {
+      if (_InputState) _InputState.spDrag = true;
+      _InUI?._spTrackPos?.(aim.ey);
+    },
+    pointermove: ({ aim }) => {
+      if (_InputState?.spDrag) _InUI?._spTrackPos?.(aim.ey);
+    },
+    pointerup: () => {
+      if (_InputState) _InputState.spDrag = false;
     }
-  });
+  }});
 
-  _safeReg('config-btn', { depth: 2,
-    on: { tap: () => el('config-btn')?.click() }
-  });
+  // ── Depth 2: Zoom bar ────────────────────────────────────────────────
+  _safeReg('zm-in', { depth: 2, on: { tap: () => {
+    CameraModule.cam.targetZoom = clamp(
+      CameraModule.cam.targetZoom * 1.3,
+      CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
+  }}});
 
-  // Size slider — pass through to DOM (range input handles own drag)
-  const sizeSlider = el('size-slider');
-  if (sizeSlider) {
-    Aims.registerElement(sizeSlider, { id: 'size-slider', depth: 2, passthrough: false,
-      on: { tap: () => {} } // DOM range handles itself, just block world layer
-    });
-  }
+  _safeReg('zm-out', { depth: 2, on: { tap: () => {
+    CameraModule.cam.targetZoom = clamp(
+      CameraModule.cam.targetZoom / 1.3,
+      CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
+  }}});
 
-  // Grav slider
-  const gravSlider = el('grav-slider');
-  if (gravSlider) {
-    Aims.registerElement(gravSlider, { id: 'grav-slider', depth: 2, passthrough: false,
-      on: { tap: () => {} }
-    });
-  }
+  _safeReg('zm-fit', { depth: 2, on: { tap: () => {
+    CameraModule.frameBodies();
+  }}});
 
-  // Config menu — registers as a passthrough zone so buttons inside still work via DOM
-  const configMenu = el('config-menu');
-  if (configMenu) {
-    Aims.registerElement(configMenu, {
-      id: 'config-menu', depth: 1, passthrough: false,
-      on: { tap: () => {} } // DOM handles individual config inputs
-    });
-  }
+  _safeRegEl(el('zm-track'), { id: 'zm-track', depth: 2, on: {
+    pointerdown: ({ aim }) => {
+      if (_InputState) _InputState.zmDrag = true;
+      _InUI?._zmTrackPos?.(aim.ey);
+    },
+    pointermove: ({ aim }) => {
+      if (_InputState?.zmDrag) _InUI?._zmTrackPos?.(aim.ey);
+    },
+    pointerup: () => {
+      if (_InputState) _InputState.zmDrag = false;
+    }
+  }});
 
-  // ── DEPTH 1: Debug panels ─────────────────────────────────────────────
-  // Debug panels are canvas-drawn — no DOM element.
-  // Their bounds come from panel.x/y + size, registered dynamically.
+  // ── Depth 2: Pan pad ─────────────────────────────────────────────────
+  _safeRegEl(el('pan-pad'), { id: 'pan-pad', depth: 2, on: {
+    pointerdown: ({ aim }) => {
+      if (_InputState) { _InputState.panPadActive = true; _InputState.panPadPower = 0; }
+      el('pan-pad')?.classList.add('active');
+      _InUI?._handlePanPadMove?.({ clientX: aim.ex, clientY: aim.ey });
+    },
+    pointermove: ({ aim }) => {
+      if (_InputState?.panPadActive)
+        _InUI?._handlePanPadMove?.({ clientX: aim.ex, clientY: aim.ey });
+    },
+    pointerup: () => {
+      if (_InputState) {
+        _InputState.panPadActive = false;
+        _InputState.panPadPower  = 0;
+        _InputState.panPadDir    = { x: 0, y: 0 };
+      }
+      el('pan-pad')?.classList.remove('active');
+    }
+  }});
+
+  // ── Depth 2: Toolbar ─────────────────────────────────────────────────
+  _safeReg('clear-btn', { depth: 2, on: { tap: () => {
+    state.bodies = []; state.loose = []; state.flashes = [];
+    Accumulator.clear();
+    const pc = el('pcount'); if (pc) pc.textContent = '—';
+  }}});
+
+  _safeReg('config-btn', { depth: 2, on: { tap: () => {
+    el('config-btn')?.click();
+  }}});
+
+  _safeRegEl(el('size-slider'),  { id: 'size-slider',  depth: 2, passthrough: false, on: { tap: () => {} }});
+  _safeRegEl(el('grav-slider'),  { id: 'grav-slider',  depth: 2, passthrough: false, on: { tap: () => {} }});
+  _safeRegEl(el('config-menu'),  { id: 'config-menu',  depth: 1, passthrough: false, on: { tap: () => {} }});
+  _safeReg('debug-btn', { depth: 2, on: { tap: () => {
+    const btn = el('debug-btn');
+    DebugRouter.toggleAll();
+    btn?.classList.toggle('active', DebugRouter.masterEnabled);
+  }}});
+  _safeReg('aims-btn', { depth: 2, on: { tap: () => {
+    const btn = el('aims-btn');
+    if (InAims.enabled) InAims.disable();
+    else                InAims.enable();
+    btn?.classList.toggle('active', InAims.enabled);
+  }}});
+
+  // ── Depth 1: Debug panels ────────────────────────────────────────────
   _registerDebugPanels();
 
-  // ── DEPTH 3: Canvas world zones ───────────────────────────────────────
-  const w = _canvas ? _canvas.getBoundingClientRect().width : window.innerWidth;
-  const h = _canvas ? _canvas.getBoundingClientRect().height : window.innerHeight;
+  // ── Depth 3: Canvas world ────────────────────────────────────────────
+  const r = _canvas?.getBoundingClientRect?.();
+  const w = r?.width  ?? window.innerWidth;
+  const h = r?.height ?? window.innerHeight;
 
-  // Planet spawn zone — full canvas minus HUD strips
-  reg({
-    id: 'canvas-world', depth: 3,
+  Aims.register({
+    id: 'canvas-world', depth: 3, passthrough: false,
     bounds: { x: 60, y: 60, w: w - 120, h: h - 120 },
-    passthrough: false,
     on: {
       pointerdown: ({ aim }) => {
+        if (!_InputState) return;
         _InputState.isHolding = true;
         _InputState.holdTime  = performance.now();
         _InputState.mouseX    = aim.ex;
         _InputState.mouseY    = aim.ey;
-        const cursor = el('cursor');
-        if (cursor) cursor.classList.add('holding');
+        el('cursor')?.classList.add('holding');
       },
       pointermove: ({ aim }) => {
-        if (_InputState.isHolding) {
+        if (_InputState?.isHolding) {
           _InputState.mouseX = aim.ex;
           _InputState.mouseY = aim.ey;
         }
       },
       pointerup: () => {
-        if (_InputState.isHolding) {
-          _InputState.isHolding = false;
-          const cursor = el('cursor');
-          if (cursor) cursor.classList.remove('holding');
-          // Delegate actual spawn to InPlanet._spawnPlanet via dynamic import
-          import('./in-planet.js').then(m => {
-            if (m.InPlanet._spawnPlanet) m.InPlanet._spawnPlanet();
-          });
-        }
+        if (!_InputState?.isHolding) return;
+        _InputState.isHolding = false;
+        el('cursor')?.classList.remove('holding');
+        import('./in-planet.js').then(m => {
+          m.InPlanet?._spawnPlanet?.();
+        });
       }
     }
   });
 
   _built = true;
   Aims.rebuild(window.innerWidth, window.innerHeight);
-  console.log('[InAims] All items registered. Map built.');
+  console.log('[InAims] registered. Map built. Items:', Aims.debugInfo.items);
 }
 
 function _registerDebugPanels() {
-  // Called once at startup and re-called if panels move
   for (const panel of DebugRouter.panels) {
     if (!panel.visible) continue;
-    // Approximate panel size — debug-renderer knows exact size but
-    // we use a conservative estimate here; in-debug.js refines via _btns
-    const pw = 160, ph = 220;
     const id = `debug-panel-${panel.id}`;
-    if (Aims._items?.has(id)) Aims.unregister(id);
-    reg({
+    Aims.unregister(id);
+    Aims.register({
       id, depth: 1,
-      bounds: { x: panel.x, y: panel.y, w: pw, h: ph },
+      bounds: { x: panel.x, y: panel.y, w: 180, h: 250 },
       passthrough: false,
       on: {
         pointerdown: ({ aim }) => {
-          // Delegate to InDebug which has precise button hit testing
-          _InDebug.handleDown({
+          _InDebug?.handleDown?.({
             clientX: aim.ex, clientY: aim.ey,
-            pointerId: 0, preventDefault: () => {}, stopImmediatePropagation: () => {}
+            pointerId: 0,
+            preventDefault: () => {},
+            stopImmediatePropagation: () => {}
           });
         }
       }
@@ -236,7 +216,7 @@ function _registerDebugPanels() {
   }
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+// ── Public API ────────────────────────────────────────────────────────────
 export const InAims = {
 
   get enabled() { return _enabled; },
@@ -246,72 +226,68 @@ export const InAims = {
     _InputState = InputState;
     _InUI       = InUI;
     _InDebug    = InDebug;
-    // Don't register yet — wait for enable() to be called explicitly
-    // so DOM is guaranteed to be painted and all rects are valid
   },
 
   enable() {
     if (_enabled) return;
     _enabled = true;
-    // Defer registration to after DOM is fully painted
     const doEnable = () => {
-      if (!_built) _registerAll();
-      Aims.bindPointer(_canvas);
-      console.log('[InAims] AIMS enabled — pixel-perfect input active');
+      try {
+        if (!_built) _registerAll();
+        // Don't bindPointer — InputModule already routes through handleDown/Move/Up
+        // bindPointer would add a second listener causing double-fires
+        console.log('[InAims] AIMS enabled | items:', Aims.debugInfo.items, '| map:', Aims.debugInfo.mapSize);
+      } catch (err) {
+        console.error('[InAims] enable() failed:', err);
+        _enabled = false;
+      }
     };
-    // Double rAF ensures layout is complete
-    requestAnimationFrame(() => requestAnimationFrame(doEnable));
+    // If DOM already painted, run now. Otherwise wait.
+    if (document.readyState === 'complete' && _canvas) {
+      requestAnimationFrame(() => requestAnimationFrame(doEnable));
+    } else {
+      window.addEventListener('load', () => requestAnimationFrame(() => requestAnimationFrame(doEnable)), { once: true });
+    }
   },
 
   disable() {
     _enabled = false;
-    console.log('[InAims] AIMS disabled — normal DOM input restored');
+    console.log('[InAims] AIMS disabled');
   },
 
-  /**
-   * Call from main loop or after panel drag to keep debug panel
-   * bounds in sync with their current positions.
-   */
   syncDebugPanels() {
+    if (!_built) return;
     _registerDebugPanels();
     Aims.rebuild(window.innerWidth, window.innerHeight);
   },
 
-  /**
-   * Call from resize handler.
-   */
   onResize() {
     if (!_built) return;
-    // Re-register DOM elements — their rects changed
     Aims.rebuild(window.innerWidth, window.innerHeight);
   },
 
-  /**
-   * handleDown — called from InputModule priority chain.
-   * If AIMS is enabled, resolve through map first.
-   * Returns true if consumed.
-   */
   handleDown(e) {
     if (!_enabled) return false;
     const hits = Aims.aim.down(e.clientX, e.clientY);
-    return hits.length > 0;
+    if (Array.isArray(hits) && hits.length > 0) {
+      console.log('[InAims] hit:', hits, 'at', e.clientX.toFixed(0), e.clientY.toFixed(0));
+      return true;
+    }
+    return false;
   },
 
   handleMove(e) {
     if (!_enabled) return false;
     const hits = Aims.aim.move(e.clientX, e.clientY);
-    return hits.length > 0 && _InputState.isPointerDown;
+    return Array.isArray(hits) && hits.length > 0 && !!_InputState?.isPointerDown;
   },
 
   handleUp(e) {
     if (!_enabled) return false;
-    Aims.aim.up(e.clientX, e.clientY);
-    return false; // never fully consume up — let others clean up state
+    try { Aims.aim.up(e.clientX, e.clientY); } catch (_) {}
+    return false;
   },
 
-  /**
-   * Draw debug overlay — call from renderer when debug active.
-   */
   debugDraw(ctx, showMap = false) {
     if (_enabled) Aims.debugDraw(ctx, showMap);
   }

@@ -27,6 +27,10 @@ export const InDebug = {
 
   init(canvas) {
     this._canvas = canvas;
+    // Force release if pointer capture is lost (finger lifted outside window)
+    canvas.addEventListener('lostpointercapture', () => {
+      if (this.isDragging) this._release();
+    });
   },
 
   _getPanelSize(panel, data) {
@@ -35,11 +39,19 @@ export const InDebug = {
     const pw = (s.labelW + s.valW + s.padX * 2) * sc;
     let lines = 0;
     if (panel.type === 'drawCalls') {
-      lines = 1 + Object.entries(data.calls).filter(([, v]) => v > 0).length + 1;
+      lines = 1 + (data?.calls ? Object.entries(data.calls).filter(([, v]) => v > 0).length : 0) + 1;
+    } else if (panel.type === 'physics') {
+      lines = 2 + (data?.stats ? Object.entries(data.stats).filter(([, v]) => v > 0).length : 0);
+    } else if (panel.type === 'queops') {
+      lines = 10; // fixed line count
+    } else if (panel.type === 'aim') {
+      lines = 11; // fixed line count
     } else {
-      lines = 1 + Object.entries(data.stats).filter(([, v]) => v > 0).length;
+      lines = 5;
     }
-    const btnStripH = 18 + s.padY * sc;
+    const hasSubRow  = panel.type === 'physics';
+    const btnRows    = hasSubRow ? 2 : (panel.type === 'aim' ? 3 : 1);
+    const btnStripH  = (18 * btnRows) + (3 * (btnRows - 1)) + s.padY * sc;
     const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * lines) + btnStripH;
     return { w: pw, h: ph };
   },
@@ -49,6 +61,16 @@ export const InDebug = {
   },
 
   _fireBtn(panel, label) {
+    // Aim panel buttons
+    if (panel.type === 'aim' && label.startsWith('aim:')) {
+      const btn = panel._btns?.find(b => b.label === label);
+      if (btn) {
+        if (label.endsWith(':+')) btn._row.plus();
+        else if (label.endsWith(':=')) btn._row.reset();
+        else if (label.endsWith(':−')) btn._row.minus();
+      }
+      return;
+    }
     const gov = this._getGov(panel);
     if (panel.type === 'physics') {
       // Timestep row: ✕ = ÷
@@ -71,9 +93,13 @@ export const InDebug = {
       if (this._canvas && this.pointerId != null)
         this._canvas.releasePointerCapture(this.pointerId);
     } catch (_) {}
-    this.isDragging  = false;
-    this.activePanel = null;
-    this.pointerId   = null;
+    this.isDragging   = false;
+    this.activePanel  = null;
+    this.pointerId    = null;
+    this.startX       = 0;
+    this.startY       = 0;
+    this.startPanelX  = 0;
+    this.startPanelY  = 0;
   },
 
   handleDown(e) {
@@ -84,7 +110,11 @@ export const InDebug = {
 
     for (const panel of DebugRouter.panels) {
       if (!panel.visible) continue;
-      const data = panel.type === 'drawCalls' ? DrawCallCounter : PhysicsCounter;
+      // Get data safely for any panel type
+      let data = null;
+      if      (panel.type === 'drawCalls') data = DrawCallCounter;
+      else if (panel.type === 'physics')   data = PhysicsCounter;
+      else                                 data = {};
       const { w: pw, h: ph } = this._getPanelSize(panel, data);
 
       const hitX = panel.x - SHADOW_PAD;
@@ -97,8 +127,10 @@ export const InDebug = {
       // ── Check governor buttons first ────────────────────────────────
       if (panel._btns) {
         for (const btn of panel._btns) {
-          const bx = panel.x + btn.x - SHADOW_PAD;
-          const by = panel.y + btn.y - SHADOW_PAD;
+          // btn.x/y are offscreen-canvas-relative (already include shadow pad)
+          // Absolute screen position = panel.x + (btn.x - SHADOW_PAD)
+          const bx = panel.x + (btn.x - SHADOW_PAD);
+          const by = panel.y + (btn.y - SHADOW_PAD);
           if (x >= bx && x <= bx + btn.w && y >= by && y <= by + btn.h) {
             this._fireBtn(panel, btn.label);
             e.preventDefault();
@@ -140,6 +172,11 @@ export const InDebug = {
   handleMove(e) {
     if (!this.isDragging) return false;
     if (e.pointerId !== this.pointerId) return false;
+    // Safety — if panel became invisible or debug turned off, release
+    if (!DebugRouter.masterEnabled || !this.activePanel?.visible) {
+      this._release();
+      return false;
+    }
     this.activePanel.x = this.startPanelX + (e.clientX - this.startX);
     this.activePanel.y = this.startPanelY + (e.clientY - this.startY);
     e.preventDefault();

@@ -18,6 +18,7 @@
     --ui-pad: 6px 10px;
     --ui-radius: 10px;
     --safe: 16px;
+    --pad-size: 44px;
 }
 
 /* ========================================
@@ -111,8 +112,8 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 6. PAN PAD
 ======================================== */
 #pan-pad {
-    position: fixed; top: calc(var(--safe) + 44px); right: var(--safe); z-index: 55;
-    width: 44px; height: 44px; background: var(--ui-bg); border: 1px solid var(--ui-border);
+    position: fixed; top: calc(var(--safe) + var(--pad-size)); right: var(--safe); z-index: 55;
+    width: var(--pad-size); height: var(--pad-size); background: var(--ui-bg); border: 1px solid var(--ui-border);
     border-radius: 10px; backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur)); display: grid;
     grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
@@ -120,6 +121,73 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); transition: transform 0.1s, background 0.1s;
 }
 #pan-pad.active { transform: scale(0.92); background: rgba(30, 30, 50, 0.85); }
+#pan-pad.locked {
+    transform: scale(1);
+    background: rgba(20, 60, 100, 0.9);
+    border-color: rgba(100, 180, 255, 0.7);
+    box-shadow: 0 0 14px rgba(100, 180, 255, 0.35), 0 4px 12px rgba(0,0,0,0.4);
+    animation: pan-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pan-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(100,180,255,0.3), 0 4px 12px rgba(0,0,0,0.4); }
+    50%       { box-shadow: 0 0 20px rgba(100,180,255,0.6), 0 4px 12px rgba(0,0,0,0.4); }
+}
+
+#debug-btn {
+    position: fixed;
+    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px);
+    right: var(--safe);
+    z-index: 55;
+    width: var(--pad-size); height: var(--pad-size);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#debug-btn:active  { transform: scale(0.92); }
+
+#aims-btn {
+    position: fixed;
+    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px + var(--pad-size) + 6px);
+    right: var(--safe);
+    z-index: 55;
+    width: var(--pad-size); height: var(--pad-size);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#aims-btn:active { transform: scale(0.92); }
+#aims-btn.active {
+    background: rgba(30, 80, 50, 0.9);
+    border-color: rgba(130, 255, 160, 0.5);
+    color: rgba(130, 255, 160, 0.95);
+    box-shadow: 0 0 12px rgba(130, 255, 160, 0.2), 0 4px 12px rgba(0,0,0,0.4);
+}
+#debug-btn.active  {
+    background: rgba(30, 60, 90, 0.9);
+    border-color: rgba(130, 210, 255, 0.5);
+    color: rgba(130, 210, 255, 0.95);
+    box-shadow: 0 0 12px rgba(130, 210, 255, 0.2), 0 4px 12px rgba(0,0,0,0.4);
+}
 .pan-cell { display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.25); font-size: 9px; pointer-events: none; }
 .pan-cell.center { background: rgba(255, 255, 255, 0.03); border-radius: 4px; }
 #pan-pad:hover .pan-cell:not(.center) { color: rgba(255, 255, 255, 0.45); }
@@ -171,7 +239,8 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
     #speed-bar, #zoom-bar, #ui { font-size: 10px; gap: 5px; padding: 5px 8px; }
     input[type="range"] { width: 45px; }
     .divider { height: 14px; margin: 0 3px; }
-    #pan-pad { width: 38px; height: 38px; top: calc(var(--safe) + 38px); }
+    :root { --pad-size: 38px; }
+    #pan-pad { top: calc(var(--safe) + var(--pad-size)); }
     .pan-cell { font-size: 7px; } #hint { font-size: 8px; }
 }
 

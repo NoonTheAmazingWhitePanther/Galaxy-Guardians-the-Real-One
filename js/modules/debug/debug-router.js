@@ -9,6 +9,7 @@ import { PhysicsCounter }  from './physics-counter.js';
 import { DebugRenderer }   from '../rendering/debug-renderer.js';
 import { DEBUG_STATE }     from './debug-state.js';
 import { QueOps }          from '../../core/que-ops.js';
+import { Aims }            from '../../core/aims.js';
 
 export const DebugRouter = {
   panels: [],
@@ -44,6 +45,15 @@ export const DebugRouter = {
         lastUpdate: 0,
         refreshRates: DEBUG_STATE.refreshRates,
         currentRateIdx: DEBUG_STATE.defaultRefreshIdx
+      },
+      {
+        id: 'aim', type: 'aim', visible: true,
+        x: DEBUG_STATE.defaultPositions.aim.x,
+        y: DEBUG_STATE.defaultPositions.aim.y,
+        refreshRate: 16, // always max refresh — aim moves fast
+        lastUpdate: 0,
+        refreshRates: DEBUG_STATE.refreshRates,
+        currentRateIdx: 0
       }
     ];
   },
@@ -65,6 +75,7 @@ export const DebugRouter = {
       if      (panel.type === 'drawCalls') data = DrawCallCounter;
       else if (panel.type === 'physics')   data = PhysicsCounter;
       else if (panel.type === 'queops')    data = QueOps.getDebugInfo();
+      else if (panel.type === 'aim')        data = Aims.debugInfo;
       if (data) DebugRenderer.renderPanel(ctx, panel, data);
     }
   },

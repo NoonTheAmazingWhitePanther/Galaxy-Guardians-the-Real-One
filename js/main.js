@@ -7,6 +7,7 @@ import { CONFIG, setTheme } from './config/config-index.js';
 import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { InputModule, InputState, InAims } from './modules/input/input.module.js';
+import { Aims } from './core/aims.js';
 import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
@@ -93,8 +94,31 @@ export function init() {
     if (ConfigMenuModule.init)  ConfigMenuModule.init();
 
     InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
-    //InAims.enable();
     QueOps.init({ maxFrameTimeMs: 12, enableStagger: true });
+
+    // Debug toggle button
+    const debugBtn = document.getElementById('debug-btn');
+    if (debugBtn) {
+        if (DebugRouter.masterEnabled) debugBtn.classList.add('active');
+        debugBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            DebugRouter.toggleAll();
+            debugBtn.classList.toggle('active', DebugRouter.masterEnabled);
+        }, { passive: false });
+    }
+
+    // AIMS toggle button
+    const aimsBtn = document.getElementById('aims-btn');
+    if (aimsBtn) {
+        aimsBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (InAims.enabled) InAims.disable();
+            else                InAims.enable();
+            aimsBtn.classList.toggle('active', InAims.enabled);
+        }, { passive: false });
+    }
 
     // 4. Debug exposure (for DevTools)
     window.Sim = window.Sim || {};
@@ -187,6 +211,80 @@ function runPreCalc() {
 // ═════════════════════════════════════════════════════════════════════════════
 //  MAIN LOOP
 // ═════════════════════════════════════════════════════════════════════════════
+// ── Aim Cursor Visual ─────────────────────────────────────────────────────
+// Draws on the MAIN canvas (screen space) after everything else.
+// Always shows when pointer is down — regardless of AIMS enabled state.
+// Shows: raw touch point (orange dot) + offset line + effective aim (blue circle + crosshair)
+function _drawAimCursor(ctx) {
+  if (!InputState.isPointerDown && !Aims.aim._active) return;
+
+  const ax = Aims.aim.x;   // raw pointer position
+  const ay = Aims.aim.y;
+  const ex = Aims.aim.ex;  // effective aim after offset
+  const ey = Aims.aim.ey;
+  const r  = Aims.aim.radius;
+  const dpr = DEBUG_STATE.dpr || 1;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0); // screen space
+
+  // Scale all coords by dpr since we're in physical pixel space
+  const sx = ax * dpr, sy = ay * dpr;
+  const sex = ex * dpr, sey = ey * dpr;
+  const sr  = r  * dpr;
+
+  // ── Offset line: raw → effective ──────────────────────────────────────
+  if (ax !== ex || ay !== ey) {
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sex, sey);
+    ctx.strokeStyle = 'rgba(255, 200, 80, 0.7)';
+    ctx.lineWidth   = 1.5 * dpr;
+    ctx.setLineDash([4 * dpr, 4 * dpr]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Raw touch dot (orange)
+    ctx.beginPath();
+    ctx.arc(sx, sy, 5 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 160, 40, 0.85)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.lineWidth = 1 * dpr;
+    ctx.stroke();
+  }
+
+  // ── Effective aim circle (blue) ────────────────────────────────────────
+  ctx.beginPath();
+  ctx.arc(sex, sey, sr, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(100, 200, 255, 0.75)';
+  ctx.lineWidth   = 1.5 * dpr;
+  ctx.stroke();
+
+  // Inner fill — very faint
+  ctx.beginPath();
+  ctx.arc(sex, sey, sr, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(100, 200, 255, 0.06)';
+  ctx.fill();
+
+  // ── Crosshair at effective aim center ─────────────────────────────────
+  const cs = 6 * dpr; // crosshair arm length
+  ctx.strokeStyle = 'rgba(100, 200, 255, 0.9)';
+  ctx.lineWidth   = 1.5 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(sex - cs, sey); ctx.lineTo(sex + cs, sey); // horizontal
+  ctx.moveTo(sex, sey - cs); ctx.lineTo(sex, sey + cs); // vertical
+  ctx.stroke();
+
+  // ── Center dot ────────────────────────────────────────────────────────
+  ctx.beginPath();
+  ctx.arc(sex, sey, 2.5 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
 function mainLoop(t) {
     // 1. Reset debug counters
     DebugRouter.resetAll();
@@ -287,6 +385,7 @@ function mainLoop(t) {
         OverlaysModule.drawFPS();
         OverlaysModule.updateCount(pcountEl);
         DebugRouter.drawAll(ctx);
+        _drawAimCursor(ctx);
     }
 
     // 6. Cursor position

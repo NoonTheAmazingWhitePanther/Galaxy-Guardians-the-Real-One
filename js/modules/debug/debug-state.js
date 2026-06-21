@@ -37,7 +37,8 @@ export const DEBUG_STATE = {
   defaultPositions: {
     drawCalls: { x: 16, y: 80  },
     physics:   { x: 16, y: 220 },
-    queops:    { x: 16, y: 360 }
+    queops:    { x: 16, y: 360 },
+    aim:       { x: 16, y: 500 }
   },
   refreshRates: [16, 33, 100, 250, 500],
   defaultRefreshIdx: 2

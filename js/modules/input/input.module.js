@@ -13,6 +13,7 @@ import { InCamera }     from './in-camera.js';
 import { InPlanet }     from './in-planet.js';
 import { InKeyboard }   from './in-keyboard.js';
 import { InAims }      from './in-aims.js';
+import { Aims }        from '../../core/aims.js';
 
 export const InputState = {
   mouseX: 0, mouseY: 0,
@@ -20,7 +21,8 @@ export const InputState = {
   isHolding: false, holdTime: 0,
   touchCount: 0,
   spDrag: false, zmDrag: false,
-  panPadActive: false, panPadDir: { x: 0, y: 0 }, panPadPower: 0
+  panPadActive: false, panPadDir: { x: 0, y: 0 }, panPadPower: 0,
+  panLocked: false   // sticky pan mode — all canvas touches route to pan
 };
 
 export const InputModule = {
@@ -42,11 +44,12 @@ export const InputModule = {
       InputState.mouseY      = e.clientY;
       InputState.isPointerDown = true;
       InputState.pointerButton = e.button;
+      Aims.aim.x = e.clientX; Aims.aim.y = e.clientY;
 
-      if (InAims.handleDown(e))     return;  // AIMS first — pixel-perfect map
+      if (InDebug.handleDown(e))     return;  // Debug panels first — need real pointer capture
+      if (InAims.handleDown(e))      return;  // AIMS second — pixel-perfect map
       if (InConfigMenu.handleDown(e)) return;
       if (InUI.handleDown(e))        return;
-      if (InDebug.handleDown(e))     return;
       if (InCamera.handleDown(e))    return;
       InPlanet.handleDown(e);
     });
@@ -55,10 +58,11 @@ export const InputModule = {
     window.addEventListener('pointermove', (e) => {
       InputState.mouseX = e.clientX;
       InputState.mouseY = e.clientY;
+      Aims.aim.moveTo(e.clientX, e.clientY);
 
+      if (InDebug.handleMove(e))  return;  // Debug drag takes priority
       if (InAims.handleMove(e))   return;
       if (InUI.handleMove(e))     return;
-      if (InDebug.handleMove(e))  return;
       if (InCamera.handleMove(e)) return;
       InPlanet.handleMove(e);
     });
@@ -67,9 +71,9 @@ export const InputModule = {
     const handleGlobalUp = (e) => {
       InputState.isPointerDown = false;
 
+      if (InDebug.handleUp(e))  return;  // Release debug drag first
       InAims.handleUp(e);
       if (InUI.handleUp(e))     return;
-      if (InDebug.handleUp(e))  return;
       if (InCamera.handleUp(e)) return;
       InPlanet.handleUp(e);
     };

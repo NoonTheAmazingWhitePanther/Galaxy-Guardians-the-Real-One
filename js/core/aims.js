@@ -57,9 +57,9 @@
 // ── Constants ────────────────────────────────────────────────────────────
 const MAX_DEPTH    = 8;
 const MAP_SCALE    = 2;    // 1 map cell = MAP_SCALE screen pixels
-const AIM_RADIUS   = 18;   // default finger radius in CSS px
-const AIM_OFFSET_X = 0;    // finger bias X (positive = right)
-const AIM_OFFSET_Y = -8;   // finger bias Y (negative = up, thumb natural lean)
+const AIM_RADIUS   = 7;   // default finger radius in CSS px
+const AIM_OFFSET_X = -20;    // finger bias X (positive = right)
+const AIM_OFFSET_Y = -50;   // finger bias Y (negative = up, thumb natural lean)
 const TAP_MS       = 180;
 const HOLD_MS      = 400;
 
@@ -113,26 +113,26 @@ const _aim = {
     this._downAt   = performance.now();
     this._active   = true;
     this._downItem = this.fire('pointerdown');
-    // Start hold timer
     clearTimeout(this._holdTimer);
     this._holdTimer = setTimeout(() => {
       if (this._active) this.fire('hold');
     }, HOLD_MS);
+    return this._downItem;
   },
 
   up(x, y) {
     this.moveTo(x, y);
     clearTimeout(this._holdTimer);
     const dur = performance.now() - this._downAt;
-    if (dur < TAP_MS) this.fire('tap');
-    else               this.fire('pointerup');
+    const hits = dur < TAP_MS ? this.fire('tap') : this.fire('pointerup');
     this._active   = false;
     this._downItem = null;
+    return hits;
   },
 
   move(x, y) {
     this.moveTo(x, y);
-    if (this._active) this.fire('pointermove');
+    return this._active ? this.fire('pointermove') : [];
   }
 };
 
@@ -496,6 +496,17 @@ export const Aims = {
     }
 
     ctx.restore();
+  },
+
+  /**
+   * Test a point — returns what would be hit at x,y with current radius.
+   * Call from console: Aims.test(150, 300)
+   */
+  test(x, y, radius) {
+    const r = radius ?? this.aim.radius;
+    const hits = this._resolve(x, y, r, '__test__');
+    console.log(`[Aims] test(${x},${y}) r=${r} → hits:`, hits);
+    return hits;
   },
 
   get debugInfo() {
