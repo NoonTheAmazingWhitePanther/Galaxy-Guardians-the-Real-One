@@ -1,86 +1,125 @@
 /**
  * js/modules/debug/debug-router.js
- * Central Hub. STATE & RENDERING ONLY. No input listeners.
- *
- * UPDATED (2026-06-19): Added third panel — QueOps queue monitor.
+ * Central hub for debug panels.
  */
+import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov } from './governor.js';
+import { Panel } from './panel.js';
+import { MasterGovernor } from './master-governor.js';
+import { DEBUG_STATE } from './debug-state.js';
+import { DebugRenderer } from '../rendering/debug-renderer.js';
+import { DebugOverlay } from './debug-overlay.js';
+import { Accumulator } from '../rendering/accumulator.js';
+import { PhysicsCounter } from './physics-counter.js';
 import { DrawCallCounter } from './draw-call-counter.js';
-import { PhysicsCounter }  from './physics-counter.js';
-import { DebugRenderer }   from '../rendering/debug-renderer.js';
-import { DEBUG_STATE }     from './debug-state.js';
-import { QueOps }          from '../../core/que-ops.js';
-import { Aims }            from '../../core/aims.js';
+import { QueOps } from '../../core/que-ops.js';
+import { Aims } from '../../core/aims.js';
+import { config } from '../../core/config.js';
 
 export const DebugRouter = {
   panels: [],
   masterEnabled: true,
+  _canvas: null,
+  _config: null,
+  _initialized: false,
 
-  init(canvas) {
-    DrawCallCounter.install();
+  async init(canvas) {
+    this._canvas = canvas;
 
-    this.panels = [
-      {
-        id: 'drawCalls', type: 'drawCalls', visible: true,
-        x: DEBUG_STATE.defaultPositions.drawCalls.x,
-        y: DEBUG_STATE.defaultPositions.drawCalls.y,
-        refreshRate: DEBUG_STATE.refreshRates[DEBUG_STATE.defaultRefreshIdx],
-        lastUpdate: 0,
-        refreshRates: DEBUG_STATE.refreshRates,
-        currentRateIdx: DEBUG_STATE.defaultRefreshIdx
-      },
-      {
-        id: 'physics', type: 'physics', visible: true,
-        x: DEBUG_STATE.defaultPositions.physics.x,
-        y: DEBUG_STATE.defaultPositions.physics.y,
-        refreshRate: DEBUG_STATE.refreshRates[DEBUG_STATE.defaultRefreshIdx],
-        lastUpdate: 0,
-        refreshRates: DEBUG_STATE.refreshRates,
-        currentRateIdx: DEBUG_STATE.defaultRefreshIdx
-      },
-      {
-        id: 'queops', type: 'queops', visible: true,
-        x: DEBUG_STATE.defaultPositions.queops.x,
-        y: DEBUG_STATE.defaultPositions.queops.y,
-        refreshRate: DEBUG_STATE.refreshRates[DEBUG_STATE.defaultRefreshIdx],
-        lastUpdate: 0,
-        refreshRates: DEBUG_STATE.refreshRates,
-        currentRateIdx: DEBUG_STATE.defaultRefreshIdx
-      },
-      {
-        id: 'aim', type: 'aim', visible: true,
-        x: DEBUG_STATE.defaultPositions.aim.x,
-        y: DEBUG_STATE.defaultPositions.aim.y,
-        refreshRate: 16, // always max refresh — aim moves fast
-        lastUpdate: 0,
-        refreshRates: DEBUG_STATE.refreshRates,
-        currentRateIdx: 0
-      }
-    ];
+    // ── Register ALL modules for variable resolution ──────────────────────
+    GovernorRegistry.register('PhysicsCounter', PhysicsCounter);
+    GovernorRegistry.register('DrawCallCounter', DrawCallCounter);
+    GovernorRegistry.register('QueOps', QueOps);
+    GovernorRegistry.register('Aims', Aims);
+    GovernorRegistry.register('Accumulator', Accumulator);
+    GovernorRegistry.register('ManualOverrides', ManualOverrides);
+    GovernorRegistry.register('PhysicsGov', PhysicsGov);
+    GovernorRegistry.register('RenderGov', RenderGov);
+    GovernorRegistry.register('config', config);
+
+    // ── Load config ───────────────────────────────────────────────────────
+    try {
+      const response = await fetch('./js/modules/debug/debug-config.json');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      this._config = await response.json();
+      console.log('[DebugRouter] Config loaded:', this._config.panels.length, 'panels');
+    } catch (err) {
+      console.warn('[DebugRouter] Failed to load config, using fallback:', err);
+      this._config = this._getFallbackConfig();
+    }
+
+    // ── Create panels ─────────────────────────────────────────────────────    this.panels = [];
+    for (const panelCfg of this._config.panels) {
+      const panel = new Panel(panelCfg, panelCfg.position?.x, panelCfg.position?.y);
+      this.panels.push(panel);
+    }
+
+    // ── Register panels with MasterGovernor ───────────────────────────────
+    for (const panel of this.panels) {
+      MasterGovernor.register(panel);
+    }
+    MasterGovernor.lockRatios();
+
+    this._initialized = true;
+    console.log('[DebugRouter] Initialized with', this.panels.length, 'panels');
+  },
+
+  _getFallbackConfig() {
+    return {
+      panels: [
+        {
+          id: 'physics',
+          title: 'PHYSICS',
+          position: { x: 16, y: 220 },
+          refreshRate: 100,
+          summaryVariable: 'PhysicsGov.timeScale',
+          summaryLabel: 'Time Scale',
+          lines: [
+            { type: 'header', text: 'PHYSICS', value: 'PhysicsCounter.total', color: 'accent', bold: true },
+            { type: 'display', text: 'Particles', value: 'PhysicsCounter.stats.particlesIntegrated' }
+          ]
+        }
+      ]
+    };
+  },
+
+  _getDataForPanel(panel) {
+    switch (panel.id) {
+      case 'physics':   return PhysicsCounter;
+      case 'drawCalls': return DrawCallCounter;
+      case 'queops':    return QueOps.getDebugInfo();
+      case 'aim':       return Aims.debugInfo;
+      default:          return {};
+    }
+  },
+
+  drawAll() {
+  if (!this.masterEnabled) return;
+  if (!this._initialized) return;
+
+  // MUST CLEAR - this is the overlay canvas, independent of game
+  DebugOverlay.clear();
+
+  const now = performance.now();
+  const ctx = DebugOverlay.ctx;
+
+  for (const panel of this.panels) {
+    if (!panel.visible) continue;
+    if (!panel.shouldRender(now)) continue;
+    const data = this._getDataForPanel(panel);
+    DebugRenderer.renderPanel(ctx, panel, data);
+  }
+
+  DebugRenderer.renderMasterSlider(ctx, this.panels);
+},
+
+  toggleAll() {
+    this.masterEnabled = !this.masterEnabled;
+    console.log('[DebugRouter] Master enabled:', this.masterEnabled);
+    try { window.InAims?.onDebugToggle(this.masterEnabled); } catch (_) {}
   },
 
   resetAll() {
     DrawCallCounter.reset();
     PhysicsCounter.reset();
-  },
-
-  drawAll(ctx) {
-    if (!this.masterEnabled) return;
-    const now = performance.now();
-    for (const panel of this.panels) {
-      if (!panel.visible) continue;
-      if (now - panel.lastUpdate >= panel.refreshRate) {
-        panel.lastUpdate = now;
-      }
-      let data;
-      if      (panel.type === 'drawCalls') data = DrawCallCounter;
-      else if (panel.type === 'physics')   data = PhysicsCounter;
-      else if (panel.type === 'queops')    data = QueOps.getDebugInfo();
-      else if (panel.type === 'aim')        data = Aims.debugInfo;
-      if (data) DebugRenderer.renderPanel(ctx, panel, data);
-    }
-  },
-
-  toggleAll() {
-    this.masterEnabled = !this.masterEnabled;
   }
 };

@@ -1,192 +1,329 @@
 /**
  * js/modules/input/in-debug.js
- * Handles Debug Panel drag, refresh rate cycling, and governor button taps.
+ * ─────────────────────────────────────────────────────────────────────────
+ * DEBUG INPUT HANDLER — routes pointer events to panels + master sliders.
  *
- * Button strip (top-right of each panel):
- *   Physics:  ✕ (multiply)   = (idle/reset)   ÷ (divide)
- *   Render:   + (add skip)   = (idle/reset)   − (subtract skip)
+ * REFACTOR (2026-06-23):
+ *   - Uses Panel class for hit-testing (no panel-type branching)
+ *   - Handles per-panel master sliders (vertical, to right of each panel)
+ *   - Handles global master slider (vertical, to right of all panels)
+ *   - Handles minimize button (top-right of each panel)
+ *   - Handles all control types: buttons, sliders, knobs, dropdowns,
+ *     checkboxes, color pickers
+ *   - Delegates control interactions to panel.handlePointerDown/Move/Up
+ *   - No +15 offset hack — coordinates are panel-relative everywhere
  *
- * All coordinates in CSS pixels. DPR handled in debug-renderer only.
+ * PRIORITY ORDER (hit-test):
+ *   1. Global master slider (rightmost, check first)
+ *   2. Per-panel master slider (to right of each panel)
+ *   3. Panel controls (buttons, sliders, minimize button, etc.)
+ *   4. Panel body (for dragging)
+ *
+ * DEPENDENCIES:
+ *   - debug-router.js             (panels array)
+ *   - panel.js                    (Panel class — hit-test + control handling)
+ *   - panel-master.js             (PanelMasterSlider — per-panel master hit-test)
+ *   - master-slider-renderer.js   (MasterSliderRenderer — global master)
+ *
+ * USED BY:
+ *   - input.module.js             (calls handleDown/Move/Up in priority chain)
+ * ─────────────────────────────────────────────────────────────────────────
  */
-import { DebugRouter }      from '../debug/debug-router.js';
-import { DEBUG_STATE }      from '../debug/debug-state.js';
-import { DrawCallCounter }  from '../debug/draw-call-counter.js';
-import { PhysicsCounter }   from '../debug/physics-counter.js';
-import { PhysicsGovernor }  from '../../core/physics-governor.js';
-import { RenderGovernor }   from '../../core/render-governor.js';
-
-const SHADOW_PAD = 15;
+import { DebugRouter } from '../debug/debug-router.js';
+import { PanelMasterSlider } from '../debug/panel-master.js';
+import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 
 export const InDebug = {
   _canvas: null,
   isDragging: false,
   activePanel: null,
   pointerId: null,
-  startX: 0, startY: 0,
-  startPanelX: 0, startPanelY: 0,
+  startX: 0,
+  startY: 0,
+  startPanelX: 0,
+  startPanelY: 0,
+  _dragStarted: false,
 
+  // ── Master slider state ───────────────────────────────────────────────
+  _globalMasterDragging: false,
+  _panelMasterDragging: false,
+  _activePanelMaster: null,
+  /**
+   * init(canvas)
+   * Initialize with the main canvas for pointer capture.
+   */
   init(canvas) {
     this._canvas = canvas;
+
     // Force release if pointer capture is lost (finger lifted outside window)
     canvas.addEventListener('lostpointercapture', () => {
-      if (this.isDragging) this._release();
+      this._releaseAll();
     });
   },
 
-  _getPanelSize(panel, data) {
-    const s  = DEBUG_STATE.style;
-    const sc = DEBUG_STATE.scale;
-    const pw = (s.labelW + s.valW + s.padX * 2) * sc;
-    let lines = 0;
-    if (panel.type === 'drawCalls') {
-      lines = 1 + (data?.calls ? Object.entries(data.calls).filter(([, v]) => v > 0).length : 0) + 1;
-    } else if (panel.type === 'physics') {
-      lines = 2 + (data?.stats ? Object.entries(data.stats).filter(([, v]) => v > 0).length : 0);
-    } else if (panel.type === 'queops') {
-      lines = 10; // fixed line count
-    } else if (panel.type === 'aim') {
-      lines = 11; // fixed line count
-    } else {
-      lines = 5;
-    }
-    const hasSubRow  = panel.type === 'physics';
-    const btnRows    = hasSubRow ? 2 : (panel.type === 'aim' ? 3 : 1);
-    const btnStripH  = (18 * btnRows) + (3 * (btnRows - 1)) + s.padY * sc;
-    const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * lines) + btnStripH;
-    return { w: pw, h: ph };
-  },
-
-  _getGov(panel) {
-    return panel.type === 'physics' ? PhysicsGovernor : RenderGovernor;
-  },
-
-  _fireBtn(panel, label) {
-    // Aim panel buttons
-    if (panel.type === 'aim' && label.startsWith('aim:')) {
-      const btn = panel._btns?.find(b => b.label === label);
-      if (btn) {
-        if (label.endsWith(':+')) btn._row.plus();
-        else if (label.endsWith(':=')) btn._row.reset();
-        else if (label.endsWith(':−')) btn._row.minus();
-      }
-      return;
-    }
-    const gov = this._getGov(panel);
-    if (panel.type === 'physics') {
-      // Timestep row: ✕ = ÷
-      if      (label === '✕') gov.multiply();
-      else if (label === '=') gov.idle();
-      else if (label === '÷') gov.divide();
-      // Substep row: sub:+ sub:= sub:−
-      else if (label === 'sub:+') gov.subAdd();
-      else if (label === 'sub:=') gov.subIdle();
-      else if (label === 'sub:−') gov.subSubtract();
-    } else {
-      if      (label === '+') gov.add();
-      else if (label === '=') gov.idle();
-      else if (label === '−') gov.subtract();
-    }
-  },
-
-  _release() {
+  /**
+   * _releaseAll()
+   * Clean up all drag state and release pointer capture.
+   */
+  _releaseAll() {
     try {
-      if (this._canvas && this.pointerId != null)
+      if (this._canvas && this.pointerId != null) {
         this._canvas.releasePointerCapture(this.pointerId);
+      }
     } catch (_) {}
-    this.isDragging   = false;
-    this.activePanel  = null;
-    this.pointerId    = null;
-    this.startX       = 0;
-    this.startY       = 0;
-    this.startPanelX  = 0;
-    this.startPanelY  = 0;
+
+    this.isDragging = false;
+    this.activePanel = null;
+    this.pointerId = null;
+    this.startX = 0;
+    this.startY = 0;
+    this.startPanelX = 0;
+    this.startPanelY = 0;
+    this._dragStarted = false;
+
+    this._globalMasterDragging = false;
+    this._panelMasterDragging = false;
+    this._activePanelMaster = null;
   },
 
+  /**
+   * handleDown(e)
+   * Handle pointer down.
+   *
+   * Priority:
+   *   1. Global master slider
+   *   2. Per-panel master slider
+   *   3. Panel controls (buttons, sliders, minimize, etc.)
+   *   4. Panel body (drag)
+   *
+   * Returns: true if consumed, false otherwise   */
   handleDown(e) {
-    if (!DebugRouter.masterEnabled) return false;
+    // Hard gate — if debug is off, never consume any input
+    if (!DebugRouter.masterEnabled) {
+      this._releaseAll();
+      return false;
+    }
 
     const x = e.clientX;
     const y = e.clientY;
 
+    // ── 1. Check global master slider first ───────────────────────────
+    if (MasterSliderRenderer.handlePointerDown(x, y)) {
+      this._globalMasterDragging = true;
+      this.pointerId = e.pointerId;
+      try {
+        if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+      } catch (_) {}
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return true;
+    }
+
+    // ── 2-4. Check panels ─────────────────────────────────────────────
     for (const panel of DebugRouter.panels) {
       if (!panel.visible) continue;
-      // Get data safely for any panel type
-      let data = null;
-      if      (panel.type === 'drawCalls') data = DrawCallCounter;
-      else if (panel.type === 'physics')   data = PhysicsCounter;
-      else                                 data = {};
-      const { w: pw, h: ph } = this._getPanelSize(panel, data);
 
-      const hitX = panel.x - SHADOW_PAD;
-      const hitY = panel.y - SHADOW_PAD;
-      const hitW = pw + SHADOW_PAD * 2;
-      const hitH = ph + SHADOW_PAD * 2;
+      // Get layout for this panel (needed for hit-testing)
+      const data = panel.getData();
+      const layout = panel.computeLayout(data);
 
-      if (x < hitX || x > hitX + hitW || y < hitY || y > hitY + hitH) continue;
+      // ── 2. Check per-panel master slider ────────────────────────────
+      const masterHit = PanelMasterSlider.hitTest(
+        panel, x, y,
+        panel.x, panel.y,
+        layout.w, layout.h,
+        panel.minimized
+      );
 
-      // ── Check governor buttons first ────────────────────────────────
-      if (panel._btns) {
-        for (const btn of panel._btns) {
-          // btn.x/y are offscreen-canvas-relative (already include shadow pad)
-          // Absolute screen position = panel.x + (btn.x - SHADOW_PAD)
-          const bx = panel.x + (btn.x - SHADOW_PAD);
-          const by = panel.y + (btn.y - SHADOW_PAD);
-          if (x >= bx && x <= bx + btn.w && y >= by && y <= by + btn.h) {
-            this._fireBtn(panel, btn.label);
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            return true;
-          }
+      if (masterHit) {
+        if (masterHit.type === 'minimize') {
+          panel.toggleMinimize();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        } else if (masterHit.type === 'slider') {
+          panel.panelMasterValue = masterHit.value;
+          this._panelMasterDragging = true;
+          this._activePanelMaster = panel;
+          this.pointerId = e.pointerId;          try {
+            if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+          } catch (_) {}
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
         }
       }
 
-      // ── Tap top-right corner → cycle refresh rate ───────────────────
-      if (x > panel.x + pw - 30 && y < panel.y + 20) {
-        panel.currentRateIdx = (panel.currentRateIdx + 1) % panel.refreshRates.length;
-        panel.refreshRate    = panel.refreshRates[panel.currentRateIdx];
+      // ── 3. Check panel controls ─────────────────────────────────────
+      const hit = panel.hitTest(x, y, layout);
+
+      if (!hit) continue;
+
+      // ── Minimize button (special case) ──────────────────────────────
+      if (hit.type === 'button' && hit.control?.config?.__minimize__) {
+        panel.toggleMinimize();
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;
       }
 
-      // ── Start drag ──────────────────────────────────────────────────
-      this.activePanel  = panel;
-      this.pointerId    = e.pointerId;
-      this.isDragging   = true;
-      this.startX       = x;
-      this.startY       = y;
-      this.startPanelX  = panel.x;
-      this.startPanelY  = panel.y;
+      // ── Control hit → delegate to panel ─────────────────────────────
+      if (hit.type === 'button' || hit.type === 'slider' || hit.type === 'knob' ||
+          hit.type === 'dropdown' || hit.type === 'checkbox' || hit.type === 'color') {
+        const consumed = panel.handlePointerDown(x, y, layout);
+        if (consumed) {
+          this.activePanel = panel;
+          this.pointerId = e.pointerId;
+          try {
+            if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+          } catch (_) {}
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        }
+      }
 
-      try {
-        if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
-      } catch (_) {}
+      // ── 4. Panel body hit → start drag ──────────────────────────────
+      if (hit.type === 'panel') {
+        this.activePanel = panel;
+        this.pointerId = e.pointerId;
+        this.isDragging = true;
+        this._dragStarted = false;
+        this.startX = x;
+        this.startY = y;
+        this.startPanelX = panel.x;
+        this.startPanelY = panel.y;
 
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return true;
+        try {          if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+        } catch (_) {}
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
     }
+
     return false;
   },
 
+  /**
+   * handleMove(e)
+   * Handle pointer move.
+   *
+   * Returns: true if consumed, false otherwise
+   */
   handleMove(e) {
-    if (!this.isDragging) return false;
     if (e.pointerId !== this.pointerId) return false;
-    // Safety — if panel became invisible or debug turned off, release
-    if (!DebugRouter.masterEnabled || !this.activePanel?.visible) {
-      this._release();
+
+    // Safety — if debug turned off, release
+    if (!DebugRouter.masterEnabled) {
+      this._releaseAll();
       return false;
     }
-    this.activePanel.x = this.startPanelX + (e.clientX - this.startX);
-    this.activePanel.y = this.startPanelY + (e.clientY - this.startY);
-    e.preventDefault();
-    return true;
+
+    const x = e.clientX;
+    const y = e.clientY;
+
+    // ── Global master slider drag ─────────────────────────────────────
+    if (this._globalMasterDragging) {
+      MasterSliderRenderer.handlePointerMove(x, y);
+      e.preventDefault();
+      return true;
+    }
+
+    // ── Per-panel master slider drag ──────────────────────────────────
+    if (this._panelMasterDragging && this._activePanelMaster) {
+      const panel = this._activePanelMaster;
+      const data = panel.getData();
+      const layout = panel.computeLayout(data);
+      const masterHit = PanelMasterSlider.hitTest(
+        panel, x, y,
+        panel.x, panel.y,
+        layout.w, layout.h,
+        panel.minimized
+      );
+      if (masterHit?.type === 'slider') {
+        panel.panelMasterValue = masterHit.value;      }
+      e.preventDefault();
+      return true;
+    }
+
+    // ── Panel drag ────────────────────────────────────────────────────
+    if (this.isDragging && this.activePanel) {
+      const dx = x - this.startX;
+      const dy = y - this.startY;
+
+      // Only count as drag after 4px movement (prevents accidental drag on tap)
+      if (!this._dragStarted && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        this._dragStarted = true;
+      }
+
+      if (this._dragStarted) {
+        this.activePanel.x = this.startPanelX + dx;
+        this.activePanel.y = this.startPanelY + dy;
+        e.preventDefault();
+        return true;
+      }
+    }
+
+    // ── Control drag (slider/knob) + hover updates ────────────────────
+    if (this.activePanel) {
+      const data = this.activePanel.getData();
+      const layout = this.activePanel.computeLayout(data);
+      const consumed = this.activePanel.handlePointerMove(x, y, layout);
+      if (consumed) {
+        e.preventDefault();
+        return true;
+      }
+    }
+
+    return false;
   },
 
+  /**
+   * handleUp(e)
+   * Handle pointer up.
+   *
+   * Returns: true if consumed, false otherwise
+   */
   handleUp(e) {
-    if (!this.isDragging) return false;
     if (e.pointerId !== this.pointerId) return false;
-    this._release();
-    return true;
+
+    // ── Global master slider release ──────────────────────────────────
+    if (this._globalMasterDragging) {
+      MasterSliderRenderer.handlePointerUp(e.clientX, e.clientY);
+      this._globalMasterDragging = false;      this._releaseAll();
+      return true;
+    }
+
+    // ── Per-panel master slider release ───────────────────────────────
+    if (this._panelMasterDragging) {
+      this._panelMasterDragging = false;
+      this._activePanelMaster = null;
+      this._releaseAll();
+      return true;
+    }
+
+    // ── Release control interactions ──────────────────────────────────
+    if (this.activePanel && !this.isDragging) {
+      const data = this.activePanel.getData();
+      const layout = this.activePanel.computeLayout(data);
+      this.activePanel.handlePointerUp(e.clientX, e.clientY, layout);
+    }
+
+    // ── Stop panel drag ───────────────────────────────────────────────
+    if (this.isDragging) {
+      this._releaseAll();
+
+      // Rebuild AIMS map with updated panel positions after drag
+      try {
+        window.InAims?.onDebugToggle(true);
+      } catch (_) {}
+
+      return true;
+    }
+
+    this._releaseAll();
+    return false;
   }
 };
