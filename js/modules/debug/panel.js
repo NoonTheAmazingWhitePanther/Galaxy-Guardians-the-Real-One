@@ -1,6 +1,6 @@
 /**
  * js/modules/debug/panel.js
- * Enhanced with better control handling and logging.
+ * FIXED: Added _cachedData. Safe value resolution.
  */
 import { DEBUG_STATE } from './debug-state.js';
 import { GovernorRegistry, resolveVariable, Governor } from './governor.js';
@@ -30,6 +30,9 @@ export class Panel {
     if (this.currentRateIdx === -1) this.currentRateIdx = 2;
     this.refreshRate = this.refreshRates[this.currentRateIdx];
     this._lastRender = 0;
+    
+    // ✅ FIX: Cache for stable rendering
+    this._cachedData = {};
 
     this._chromeCanvas = document.createElement('canvas');
     this._dataCanvas = document.createElement('canvas');
@@ -46,8 +49,9 @@ export class Panel {
       if (line.type === 'buttons') {
         const variable = resolveVariable(line.variable);
         if (!variable) {
-          console.warn(`[Panel ${this.id}] Could not resolve variable: ${line.variable}`);
-          continue;        }
+          console.warn(`[Panel ${this.id}] Variable not found: ${line.variable}`);
+          continue;
+        }
         const governor = new Governor(variable, line.governor || {});
         this._controls.push({
           type: ControlType.BUTTON,
@@ -57,7 +61,6 @@ export class Panel {
           variable,
           state: { hoverIdx: -1, pressIdx: -1 }
         });
-        console.log(`[Panel ${this.id}] Created button control for ${line.variable}`);
       } else if (line.type === 'slider') {
         const variable = resolveVariable(line.variable);
         if (!variable) continue;
@@ -70,7 +73,6 @@ export class Panel {
           variable,
           state: { hover: false, dragging: false, value: variable.get() }
         });
-        console.log(`[Panel ${this.id}] Created slider control for ${line.variable}`);
       } else if (line.type === 'knob') {
         const variable = resolveVariable(line.variable);
         if (!variable) continue;
@@ -96,7 +98,8 @@ export class Panel {
       } else if (line.type === 'checkbox') {
         const variable = resolveVariable(line.variable);
         if (!variable) continue;
-        this._controls.push({          type: ControlType.CHECKBOX,
+        this._controls.push({
+          type: ControlType.CHECKBOX,
           config: line,
           variable,
           state: { hover: false, value: variable.get() }
@@ -131,7 +134,6 @@ export class Panel {
   toggleMinimize() {
     this.minimized = !this.minimized;
     this._chromeDirty = true;
-    console.log(`[Panel ${this.id}] ${this.minimized ? 'minimized' : 'maximized'}`);
   }
 
   getData() {
@@ -145,7 +147,8 @@ export class Panel {
 
     for (const line of this.config.lines || []) {
       switch (line.type) {
-        case 'header': {          const value = this._resolveValue(line.value, data);
+        case 'header': {
+          const value = this._resolveValue(line.value, data);
           const suffix = line.suffix ? this._resolveValue(line.suffix, data) : '';
           const label = `${line.text}${suffix ? '  ' + suffix : ''}`;
           lines.push({
@@ -194,7 +197,8 @@ export class Panel {
         }
 
         case 'displayMap': {
-          const source = this._resolveValue(line.source, data);          if (!source || typeof source !== 'object') break;
+          const source = this._resolveValue(line.source, data);
+          if (!source || typeof source !== 'object') break;
           const labels = line.labels ? this._resolveValue(line.labels, data) : null;
           let entries = Object.entries(source);
           if (line.filter === 'positive') entries = entries.filter(([, v]) => v > 0);
@@ -243,47 +247,50 @@ export class Panel {
 
     return lines;
   }
+
   _resolveValue(pathOrValue, data) {
-    if (typeof pathOrValue !== 'string') return pathOrValue;
+    if (typeof pathOrValue !== 'string') return pathOrValue ?? '';
     if (pathOrValue.includes('.')) {
       const variable = resolveVariable(pathOrValue);
-      if (variable) return variable.get();
+      if (!variable) return ''; // ✅ FIX: Return empty string if module not found
+      const val = variable.get();
+      return val ?? ''; // ✅ FIX: Never return undefined
     }
-    if (data && pathOrValue in data) return data[pathOrValue];
+    if (data && pathOrValue in data) return data[pathOrValue] ?? '';
     return pathOrValue;
   }
 
   computeLayout(data) {
-  const s = DEBUG_STATE.style;
-  const sc = DEBUG_STATE.scale;
-  
-  if (this.minimized) {
+    const s = DEBUG_STATE.style;
+    const sc = DEBUG_STATE.scale;
+
+    if (this.minimized) {
+      let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
+      pw = Math.floor(pw * 0.75); 
+      const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * 2);
+      return { w: pw, h: ph, lines: [], controls: [], minimized: true };
+    }
+
+    const lines = this.buildLines(data);
     let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
-    pw = Math.floor(pw * 0.85); // 75% width
-    const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * 2);
-    return { w: pw, h: ph, lines: [], controls: [], minimized: true };
+    pw = Math.floor(pw * 0.75); 
+
+    let cy = s.padY * sc;
+    cy += s.lineHeight * sc * lines.length;
+    cy += 8 * sc;
+
+    const layoutControls = [];
+    for (const ctrl of this._controls) {
+      const controlW = pw - s.padX * 2 * sc;
+      const bounds = ControlRenderer.getBounds(ctrl, s.padX * sc, cy, controlW);
+      layoutControls.push({ ...ctrl, bounds });
+      cy += bounds.h + 6 * sc;
+    }
+
+    cy += s.padY * sc;
+
+    return { w: pw, h: cy, lines, controls: layoutControls, minimized: false };
   }
-  
-  const lines = this.buildLines(data);
-  let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
-  pw = Math.floor(pw * 0.85); // 75% width
-  
-  let cy = s.padY * sc;
-  cy += s.lineHeight * sc * lines.length;
-  cy += 8 * sc;
-  
-  const layoutControls = [];
-  for (const ctrl of this._controls) {
-    const controlW = pw - s.padX * 2 * sc;
-    const bounds = ControlRenderer.getBounds(ctrl, s.padX * sc, cy, controlW);
-    layoutControls.push({ ...ctrl, bounds });
-    cy += bounds.h + 6 * sc;
-  }
-  
-  cy += s.padY * sc;
-  
-  return { w: pw, h: cy, lines, controls: layoutControls, minimized: false };
-}
 
   hitTest(x, y, layout) {
     if (layout.minimized) {
@@ -294,7 +301,8 @@ export class Panel {
     }
 
     for (const ctrl of layout.controls) {
-      const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);      if (hit) {
+      const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+      if (hit) {
         if (ctrl.type === ControlType.BUTTON) return { type: 'button', control: ctrl, btnIdx: hit.btnIdx };
         else if (ctrl.type === ControlType.SLIDER) return { type: 'slider', control: ctrl, frac: hit.frac };
         else if (ctrl.type === ControlType.KNOB) return { type: 'knob', control: ctrl };
@@ -319,18 +327,9 @@ export class Panel {
     if (hit.type === 'button') {
       const ctrl = hit.control;
       ctrl.state.pressIdx = hit.btnIdx;
-      console.log(`[Panel ${this.id}] Button ${hit.btnIdx} clicked on ${ctrl.config.text}`);
-      
-      if (hit.btnIdx === 0) {
-        ctrl.governor.multiply();
-        console.log(`[Panel ${this.id}] multiply() called`);
-      } else if (hit.btnIdx === 1) {
-        ctrl.governor.idle();
-        console.log(`[Panel ${this.id}] idle() called`);
-      } else if (hit.btnIdx === 2) {
-        ctrl.governor.divide();
-        console.log(`[Panel ${this.id}] divide() called`);
-      }
+      if (hit.btnIdx === 0) ctrl.governor.multiply();
+      else if (hit.btnIdx === 1) ctrl.governor.idle();
+      else if (hit.btnIdx === 2) ctrl.governor.divide();
       return true;
     }
 
@@ -338,12 +337,12 @@ export class Panel {
       const ctrl = hit.control;
       ctrl.state.dragging = true;
       this._updateSlider(ctrl, hit.frac);
-      console.log(`[Panel ${this.id}] Slider dragged to ${ctrl.variable.get()}`);
       return true;
     }
 
     if (hit.type === 'knob') {
-      const ctrl = hit.control;      ctrl.state.dragging = true;
+      const ctrl = hit.control;
+      ctrl.state.dragging = true;
       ctrl.state.dragStartY = y;
       ctrl.state.dragStartValue = ctrl.variable.get();
       return true;
@@ -351,15 +350,13 @@ export class Panel {
 
     if (hit.type === 'dropdown') {
       const ctrl = hit.control;
-      if (hit.hitType === 'button') {
-        ctrl.state.open = !ctrl.state.open;
-      } else if (hit.hitType === 'option') {
+      if (hit.hitType === 'button') ctrl.state.open = !ctrl.state.open;
+      else if (hit.hitType === 'option') {
         const opt = ctrl.config.options[hit.idx];
         const value = typeof opt === 'object' ? opt.value : opt;
         ctrl.variable.set(value);
         ctrl.state.value = value;
         ctrl.state.open = false;
-        console.log(`[Panel ${this.id}] Dropdown set to ${value}`);
       }
       return true;
     }
@@ -369,21 +366,18 @@ export class Panel {
       const newValue = !ctrl.variable.get();
       ctrl.variable.set(newValue);
       ctrl.state.value = newValue;
-      console.log(`[Panel ${this.id}] Checkbox toggled to ${newValue}`);
       return true;
     }
 
     if (hit.type === 'color') {
       const ctrl = hit.control;
-      if (hit.hitType === 'swatch') {
-        ctrl.state.open = !ctrl.state.open;
-      } else if (hit.hitType === 'color') {
+      if (hit.hitType === 'swatch') ctrl.state.open = !ctrl.state.open;
+      else if (hit.hitType === 'color') {
         const palette = ctrl.config.palette || ['#ffffff', '#000000', '#ff0000'];
         const color = palette[hit.idx];
         ctrl.variable.set(color);
         ctrl.state.value = color;
         ctrl.state.open = false;
-        console.log(`[Panel ${this.id}] Color set to ${color}`);
       }
       return true;
     }
@@ -392,7 +386,8 @@ export class Panel {
   }
 
   handlePointerMove(x, y, layout) {
-    let changed = false;    for (const ctrl of layout.controls) {
+    let changed = false;
+    for (const ctrl of layout.controls) {
       if (ctrl.type === ControlType.BUTTON) {
         const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
         if (ctrl.state.hoverIdx !== (hit ? hit.btnIdx : -1)) {
@@ -441,7 +436,8 @@ export class Panel {
         const step = ctrl.config.step || 1;
         const delta = (dy / 100) * range;
         const newValue = ctrl.state.dragStartValue + delta;
-        const snapped = Math.round(newValue / step) * step;        ctrl.variable.set(Math.max(ctrl.config.min, Math.min(ctrl.config.max, snapped)));
+        const snapped = Math.round(newValue / step) * step;
+        ctrl.variable.set(Math.max(ctrl.config.min, Math.min(ctrl.config.max, snapped)));
         this._chromeDirty = true;
         return true;
       }

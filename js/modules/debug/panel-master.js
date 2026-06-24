@@ -1,111 +1,104 @@
+/**
+ * js/modules/debug/panel-master.js
+ * FIXED: No double DPR scaling. Coordinates are CSS pixels only.
+ */
 import { DEBUG_STATE } from './debug-state.js';
 
-const SLIDER_W = 10;
+const SLIDER_W = 20;
 const SLIDER_PAD = 6;
 const THUMB_H = 16;
 const MINIMIZE_BTN_SIZE = 16;
 
 export const PanelMasterSlider = {
-  render(mainCtx, panel, x, y, panelW, panelH, minimized) {
+  render(ctx, panel, x, y, panelW, panelH, minimized) {
     const s = DEBUG_STATE.style;
-    const dpr = DEBUG_STATE.dpr;
-    
-    // Scale all coordinates and sizes for high-res canvas
-    const sx = x * dpr;
-    const sy = y * dpr;
-    const sw = panelW * dpr;
-    const sh = panelH * dpr;
-    const sliderW = SLIDER_W * dpr;
-    const sliderPad = SLIDER_PAD * dpr;
-    const thumbH = THUMB_H * dpr;
-    const minBtnSize = MINIMIZE_BTN_SIZE * dpr;
-    
-    const sliderX = sx + sw + sliderPad;
-    const sliderY = sy;
-    const sliderH = minimized ? 80 * dpr : sh;
+    // NO dpr multiplication — canvas transform already handles it
+    const sliderX = x + panelW + SLIDER_PAD;
+    const sliderY = y;
+    const sliderH = minimized ? 80 : panelH;
     const value = panel.panelMasterValue ?? 1.0;
-    
+
+    const btnX = x + panelW - MINIMIZE_BTN_SIZE - 4;
+    const btnY = y + 4;
+
     // Minimize button
-    const btnX = sx + sw - minBtnSize - 4 * dpr;
-    const btnY = sy + 4 * dpr;
-    
-    mainCtx.fillStyle = minimized ? 'rgba(130, 210, 255, 0.3)' : 'rgba(255,255,255,0.08)';
-    mainCtx.beginPath();
-    mainCtx.roundRect(btnX, btnY, minBtnSize, minBtnSize, 3 * dpr);
-    mainCtx.fill();
-    mainCtx.strokeStyle = 'rgba(255,255,255,0.2)';
-    mainCtx.lineWidth = 1 * dpr;
-    mainCtx.stroke();
-    
-    mainCtx.fillStyle = 'rgba(240,245,255,0.85)';
-    mainCtx.font = `${10 * dpr}px ${s.font}`;
-    mainCtx.textAlign = 'center';
-    mainCtx.textBaseline = 'middle';
-    mainCtx.fillText(minimized ? '▲' : '▼', btnX + minBtnSize / 2, btnY + minBtnSize / 2);
-    
+    ctx.fillStyle = minimized ? 'rgba(130, 210, 255, 0.3)' : 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, MINIMIZE_BTN_SIZE, MINIMIZE_BTN_SIZE, 3);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(240,245,255,0.85)';
+    ctx.font = `10px ${s.font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(minimized ? '▲' : '▼', btnX + MINIMIZE_BTN_SIZE / 2, btnY + MINIMIZE_BTN_SIZE / 2);
+
     // Slider track
-    mainCtx.fillStyle = 'rgba(255,255,255,0.08)';
-    mainCtx.beginPath();
-    mainCtx.roundRect(sliderX, sliderY, sliderW, sliderH, 4 * dpr);
-    mainCtx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath();
+    ctx.roundRect(sliderX, sliderY, SLIDER_W, sliderH, 4);
+    ctx.fill();
+
     // Slider fill
     const thumbY = sliderY + sliderH - (value / 2.0) * sliderH;
     const fillColor = value > 1.0 ? 'rgba(255,100,80,0.6)' : value < 1.0 ? 'rgba(130,210,255,0.6)' : 'rgba(255,255,255,0.3)';
-    mainCtx.fillStyle = fillColor;
-    mainCtx.beginPath();
-    mainCtx.roundRect(sliderX, thumbY, sliderW, sliderH - (thumbY - sliderY), 4 * dpr);
-    mainCtx.fill();
-    
+    ctx.fillStyle = fillColor;
+    ctx.beginPath();
+    ctx.roundRect(sliderX, thumbY, SLIDER_W, sliderH - (thumbY - sliderY), 4);    ctx.fill();
+
     // Thumb
-    mainCtx.fillStyle = panel._masterDragging ? 'rgba(255,255,255,0.95)' : 'rgba(240,245,255,0.85)';
-    mainCtx.beginPath();
-    mainCtx.roundRect(sliderX + 2 * dpr, thumbY - thumbH / 2, sliderW - 4 * dpr, thumbH, 3 * dpr);
-    mainCtx.fill();
-    mainCtx.strokeStyle = panel._masterDragging ? 'rgba(130,210,255,0.8)' : 'rgba(255,255,255,0.3)';
-    mainCtx.lineWidth = 1 * dpr;
-    mainCtx.stroke();
-    
+    ctx.fillStyle = panel._masterDragging ? 'rgba(255,255,255,0.95)' : 'rgba(240,245,255,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(sliderX + 2, thumbY - THUMB_H / 2, SLIDER_W - 4, THUMB_H, 3);
+    ctx.fill();
+    ctx.strokeStyle = panel._masterDragging ? 'rgba(130,210,255,0.8)' : 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
     // Value label
-    mainCtx.fillStyle = 'rgba(240,245,255,0.9)';
-    mainCtx.font = `bold ${10 * dpr}px ${s.font}`;
-    mainCtx.textAlign = 'center';
-    mainCtx.textBaseline = 'middle';
-    mainCtx.fillText(`${value.toFixed(2)}x`, sliderX + sliderW / 2, thumbY);
-    
-    // Summary value (minimized)
+    ctx.fillStyle = 'rgba(240,245,255,0.9)';
+    ctx.font = `bold 10px ${s.font}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${value.toFixed(2)}x`, sliderX + SLIDER_W / 2, thumbY);
+
+    // Summary value when minimized
     if (minimized && panel.summaryValue) {
-      mainCtx.fillStyle = s.accent;
-      mainCtx.font = `bold ${14 * dpr}px ${s.font}`;
-      mainCtx.textAlign = 'left';
-      mainCtx.textBaseline = 'top';
-      mainCtx.fillText(panel.summaryValue, sx + 8 * dpr, sy + 30 * dpr);
-      mainCtx.fillStyle = s.textFaint;
-      mainCtx.font = `${9 * dpr}px ${s.font}`;
-      mainCtx.fillText(panel.summaryLabel || '', sx + 8 * dpr, sy + 48 * dpr);
+      ctx.fillStyle = s.accent;
+      ctx.font = `bold 14px ${s.font}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(panel.summaryValue, x + 8, y + 30);
+      ctx.fillStyle = s.textFaint;
+      ctx.font = `9px ${s.font}`;
+      ctx.fillText(panel.summaryLabel || '', x + 8, y + 48);
     }
   },
-  
+
   hitTest(panel, x, y, panelX, panelY, panelW, panelH, minimized) {
     const sliderX = panelX + panelW + SLIDER_PAD;
     const sliderY = panelY;
     const sliderH = minimized ? 80 : panelH;
-    
+
     const btnX = panelX + panelW - MINIMIZE_BTN_SIZE - 4;
     const btnY = panelY + 4;
     if (x >= btnX && x <= btnX + MINIMIZE_BTN_SIZE &&
-      y >= btnY && y <= btnY + MINIMIZE_BTN_SIZE) {
+        y >= btnY && y <= btnY + MINIMIZE_BTN_SIZE) {
       return { type: 'minimize' };
     }
+
     if (x >= sliderX && x <= sliderX + SLIDER_W &&
-      y >= sliderY && y <= sliderY + sliderH) {
+        y >= sliderY && y <= sliderY + sliderH) {
       const frac = 1.0 - (y - sliderY) / sliderH;
       const value = Math.max(0, Math.min(2.0, frac * 2.0));
       return { type: 'slider', value };
     }
-    
     return null;
   },
-  
+
   getBounds(panelX, panelY, panelW, panelH, minimized) {
     const sliderX = panelX + panelW + SLIDER_PAD;
     const sliderY = panelY;

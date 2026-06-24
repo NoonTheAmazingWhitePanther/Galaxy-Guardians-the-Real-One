@@ -116,27 +116,66 @@ function _tick() {
   let remaining = budget;
 
   for (const op of _state.queue) {
-    const elapsed = performance.now() - frameStart;
-    if (elapsed >= maxTime || remaining <= 0) { deferred.push(op); frameStats.opsDeferred++; continue; }
-    if (currentFrame % op.cycleEvery !== 0) { deferred.push(op); continue; }
-    if (_state.config.enableStagger && op.delayMs > 0 && elapsed < op.delayMs) { deferred.push(op); frameStats.opsStaggered++; continue; }
-
-    const subCfg = SUBJECTS[op.subject];
-    const subMax = subCfg ? subCfg.maxPerFrame : 20;
-    if (!frameStats.subjectBreakdown[op.subject]) frameStats.subjectBreakdown[op.subject] = { processed: 0, cost: 0, skipped: 0 };
-    const sb = frameStats.subjectBreakdown[op.subject];
-    if (sb.processed >= subMax) { sb.skipped++; frameStats.opsSkipped++; deferred.push(op); continue; }
-
-    const opCost = op.isBatch ? op.cost * (op.batchItems?.length || 1) : op.cost;
-    try {
-      if (op.isBatch && op.batchProcessor) op.batchProcessor(op.batchItems, op.args);
-      else if (typeof op.fn === 'function') op.fn(...op.args);
-      op.lastRunFrame = currentFrame;
-      sb.processed++; sb.cost += opCost;
-      frameStats.opsProcessed++; frameStats.budgetUsed += opCost;
-      remaining -= opCost;
-    } catch (err) { console.error(`[QueOps] Op failed [${op.id}]:`, err); sb.skipped++; frameStats.opsSkipped++; }
+  const elapsed = performance.now() - frameStart;
+  
+  // Time / budget exhausted → defer everything remaining
+  if (elapsed >= maxTime || remaining <= 0) {
+    deferred.push(op);
+    frameStats.opsDeferred++;
+    continue;
   }
+  
+  // Cycle gate — only run every N frames
+  if (currentFrame % op.cycleEvery !== 0) {
+    deferred.push(op);
+    continue;
+  }
+  
+  // Stagger gate — wait until elapsed >= delayMs
+  if (_state.config.enableStagger && op.delayMs > 0 && elapsed < op.delayMs) {
+    deferred.push(op);
+    frameStats.opsStaggered++;
+    continue;
+  }
+  
+  // Per-subject cap
+  const subCfg = SUBJECTS[op.subject];
+  const subMax = subCfg ? subCfg.maxPerFrame : 20;
+  if (!frameStats.subjectBreakdown[op.subject]) {
+    frameStats.subjectBreakdown[op.subject] = { processed: 0, cost: 0, skipped: 0 };
+  }
+  const sb = frameStats.subjectBreakdown[op.subject];
+  
+  if (sb.processed >= subMax) {
+    sb.skipped++;
+    frameStats.opsSkipped++;
+    deferred.push(op);
+    continue;
+  }
+  
+  // Execute
+  const opCost = op.isBatch ?
+    op.cost * (op.batchItems?.length || 1) :
+    op.cost;
+  
+  try {
+    if (op.isBatch && op.batchProcessor) {
+      op.batchProcessor(op.batchItems, op.args);
+    } else if (typeof op.fn === 'function') {
+      op.fn(...op.args);
+    }
+    op.lastRunFrame = currentFrame;
+    sb.processed++;
+    sb.cost += opCost;
+    frameStats.opsProcessed++;
+    frameStats.budgetUsed += opCost;
+    remaining -= opCost;
+  } catch (err) {
+    console.error(`[QueOps] Op failed [${op.id}]:`, err);
+    sb.skipped++;
+    frameStats.opsSkipped++;
+  }
+}
 
   _state.queue = deferred;
   if (_state.queue.length > 500) { _state.queue.sort((a, b) => a.priority - b.priority); _state.queue = _state.queue.slice(-450); }
