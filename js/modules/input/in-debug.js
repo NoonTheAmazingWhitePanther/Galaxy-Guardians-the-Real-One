@@ -47,6 +47,9 @@ export const InDebug = {
   // ── Master slider state ───────────────────────────────────────────────
   _globalMasterDragging: false,
   _panelMasterDragging: false,
+  _panelMasterKnob: false,      // true when dragging knob vs slider
+  _panelMasterKnobStartY: 0,
+  _panelMasterKnobStartValue: 0,
   _activePanelMaster: null,
   /**
    * init(canvas)
@@ -83,6 +86,7 @@ export const InDebug = {
 
     this._globalMasterDragging = false;
     this._panelMasterDragging = false;
+    this._panelMasterKnob = false;
     this._activePanelMaster = null;
   },
 
@@ -144,8 +148,23 @@ export const InDebug = {
         } else if (masterHit.type === 'slider') {
           panel.panelMasterValue = masterHit.value;
           this._panelMasterDragging = true;
+          this._panelMasterKnob = false;
           this._activePanelMaster = panel;
-          this.pointerId = e.pointerId;          try {
+          this.pointerId = e.pointerId;
+          try {
+            if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+          } catch (_) {}
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        } else if (masterHit.type === 'knob') {
+          this._panelMasterDragging = true;
+          this._panelMasterKnob = true;
+          this._panelMasterKnobStartY = y;
+          this._panelMasterKnobStartValue = panel.panelMasterValue ?? 1.0;
+          this._activePanelMaster = panel;
+          this.pointerId = e.pointerId;
+          try {
             if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
           } catch (_) {}
           e.preventDefault();
@@ -231,19 +250,31 @@ export const InDebug = {
       return true;
     }
 
-    // ── Per-panel master slider drag ──────────────────────────────────
+    // ── Per-panel master slider/knob drag ─────────────────────────────
     if (this._panelMasterDragging && this._activePanelMaster) {
       const panel = this._activePanelMaster;
-      const data = panel.getData();
-      const layout = panel.computeLayout(data);
-      const masterHit = PanelMasterSlider.hitTest(
-        panel, x, y,
-        panel.x, panel.y,
-        layout.w, layout.h,
-        panel.minimized
-      );
-      if (masterHit?.type === 'slider') {
-        panel.panelMasterValue = masterHit.value;      }
+
+      if (this._panelMasterKnob) {
+        // Knob: drag up = increase, drag down = decrease. 150px = full range (0..2)
+        const dy    = this._panelMasterKnobStartY - y;
+        const delta = (dy / 150) * 2.0;
+        panel.panelMasterValue = Math.max(0, Math.min(2.0,
+          this._panelMasterKnobStartValue + delta
+        ));
+      } else {
+        const data   = panel.getData();
+        const layout = panel.computeLayout(data);
+        const masterHit = PanelMasterSlider.hitTest(
+          panel, x, y,
+          panel.x, panel.y,
+          layout.w, layout.h,
+          panel.minimized
+        );
+        if (masterHit?.type === 'slider') {
+          panel.panelMasterValue = masterHit.value;
+        }
+      }
+
       e.preventDefault();
       return true;
     }
@@ -299,6 +330,7 @@ export const InDebug = {
     // ── Per-panel master slider release ───────────────────────────────
     if (this._panelMasterDragging) {
       this._panelMasterDragging = false;
+      this._panelMasterKnob = false;
       this._activePanelMaster = null;
       this._releaseAll();
       return true;

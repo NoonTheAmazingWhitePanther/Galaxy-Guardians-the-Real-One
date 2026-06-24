@@ -1,7 +1,15 @@
 /**
  * js/modules/debug/draw-call-counter.js
  * Pure data counter for Canvas 2D draw calls.
+ * Counting is skipped entirely when DebugRouter.masterEnabled is false.
  */
+
+// Late-bound reference — DebugRouter imports us, so we can't import it back.
+// We read it lazily from window to avoid a circular dependency.
+function _debugOn() {
+  return window._DebugRouter?.masterEnabled ?? true;
+}
+
 export const DrawCallCounter = {
   calls: {},
   drawCalls: 0,
@@ -19,12 +27,14 @@ export const DrawCallCounter = {
       const orig = CanvasRenderingContext2D.prototype[name];
       if (!orig) continue;
       CanvasRenderingContext2D.prototype[name] = function(...args) {
-        if (self._resetBeforeNextDraw) {
-          self._resetBeforeNextDraw = false;
-          self._resetCounts();
+        if (_debugOn()) {
+          if (self._resetBeforeNextDraw) {
+            self._resetBeforeNextDraw = false;
+            self._resetCounts();
+          }
+          self.calls[name] = (self.calls[name] || 0) + 1;
+          self.drawCalls++;
         }
-        self.calls[name] = (self.calls[name] || 0) + 1;
-        self.drawCalls++;
         return orig.apply(this, args);
       };
     }
@@ -34,7 +44,7 @@ export const DrawCallCounter = {
       const orig = CanvasRenderingContext2D.prototype[name];
       if (!orig) continue;
       CanvasRenderingContext2D.prototype[name] = function(...args) {
-        self.pathOps++;
+        if (_debugOn()) self.pathOps++;
         return orig.apply(this, args);
       };
     }

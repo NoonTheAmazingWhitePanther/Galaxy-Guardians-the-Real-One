@@ -92,5 +92,18 @@ export const StateCache = {
     clear() {
         this.buffer = [];
         this.isReady = false; // Crucial for triggering pre-calculation on a fresh start
+    },
+
+    get debugInfo() {
+        const used = this.buffer.length;
+        const max  = this.maxSize;
+        return {
+            ready:  this.isReady,
+            used,
+            max,
+            fill:   max > 0 ? ((used / max) * 100).toFixed(0) + '%' : '0%',
+            bodies: used > 0 ? (this.buffer[used - 1]?.bodies?.length ?? 0) : 0,
+            loose:  used > 0 ? (this.buffer[used - 1]?.loose?.length  ?? 0) : 0,
+        };
     }
 };

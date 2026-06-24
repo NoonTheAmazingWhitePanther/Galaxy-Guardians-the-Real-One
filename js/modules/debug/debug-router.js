@@ -13,6 +13,7 @@ import { DrawCallCounter } from './draw-call-counter.js';
 import { QueOps } from '../../core/que-ops.js';
 import { Aims } from '../../core/aims.js';
 import { config } from '../../core/config.js';
+import { FpsCounter } from './fps-counter.js';
 
 export const DebugRouter = {
   panels: [],
@@ -34,6 +35,10 @@ export const DebugRouter = {
     GovernorRegistry.register('DrawCallCounter', DrawCallCounter);
     GovernorRegistry.register('Accumulator', Accumulator);
     GovernorRegistry.register('config', config);
+    GovernorRegistry.register('FpsCounter', FpsCounter);
+
+    // Expose for circular-safe masterEnabled checks in counters
+    window._DebugRouter = this;
 
     try {
       const response = await fetch('./js/modules/debug/debug-config.json');
@@ -60,6 +65,7 @@ export const DebugRouter = {
 
   _getDataForPanel(panel) {
     switch (panel.id) {
+      case 'fps':       return FpsCounter.debugInfo;
       case 'physics':   return PhysicsCounter;
       case 'drawCalls': return DrawCallCounter;
       case 'queops':    return QueOps.getDebugInfo();

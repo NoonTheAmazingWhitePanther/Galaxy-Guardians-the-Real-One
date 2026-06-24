@@ -16,7 +16,7 @@ export class Panel {
     this.visible = true;
     this.config = config;
 
-    this.minimized = false;
+    this.minimized = config.minimized ?? false;
     this._summaryVariable = null;
     if (config.summaryVariable) {
       this._summaryVariable = resolveVariable(config.summaryVariable);
@@ -183,6 +183,22 @@ export class Panel {
             color,
             small: line.small ?? false
           });
+          break;
+        }
+
+        case 'msProbeRow': {
+          // data is MsProbe.allAsMap() — keyed by probe label
+          const row = data?.[line.label];
+          if (!row) {
+            lines.push({ label: line.label, value: 'no data', color: s.textFaint, small: true });
+          } else {
+            lines.push({
+              label: line.label,
+              value: `${row.last}  ${row.avg}  ${row.max}`,
+              color: row.avg > 8 ? 'rgba(255,100,80,0.9)' : row.avg > 4 ? 'rgba(255,200,80,0.9)' : s.textDim,
+              small: true
+            });
+          }
           break;
         }
 

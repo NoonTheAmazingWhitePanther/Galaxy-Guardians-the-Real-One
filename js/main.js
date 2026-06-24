@@ -16,6 +16,7 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
+import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
 // ✅ FIX: Import from unified governor
 import { PhysicsGov, RenderGov } from './modules/debug/governor.js';
@@ -219,6 +220,9 @@ function mainLoop(t) {
   QueOps.tick();
   requestAnimationFrame(mainLoop);
 
+  // Feed FPS counter every frame — before any frame-skip logic
+  FpsCounter.tick(t, RenderGov.frameSkip);
+
   const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
   lastFrameTime = t;
 
@@ -304,7 +308,7 @@ function mainLoop(t) {
       slider.value
     );
 
-    OverlaysModule.drawFPS();
+    
     OverlaysModule.updateCount(pcountEl);
     DebugRouter.drawAll(ctx);
     _drawAimCursor(ctx);
