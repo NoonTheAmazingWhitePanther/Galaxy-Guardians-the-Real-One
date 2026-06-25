@@ -1,6 +1,5 @@
 /**
  * js/modules/debug/debug-router.js
- * FIXED: Panels draw EVERY frame. Data updates only on refresh.
  */
 import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov } from './governor.js';
 import { Panel } from './panel.js';
@@ -14,6 +13,8 @@ import { QueOps } from '../../core/que-ops.js';
 import { Aims } from '../../core/aims.js';
 import { config } from '../../core/config.js';
 import { FpsCounter } from './fps-counter.js';
+import { MsProbe } from '../../core/ms-probe.js';
+import { StateCache } from '../../core/state-cache.js';
 
 export const DebugRouter = {
   panels: [],
@@ -25,19 +26,19 @@ export const DebugRouter = {
   async init(canvas) {
     this._canvas = canvas;
 
-    // Register modules
-    GovernorRegistry.register('PhysicsGov', PhysicsGov);
-    GovernorRegistry.register('RenderGov', RenderGov);
-    GovernorRegistry.register('ManualOverrides', ManualOverrides);
-    GovernorRegistry.register('QueOps', QueOps);
-    GovernorRegistry.register('Aims', Aims);
-    GovernorRegistry.register('PhysicsCounter', PhysicsCounter);
-    GovernorRegistry.register('DrawCallCounter', DrawCallCounter);
-    GovernorRegistry.register('Accumulator', Accumulator);
-    GovernorRegistry.register('config', config);
-    GovernorRegistry.register('FpsCounter', FpsCounter);
+    GovernorRegistry.register('PhysicsGov',      PhysicsGov);
+    GovernorRegistry.register('RenderGov',        RenderGov);
+    GovernorRegistry.register('ManualOverrides',  ManualOverrides);
+    GovernorRegistry.register('QueOps',           QueOps);
+    GovernorRegistry.register('Aims',             Aims);
+    GovernorRegistry.register('PhysicsCounter',   PhysicsCounter);
+    GovernorRegistry.register('DrawCallCounter',  DrawCallCounter);
+    GovernorRegistry.register('Accumulator',      Accumulator);
+    GovernorRegistry.register('config',           config);
+    GovernorRegistry.register('FpsCounter',       FpsCounter);
+    GovernorRegistry.register('MsProbe',          MsProbe);
+    GovernorRegistry.register('StateCache',       StateCache);
 
-    // Expose for circular-safe masterEnabled checks in counters
     window._DebugRouter = this;
 
     try {
@@ -65,12 +66,14 @@ export const DebugRouter = {
 
   _getDataForPanel(panel) {
     switch (panel.id) {
-      case 'fps':       return FpsCounter.debugInfo;
-      case 'physics':   return PhysicsCounter;
-      case 'drawCalls': return DrawCallCounter;
-      case 'queops':    return QueOps.getDebugInfo();
-      case 'aim':       return Aims.debugInfo;
-      default:          return {};
+      case 'fps':        return FpsCounter.debugInfo;
+      case 'physics':    return PhysicsCounter;
+      case 'drawCalls':  return DrawCallCounter;
+      case 'queops':     return QueOps.getDebugInfo();
+      case 'aim':        return Aims.debugInfo;
+      case 'msProbe':    return MsProbe.allAsMap();
+      case 'stateCache': return StateCache.debugInfo;
+      default:           return {};
     }
   },
 
@@ -80,17 +83,14 @@ export const DebugRouter = {
     const now = performance.now();
 
     for (const panel of this.panels) {
-      if (!panel.visible) continue;
-
-      // ✅ FIX: Gate DATA, not DRAWING. 
-      // If shouldRender is false, use cached data. Panel still draws.
-      let data = panel._cachedData ?? {};
-      if (panel.shouldRender(now)) {
-        data = this._getDataForPanel(panel);
-        panel._cachedData = data;
+      if (panel.visible && panel.shouldRender(now)) {
+        panel._cachedData = this._getDataForPanel(panel);
       }
+    }
 
-      DebugRenderer.renderPanel(ctx, panel, data);
+    for (const panel of this.panels) {
+      if (!panel.visible) continue;
+      DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
 
     DebugRenderer.renderMasterSlider(ctx, this.panels);
@@ -102,7 +102,6 @@ export const DebugRouter = {
   },
 
   resetAll() {
-    DrawCallCounter.reset();
     PhysicsCounter.reset();
   }
 };

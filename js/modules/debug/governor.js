@@ -37,7 +37,7 @@ export function resolveVariable(path) {
   }
 
   const moduleName = parts[0];
-  const propPath = parts.slice(1);
+  const propPath   = parts.slice(1);
 
   const module = _registry.get(moduleName);
   if (!module) {
@@ -45,9 +45,24 @@ export function resolveVariable(path) {
     return null;
   }
 
+  // Special case: ManualOverrides.<key>.value
+  // Writing must go through ManualOverrides.set() so isManual is updated.
+  // The Governor '=' button calls variable.set(autoValue) but we want reset —
+  // Governor.idle() handles that separately via the 'manualKey' hint below.
+  if (moduleName === 'ManualOverrides' && propPath.length === 2 && propPath[1] === 'value') {
+    const key = propPath[0];
+    return {
+      get:       ()  => module[key]?.value,
+      set:       (v) => module.set(key, v),
+      reset:     ()  => module.reset(key),
+      manualKey: key,           // hint for Governor.idle()
+    };
+  }
+
   return {
     get: () => {
-      let obj = module;      for (const p of propPath) {
+      let obj = module;
+      for (const p of propPath) {
         if (obj == null) return undefined;
         obj = obj[p];
       }
@@ -60,8 +75,9 @@ export function resolveVariable(path) {
         obj = obj[propPath[i]];
       }
       if (obj != null) {
-        const oldVal = obj[propPath[propPath.length - 1]];
-        obj[propPath[propPath.length - 1]] = v;
+        const last   = propPath[propPath.length - 1];
+        const oldVal = obj[last];
+        obj[last]    = v;
         console.log(`[Governor] ${path}: ${oldVal} → ${v}`);
       }
     }
@@ -84,24 +100,45 @@ export const ManualOverrides = {
   cacheVaultSize:           { isManual: false, value: 120 },
   cacheSnapshotInterval:    { isManual: false, value: 1 },
 
+  // set() — marks as manual and updates value. Used by Governor buttons.
   set(key, value) {
-    if (this[key]) {
+    if (this[key] !== undefined) {
       this[key].isManual = true;
-      this[key].value = value;
+      this[key].value    = value;
       console.log(`[Gov] MANUAL → ${key}=${value}`);
     }
   },
+
+  // reset() — back to AUTO. Called when user presses '=' button.
   reset(key) {
-    if (this[key]) {
+    if (this[key] !== undefined) {
       this[key].isManual = false;
       console.log(`[Gov] AUTO → ${key}`);
     }
-  },  get(key, autoValue) {
+  },
+
+  get(key, autoValue) {
     return (this[key]?.isManual) ? this[key].value : autoValue;
   },
+
   isManual(key) {
     return this[key]?.isManual ?? false;
-  }
+  },
+
+  // resolveVariable-compatible accessors keyed by override name.
+  // Path "ManualOverrides.renderFrameSkip.value" calls set() on write,
+  // ensuring isManual is flipped automatically.
+  _proxy(key) {
+    const self = this;
+    return {
+      get value()    { return self[key].value; },
+      set value(v)   { self.set(key, v); },
+      get isManual() { return self[key].isManual; },
+    };
+  },
+
+  // Expose named proxies so resolveVariable('ManualOverrides.renderFrameSkip.value') works
+  get renderFrameSkipProxy() { return this._proxy('renderFrameSkip'); },
 };
 
 // ── Physics Auto-Adaptation (moved from physics-governor.js) ──────────────
@@ -145,7 +182,9 @@ export const PhysicsGov = {
 // ── Render Auto-Adaptation (moved from render-governor.js) ────────────────
 export const RenderGov = {
   _autoFrameSkip: 0,
-  _chaosLevel: 0,
+  _chaosLevel:    0,
+  _frameCount:    0,   // incremented every rAF — drives clean frame-skip cadence
+
   feedChaos(camVel, dt, didPhysicsTick) {
     this._chaosLevel = Math.max(0, Math.min(1, camVel / 100));
     if (!ManualOverrides.isManual('renderFrameSkip')) {
@@ -155,14 +194,20 @@ export const RenderGov = {
     }
   },
 
+  // Call once per rAF at the very top of the main loop
+  tick() {
+    this._frameCount++;
+  },
+
   get frameSkip() {
     return ManualOverrides.get('renderFrameSkip', this._autoFrameSkip);
   },
 
+  // Clean cadence: renders on frame 0, skips N, renders again — no clock drift
   shouldRender() {
     const skip = this.frameSkip;
     if (skip <= 0) return true;
-    return (performance.now() | 0) % (skip + 1) === 0;
+    return this._frameCount % (skip + 1) === 0;
   },
 
   get label() {
@@ -204,6 +249,10 @@ export class Governor {
   }
 
   idle() {
+    // For ManualOverrides paths, reset() sets isManual=false → engine returns to AUTO
+    if (typeof this.variable.reset === 'function') {
+      this.variable.reset();
+    }
     this.isManual = false;
     console.log(`[Governor] IDLE → value=${this.variable.get()}`);
   }

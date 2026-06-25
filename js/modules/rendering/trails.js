@@ -9,8 +9,8 @@ import { state } from '../../core/state.js';
 export const TrailsModule = {
     trailBufs: [],
     trailHead: 0,
-    TRAIL_STEPS: 5,
-    TRAIL_ALPHAS: [1.0, 0.52, 0.24, 0.09, 0.02],
+    TRAIL_STEPS: 11,
+    TRAIL_ALPHAS: [1.0, 0.90, 0.80, 0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.02],
 
     init(width, height) {
         if (this.TRAIL_STEPS > 0) {

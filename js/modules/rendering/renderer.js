@@ -20,6 +20,7 @@ import { Accumulator }    from './accumulator.js';
 import { CameraModule }   from '../camera/camera.module.js';
 import { StateCache }     from '../../core/state-cache.js';
 import { state }          from '../../core/state.js';
+import { DrawCallCounter, PassProbe } from '../debug/draw-call-counter.js';
 
 export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore = null) {
   const w   = CameraModule.width;
@@ -34,33 +35,50 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   Accumulator.beginFrame();
   const sCtx = Accumulator.stageCtx;
 
-  try {
-    // 3. Starfield (world-space) — drawn into stage
-    EffectsModule.drawStars(sCtx, t, w, h);
+  // Begin draw call counting for this frame
+  DrawCallCounter.beginFrame();
 
-    // 4. Camera transform on stage
+  try {
+    // 3. Starfield
+    { const p = new PassProbe(sCtx);
+      EffectsModule.drawStars(p.ctx, t, w, h);
+      DrawCallCounter.countPass('stars', p); }
+
+    // 4. Camera transform
     sCtx.save();
     sCtx.translate(w / 2, h / 2);
     sCtx.scale(cam.zoom, cam.zoom);
     sCtx.translate(-cam.x, -cam.y);
 
     // 5. Solar rays
-    SunModule.drawSolarRays(sCtx, t, cam.zoom);
+    { const p = new PassProbe(sCtx);
+      SunModule.drawSolarRays(p.ctx, t, cam.zoom);
+      DrawCallCounter.countPass('solarRays', p); }
 
     // 6. Solar tentacles
-    SunModule.drawSolarTentacles(sCtx, t, cam.zoom);
+    { const p = new PassProbe(sCtx);
+      SunModule.drawSolarTentacles(p.ctx, t, cam.zoom);
+      DrawCallCounter.countPass('tentacles', p); }
 
     // 7. Sun
-    SunModule.drawSun(sCtx, t, cam.zoom);
+    { const p = new PassProbe(sCtx);
+      SunModule.drawSun(p.ctx, t, cam.zoom);
+      DrawCallCounter.countPass('sun', p); }
 
     // 8. Bodies
-    BodiesModule.drawBodies(sCtx);
+    { const p = new PassProbe(sCtx);
+      BodiesModule.drawBodies(p.ctx);
+      DrawCallCounter.countPass('bodies', p); }
 
     // 9. Loose particles
-    ParticlesModule.drawLoose(sCtx, cam.zoom);
+    { const p = new PassProbe(sCtx);
+      ParticlesModule.drawLoose(p.ctx, cam.zoom);
+      DrawCallCounter.countPass('particles', p); }
 
     // 10. Flashes
-    EffectsModule.drawFlashes(sCtx, cam.zoom);
+    { const p = new PassProbe(sCtx);
+      EffectsModule.drawFlashes(p.ctx, cam.zoom);
+      DrawCallCounter.countPass('flashes', p); }
 
     // 11. Orbit preview (injected — world-space)
     if (onBeforeRestore) onBeforeRestore(sCtx);
@@ -75,4 +93,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
 
   // 14. Flip: blit finished stage to main canvas, swap buffers
   Accumulator.flip(ctx);
+
+  // 15. Commit draw call counts for this frame
+  DrawCallCounter.endFrame();
 }

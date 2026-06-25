@@ -10,7 +10,7 @@
       "refreshRate": 500,
       "minimized": false,
       "summaryVariable": "FpsCounter.debugInfo.real",
-      "summaryLabel": "real fps",
+      "summaryLabel": "fps",
       "lines": [
         {
           "type": "header",
@@ -75,37 +75,10 @@
           "type": "display",
           "text": "total frames",
           "value": "FpsCounter.debugInfo.totalFrames"
-        }
-      ]
-    },
-    {
-      "id": "drawCalls",
-      "title": "DRAW CALLS",
-      "position": {
-        "x": 16,
-        "y": 140
-      },
-      "refreshRate": 100,
-      "summaryVariable": "RenderGov.frameSkip",
-      "summaryLabel": "Frame Skip",
-      "lines": [
-        {
-          "type": "header",
-          "text": "DRAW CALLS",
-          "value": "DrawCallCounter.total",
-          "suffix": "RenderGov.label",
-          "color": "accent",
-          "bold": true
         },
         {
-          "type": "display",
-          "text": "path ops",
-          "value": "DrawCallCounter.pathOps"
-        },
-        {
-          "type": "display",
-          "text": "Frame Skip",
-          "value": "RenderGov.frameSkip"
+          "type": "divider",
+          "text": "— render skip control —"
         },
         {
           "type": "buttons",
@@ -122,6 +95,64 @@
             "max": 10,
             "step": 1
           }
+        }
+      ],
+      "minimizedKnob": {
+        "variable": "ManualOverrides.renderFrameSkip.value",
+        "min": 0,
+        "max": 10,
+        "step": 1,
+        "label": "Skip",
+        "integer": true
+      },
+      "summaryExtra": "FpsCounter.debugInfo.skipLabel"
+    },
+    {
+      "id": "drawCalls",
+      "title": "DRAW CALLS",
+      "position": {
+        "x": 16,
+        "y": 140
+      },
+      "refreshRate": 100,
+      "summaryVariable": "DrawCallCounter.total",
+      "summaryLabel": "draw calls",
+      "lines": [
+        {
+          "type": "header",
+          "text": "DRAW CALLS",
+          "value": "DrawCallCounter.total",
+          "color": "accent",
+          "bold": true
+        },
+        {
+          "type": "display",
+          "text": "total draws",
+          "value": "DrawCallCounter.total"
+        },
+        {
+          "type": "display",
+          "text": "total path ops",
+          "value": "DrawCallCounter.pathOps"
+        },
+        {
+          "type": "divider",
+          "text": "— method totals —"
+        },
+        {
+          "type": "displayMap",
+          "source": "DrawCallCounter.methodTotals",
+          "filter": "positive",
+          "sort": "desc"
+        },
+        {
+          "type": "divider",
+          "text": "— per pass —"
+        },
+        {
+          "type": "displayMap",
+          "source": "DrawCallCounter.passRows",
+          "filter": "positive"
         }
       ],
       "minimized": true
@@ -146,9 +177,27 @@
           "bold": true
         },
         {
+          "type": "divider",
+          "text": "— governor —"
+        },
+        {
           "type": "display",
           "text": "substeps",
           "value": "PhysicsGov.substepLabel"
+        },
+        {
+          "type": "display",
+          "text": "time scale",
+          "value": "PhysicsGov.timeScale"
+        },
+        {
+          "type": "display",
+          "text": "mode",
+          "value": "PhysicsGov.label"
+        },
+        {
+          "type": "divider",
+          "text": "— per frame counts —"
         },
         {
           "type": "displayMap",
@@ -157,11 +206,20 @@
           "filter": "positive"
         },
         {
+          "type": "display",
+          "text": "total ops",
+          "value": "PhysicsCounter.total"
+        },
+        {
+          "type": "divider",
+          "text": "— controls —"
+        },
+        {
           "type": "buttons",
           "text": "Time Scale",
           "variable": "ManualOverrides.physicsTimeScale.value",
           "buttons": [
-            "✕",
+            "×",
             "=",
             "÷"
           ],
@@ -211,13 +269,32 @@
         },
         {
           "type": "display",
-          "text": "fps",
-          "value": "QueOps.fps"
+          "text": "queue size",
+          "value": "QueOps.queueSize"
+        },
+        {
+          "type": "display",
+          "text": "budget",
+          "value": "QueOps.budget"
+        },
+        {
+          "type": "display",
+          "text": "budget used",
+          "value": "QueOps.budgetUsed"
         },
         {
           "type": "display",
           "text": "cooling",
           "value": "QueOps.coolingState"
+        },
+        {
+          "type": "display",
+          "text": "mode",
+          "value": "QueOps.label"
+        },
+        {
+          "type": "divider",
+          "text": "— per frame ops —"
         },
         {
           "type": "display",
@@ -235,14 +312,32 @@
           "value": "QueOps.opsSkipped"
         },
         {
+          "type": "display",
+          "text": "staggered",
+          "value": "QueOps.opsStaggered"
+        },
+        {
           "type": "divider",
-          "text": "— stagger —"
+          "text": "— trails —"
         },
         {
           "type": "display",
-          "text": "delay",
-          "value": "QueOps.config.defaultDelayMs",
-          "format": "ms"
+          "text": "trail depth",
+          "value": "Accumulator.trailDepth"
+        },
+        {
+          "type": "display",
+          "text": "fade alpha",
+          "value": "Accumulator.fadeAlpha"
+        },
+        {
+          "type": "divider",
+          "text": "— config —"
+        },
+        {
+          "type": "display",
+          "text": "delay ms",
+          "value": "QueOps.config.defaultDelayMs"
         },
         {
           "type": "display",
@@ -251,39 +346,20 @@
           "format": "onoff"
         },
         {
-          "type": "divider",
-          "text": "— trails —"
-        },
-        {
           "type": "display",
-          "text": "depth",
-          "value": "Accumulator.depth"
-        },
-        {
-          "type": "display",
-          "text": "fade",
-          "value": "Accumulator.fade"
+          "text": "max frame ms",
+          "value": "QueOps.config.maxFrameTimeMs"
         },
         {
           "type": "divider",
-          "text": "— guardian —"
-        },
-        {
-          "type": "display",
-          "text": "guardian",
-          "value": "Aims.debugInfo.guardianState"
-        },
-        {
-          "type": "display",
-          "text": "Budget",
-          "value": "QueOps.label"
+          "text": "— controls —"
         },
         {
           "type": "buttons",
           "text": "Budget",
           "variable": "ManualOverrides.queOpsBudget.value",
           "buttons": [
-            "✕",
+            "×",
             "=",
             "÷"
           ],
@@ -316,7 +392,7 @@
         },
         {
           "type": "buttons",
-          "text": "Thresholds",
+          "text": "Defer threshold",
           "variable": "ManualOverrides.queOpsDeferredThreshold.value",
           "buttons": [
             "+",

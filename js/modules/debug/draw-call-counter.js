@@ -1,72 +1,147 @@
 /**
  * js/modules/debug/draw-call-counter.js
- * Pure data counter for Canvas 2D draw calls.
- * Counting is skipped entirely when DebugRouter.masterEnabled is false.
+ *
+ * Direct instrumentation counter — NO prototype patching.
+ *
+ * renderer.js calls:
+ *   DrawCallCounter.beginFrame()        — start of DrawAll
+ *   DrawCallCounter.countPass(name, probe)  — after each named pass
+ *   DrawCallCounter.endFrame()          — end of DrawAll
+ *
+ * The panel reads:
+ *   .total        — total draw calls this frame
+ *   .pathOps      — total path ops this frame
+ *   .passes       — { passName: { draws, paths, methods: {...} } }
+ *   .passRows     — flat object for displayMap: { 'stars ∙ fill': 3, ... }
+ *   .methodTotals — { fill: N, stroke: N, arc: N, ... } across all passes
+ *
+ * Zero overhead when DebugRouter.masterEnabled is false.
  */
 
-// Late-bound reference — DebugRouter imports us, so we can't import it back.
-// We read it lazily from window to avoid a circular dependency.
 function _debugOn() {
   return window._DebugRouter?.masterEnabled ?? true;
 }
 
 export const DrawCallCounter = {
-  calls: {},
-  drawCalls: 0,
-  pathOps: 0,
-  _installed: false,
-  _resetBeforeNextDraw: true,
-  
-  install() {
-    if (this._installed) return;
-    this._installed = true;
-    const self = this;
-    
-    const drawMethods = ['fill', 'fillRect', 'stroke', 'strokeRect', 'drawImage', 'fillText', 'strokeText', 'clearRect'];
-    for (const name of drawMethods) {
-      const orig = CanvasRenderingContext2D.prototype[name];
-      if (!orig) continue;
-      CanvasRenderingContext2D.prototype[name] = function(...args) {
-        if (_debugOn()) {
-          if (self._resetBeforeNextDraw) {
-            self._resetBeforeNextDraw = false;
-            self._resetCounts();
-          }
-          self.calls[name] = (self.calls[name] || 0) + 1;
-          self.drawCalls++;
+  total:        0,
+  pathOps:      0,
+  passes:       {},
+  passRows:     {},   // flat — for displayMap per-row
+  methodTotals: {},   // sum across all passes per method name
+
+  _total:   0,
+  _pathOps: 0,
+  _passes:  {},
+
+  beginFrame() {
+    if (!_debugOn()) return;
+    this._total   = 0;
+    this._pathOps = 0;
+    this._passes  = {};
+  },
+
+  /**
+   * @param {string}    name   — pass label e.g. 'bodies'
+   * @param {PassProbe} probe  — probe instance after the pass ran
+   */
+  countPass(name, probe) {
+    if (!_debugOn()) return;
+    this._total   += probe.draws;
+    this._pathOps += probe.paths;
+    this._passes[name] = {
+      draws:   probe.draws,
+      paths:   probe.paths,
+      methods: { ...probe.methodCounts },
+    };
+  },
+
+  endFrame() {
+    if (!_debugOn()) return;
+    this.total   = this._total;
+    this.pathOps = this._pathOps;
+    this.passes  = { ...this._passes };
+
+    // Build flat passRows for displayMap
+    const rows    = {};
+    const totals  = {};
+
+    for (const [pass, data] of Object.entries(this._passes)) {
+      // Per-pass draw / path summary
+      rows[`${pass} ∙ draws`] = data.draws;
+      rows[`${pass} ∙ paths`] = data.paths;
+
+      // Per-pass individual method counts (only non-zero)
+      for (const [method, count] of Object.entries(data.methods)) {
+        if (count > 0) {
+          rows[`${pass} ∙ ${method}`] = count;
+          totals[method] = (totals[method] || 0) + count;
         }
-        return orig.apply(this, args);
-      };
+      }
     }
-    
-    const pathMethods = ['beginPath', 'closePath', 'moveTo', 'lineTo', 'arc', 'arcTo', 'bezierCurveTo', 'quadraticCurveTo', 'rect', 'ellipse', 'roundRect'];
-    for (const name of pathMethods) {
-      const orig = CanvasRenderingContext2D.prototype[name];
-      if (!orig) continue;
-      CanvasRenderingContext2D.prototype[name] = function(...args) {
-        if (_debugOn()) self.pathOps++;
-        return orig.apply(this, args);
-      };
-    }
-    console.log('[DrawCallCounter] installed');
+
+    this.passRows     = rows;
+    this.methodTotals = totals;
   },
-  
+
   reset() {
-    this._resetBeforeNextDraw = true;
-    this._resetCounts();
-  },
-  
-  uninstall() {
-    if (!this._installed) return;
-    this._installed = false;
-    this.drawCalls = 0;
-    this.pathOps = 0;
-    this.calls = {};
-  },
-  
-  _resetCounts() {
-    this.calls = {};
-    this.drawCalls = 0;
-    this.pathOps = 0;
+    this.total        = 0;
+    this.pathOps      = 0;
+    this.passes       = {};
+    this.passRows     = {};
+    this.methodTotals = {};
+    this._total       = 0;
+    this._pathOps     = 0;
+    this._passes      = {};
   },
 };
+
+// ── PassProbe ─────────────────────────────────────────────────────────────
+// Wraps a canvas context to count every draw and path method call
+// for one render pass. No prototype patching — this is a Proxy on ONE ctx.
+
+const DRAW_METHODS = [
+  'fill', 'fillRect', 'stroke', 'strokeRect',
+  'drawImage', 'fillText', 'strokeText', 'clearRect',
+];
+const PATH_METHODS = [
+  'beginPath', 'closePath', 'moveTo', 'lineTo',
+  'arc', 'arcTo', 'bezierCurveTo', 'quadraticCurveTo',
+  'rect', 'ellipse', 'roundRect',
+];
+const ALL_TRACKED = new Set([...DRAW_METHODS, ...PATH_METHODS]);
+
+export class PassProbe {
+  constructor(ctx) {
+    this.draws        = 0;
+    this.paths        = 0;
+    this.methodCounts = {};   // { fill: 3, arc: 41, ... }
+
+    // Initialise all counters at zero so displayMap shows them even if unused
+    for (const m of ALL_TRACKED) this.methodCounts[m] = 0;
+
+    const self = this;
+    const handler = {
+      get(target, prop) {
+        if (ALL_TRACKED.has(prop)) {
+          const isDraw = DRAW_METHODS.includes(prop);
+          return function(...args) {
+            self.methodCounts[prop]++;
+            if (isDraw) self.draws++;
+            else        self.paths++;
+            return target[prop].apply(target, args);
+          };
+        }
+        const val = target[prop];
+        return typeof val === 'function' ? val.bind(target) : val;
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      },
+    };
+
+    this.ctx = new Proxy(ctx, handler);
+  }
+}
+
+export default DrawCallCounter;

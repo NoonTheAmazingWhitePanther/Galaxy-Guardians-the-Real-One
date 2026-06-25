@@ -9,6 +9,7 @@
  * Drag up = increase, drag down = decrease (standard knob feel).
  */
 import { DEBUG_STATE } from './debug-state.js';
+import { resolveVariable } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
 const SLIDER_W        = 20;
@@ -37,16 +38,36 @@ export const PanelMasterSlider = {
 
   // ── render ───────────────────────────────────────────────────────────────
   render(ctx, panel, x, y, panelW, panelH, minimized) {
-    const s     = DEBUG_STATE.style;
-    const value = panel.panelMasterValue ?? 1.0;
+    const s = DEBUG_STATE.style;
 
     if (minimized) {
       // ── KNOB MODE ────────────────────────────────────────────────────────
-      // Panel is 135 × 52. Knob sits right-side, vertically centred.
-      const kx = x + panelW - KNOB_PAD_RIGHT - KNOB_R;
-      const ky = y + panelH / 2;
+      // Decide knob value source: variable knob or panel master gain
+      const kCfg     = panel.config?.minimizedKnob;
+      const isVar    = !!kCfg;
+      let knobValue, knobMin, knobMax, knobLabel;
 
-      // — track arc (270° grey) —
+      if (isVar) {
+        const varRef = resolveVariable(kCfg.variable);
+        knobValue    = varRef?.get() ?? 0;
+        knobMin      = kCfg.min   ?? 0;
+        knobMax      = kCfg.max   ?? 10;
+        knobLabel    = kCfg.label ?? '';
+      } else {
+        knobValue = panel.panelMasterValue ?? 1.0;
+        knobMin   = 0;
+        knobMax   = 2;
+        knobLabel = 'x';
+      }
+
+      const kx    = x + panelW - KNOB_PAD_RIGHT - KNOB_R;
+      const ky    = y + panelH / 2;
+      const frac  = knobMax > knobMin
+        ? Math.max(0, Math.min(1, (knobValue - knobMin) / (knobMax - knobMin)))
+        : 0;
+      const angle = ARC_START + frac * (ARC_END - ARC_START);
+
+      // — track arc —
       ctx.save();
       ctx.strokeStyle = 'rgba(255,255,255,0.12)';
       ctx.lineWidth   = 4;
@@ -56,8 +77,10 @@ export const PanelMasterSlider = {
       ctx.stroke();
 
       // — value arc —
-      const angle = _knobAngle(value);
-      ctx.strokeStyle = _fillColor(value);
+      const arcColor = isVar
+        ? (knobValue > 0 ? 'rgba(130,210,255,0.85)' : 'rgba(255,255,255,0.3)')
+        : _fillColor(knobValue);
+      ctx.strokeStyle = arcColor;
       ctx.lineWidth   = 4;
       ctx.beginPath();
       ctx.arc(kx, ky, KNOB_R, ARC_START, angle);
@@ -91,7 +114,10 @@ export const PanelMasterSlider = {
       ctx.font         = `bold 8px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillText(`${value.toFixed(2)}x`, kx, y + panelH - 11);
+      const valStr = isVar
+        ? `${Math.round(knobValue)}${knobLabel}`
+        : `${knobValue.toFixed(2)}x`;
+      ctx.fillText(valStr, kx, y + panelH - 11);
 
       // — title top-left —
       ctx.fillStyle    = 'rgba(240,245,255,0.5)';
@@ -101,12 +127,12 @@ export const PanelMasterSlider = {
       ctx.fillText(panel.title, x + 6, y + 5);
 
       // — summary value middle-left —
-      if (panel.summaryValue) {
+      if (panel.summaryValue !== undefined && panel.summaryValue !== null) {
         ctx.fillStyle    = s.accent;
         ctx.font         = `bold 13px ${s.font}`;
         ctx.textAlign    = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(panel.summaryValue, x + 6, y + panelH / 2);
+        ctx.fillText(String(panel.summaryValue), x + 6, y + panelH / 2);
 
         ctx.fillStyle    = 'rgba(240,245,255,0.35)';
         ctx.font         = `7px ${s.font}`;
@@ -114,7 +140,7 @@ export const PanelMasterSlider = {
         ctx.fillText(panel.summaryLabel || '', x + 6, y + panelH / 2 + 8);
       }
 
-      // — expand button (▲ top-right corner, small) —
+      // — expand button ▲ top-right —
       const btnSize = 12;
       const btnX    = x + panelW - btnSize - 2;
       const btnY    = y + 2;
@@ -129,7 +155,8 @@ export const PanelMasterSlider = {
       ctx.fillText('▲', btnX + btnSize / 2, btnY + btnSize / 2);
 
     } else {
-      // ── SLIDER MODE (expanded, unchanged) ────────────────────────────────
+      // ── SLIDER MODE (expanded) ────────────────────────────────────────────
+      const value   = panel.panelMasterValue ?? 1.0;
       const sliderX = x + panelW + SLIDER_PAD;
       const sliderY = y;
       const sliderH = panelH;

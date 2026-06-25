@@ -6,7 +6,7 @@
  * - maxSize is now dynamically linked to CONFIG.physics.VAULT_SIZE
  * - clear() now also resets isReady to false for clean session restarts
  */
-import { CONFIG } from '../Config/config-index.js';
+import { CONFIG } from '../config/config-index.js';
 
 export const StateCache = {
     buffer: [],

@@ -54,7 +54,7 @@ export const solveSprings = (body, dt) => {
   for (let i = 0; i < ss.length; i++) {
     const sp = ss[i];
     if (sp.broken) continue;
-    PhysicsCounter.stats.springsSolved++;
+    PhysicsCounter.add('springsSolved');
     // FIX: Guard against out-of-bounds indices
     if (sp.a < 0 || sp.a >= ps.length || sp.b < 0 || sp.b >= ps.length) {
       sp.broken = true;
@@ -77,7 +77,7 @@ export const solveSprings = (body, dt) => {
 };
 
 export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodies, sunGrav) => {
-  PhysicsCounter.stats.gravityChecks++;
+  PhysicsCounter.add('gravityChecks');
   const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : sunGrav;
   const sdx = sunX - p.x, sdy = sunY - p.y;
   const sd2 = sdx * sdx + sdy * sdy;
@@ -120,7 +120,7 @@ export const tickLoose = (dt) => {
   for (let li = looseArr.length - 1; li >= 0; li--) {
     const lp = looseArr[li];
     if (lp.life <= 0.02) continue;
-    PhysicsCounter.stats.looseTicked++;
+    PhysicsCounter.add('looseTicked');
     if (hardCap && survivors.length >= maxSurvivors) break;
 
     const sdx = sunX - lp.x, sdy = sunY - lp.y;
@@ -229,7 +229,7 @@ export const tickBodies = (scaledDt) => {
       for (let pi = 0; pi < particles.length; pi++) {
         const p = particles[pi];
         if (p.dead) continue;
-        PhysicsCounter.stats.particlesIntegrated++;
+        PhysicsCounter.add('particlesIntegrated');
 
         // 1. Gravity
         applyGravity(p, na, gravConst, sunMass, sunX, sunY, bodies, sunGrav);

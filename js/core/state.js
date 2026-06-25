@@ -1,4 +1,4 @@
-import { CONFIG } from '../Config/config-index.js';
+import { CONFIG } from '../config/config-index.js';
 
 export const state = {
     bodies: [], loose: [], flashes: [], stars: [], asteroids: [], astTimer: 0,

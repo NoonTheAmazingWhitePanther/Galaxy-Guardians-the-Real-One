@@ -32,6 +32,7 @@
 import { DebugRouter } from '../debug/debug-router.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
+import { resolveVariable } from '../debug/governor.js';
 
 export const InDebug = {
   _canvas: null,
@@ -158,10 +159,24 @@ export const InDebug = {
           e.stopImmediatePropagation();
           return true;
         } else if (masterHit.type === 'knob') {
-          this._panelMasterDragging = true;
-          this._panelMasterKnob = true;
-          this._panelMasterKnobStartY = y;
-          this._panelMasterKnobStartValue = panel.panelMasterValue ?? 1.0;
+          const kCfg = panel.config?.minimizedKnob;
+          this._panelMasterDragging    = true;
+          this._panelMasterKnob        = true;
+          this._panelMasterKnobStartY  = y;
+          this._panelMasterKnobIsVar   = !!kCfg;
+          if (kCfg) {
+            // Variable knob — store the variable reference and range
+            this._panelMasterKnobVar        = resolveVariable(kCfg.variable);
+            this._panelMasterKnobMin        = kCfg.min  ?? 0;
+            this._panelMasterKnobMax        = kCfg.max  ?? 10;
+            this._panelMasterKnobStep       = kCfg.step ?? 1;
+            this._panelMasterKnobInteger    = !!kCfg.integer;
+            this._panelMasterKnobStartValue = this._panelMasterKnobVar?.get() ?? 0;
+          } else {
+            this._panelMasterKnobStartValue = panel.panelMasterValue ?? 1.0;
+            this._panelMasterKnobMin        = 0;
+            this._panelMasterKnobMax        = 2;
+          }
           this._activePanelMaster = panel;
           this.pointerId = e.pointerId;
           try {
@@ -255,12 +270,19 @@ export const InDebug = {
       const panel = this._activePanelMaster;
 
       if (this._panelMasterKnob) {
-        // Knob: drag up = increase, drag down = decrease. 150px = full range (0..2)
+        const range = this._panelMasterKnobMax - this._panelMasterKnobMin;
         const dy    = this._panelMasterKnobStartY - y;
-        const delta = (dy / 150) * 2.0;
-        panel.panelMasterValue = Math.max(0, Math.min(2.0,
-          this._panelMasterKnobStartValue + delta
-        ));
+        // 150px = full range travel
+        const delta = (dy / 150) * range;
+        let next    = this._panelMasterKnobStartValue + delta;
+        next = Math.max(this._panelMasterKnobMin, Math.min(this._panelMasterKnobMax, next));
+        if (this._panelMasterKnobInteger) next = Math.round(next);
+
+        if (this._panelMasterKnobIsVar && this._panelMasterKnobVar) {
+          this._panelMasterKnobVar.set(next);
+        } else {
+          panel.panelMasterValue = next;
+        }
       } else {
         const data   = panel.getData();
         const layout = panel.computeLayout(data);
