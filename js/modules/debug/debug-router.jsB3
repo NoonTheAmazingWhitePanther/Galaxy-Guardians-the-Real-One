@@ -90,8 +90,7 @@ export const DebugRouter = {
     for (const panel of this.panels) {
       if (panel.visible && panel.isDue(now)) {
         panel.markRendered(now);
-        panel._cachedData  = this._getDataForPanel(panel);
-        panel._dataDirty   = true;   // trigger offscreen redraw
+        panel._cachedData = this._getDataForPanel(panel);
       }
     }
 

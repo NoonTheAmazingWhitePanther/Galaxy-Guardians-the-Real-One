@@ -29,12 +29,11 @@ import { DEBUG_STATE } from './debug-state.js';
 
 // ── Control Type Enum ─────────────────────────────────────────────────────
 export const ControlType = {
-  BUTTON:       'button',
-  WIDE_BUTTON:  'wideButton',   // profile-style: spans full width, one selected
-  SLIDER:       'slider',
-  KNOB:         'knob',
-  DROPDOWN:     'dropdown',
-  CHECKBOX:     'checkbox',
+  BUTTON: 'button',
+  SLIDER: 'slider',
+  KNOB: 'knob',
+  DROPDOWN: 'dropdown',
+  CHECKBOX: 'checkbox',
   COLOR_PICKER: 'color'
 };
 
@@ -71,40 +70,33 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 export const ButtonControl = {
   render(ctx, control, x, y, w, h, state) {
     const s = DEBUG_STATE.style;
-    const labels      = control.labels || ['✕', '=', '÷'];
-    const isAtDefault = control.governor && !control.governor.isManual;
+    const labels = control.labels || ['✕', '=', '÷'];
 
     for (let i = 0; i < 3; i++) {
-      const bx        = x + i * (BTN_W + BTN_GAP);
-      const isActive  = state.pressIdx === i;
-      const isHover   = state.hoverIdx === i;
-      const isDefault = isAtDefault && i === 1;  // middle = highlighted when AUTO
+      const bx = x + i * (BTN_W + BTN_GAP);
+      const isActive = state.pressIdx === i;
+      const isHover = state.hoverIdx === i;
 
       ctx.fillStyle = isActive
         ? 'rgba(130, 210, 255, 0.5)'
-        : isDefault
-          ? 'rgba(130, 210, 255, 0.22)'
-          : isHover
-            ? 'rgba(130, 210, 255, 0.2)'
-            : 'rgba(255,255,255,0.08)';
+        : isHover
+          ? 'rgba(130, 210, 255, 0.2)'
+          : 'rgba(255,255,255,0.08)';
       drawRoundedRect(ctx, bx, y, BTN_W, BTN_H, 4);
       ctx.fill();
 
-      ctx.strokeStyle = isActive || isDefault
+      ctx.strokeStyle = isActive
         ? 'rgba(130, 210, 255, 0.6)'
         : 'rgba(255,255,255,0.2)';
-      ctx.lineWidth = isDefault ? 1.5 : 1;
+      ctx.lineWidth = 1;
       drawRoundedRect(ctx, bx + 0.5, y + 0.5, BTN_W - 1, BTN_H - 1, 4);
       ctx.stroke();
 
-      ctx.fillStyle = isDefault
-        ? 'rgba(130, 210, 255, 1)'
-        : 'rgba(240,245,255,0.85)';
+      ctx.fillStyle = 'rgba(240,245,255,0.85)';
       ctx.font = `11px ${s.font}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(labels[i], bx + BTN_W / 2, y + BTN_H / 2);
-    }
+      ctx.fillText(labels[i], bx + BTN_W / 2, y + BTN_H / 2);    }
   },
 
   hitTest(control, x, y, bounds) {
@@ -121,80 +113,6 @@ export const ButtonControl = {
   getBounds(control, x, y) {
     const totalW = 3 * BTN_W + 2 * BTN_GAP;
     return { x, y, w: totalW, h: BTN_H };
-  }
-};
-
-// ── Wide Button Control (profile selector) ───────────────────────────────
-// Spans the full panel width. Buttons are evenly spaced.
-// One is selected/highlighted at a time. Tap-only, no drag.
-const WIDE_BTN_H   = 24;
-const WIDE_BTN_GAP = 5;
-
-export const WideButtonControl = {
-  render(ctx, control, x, y, w, h, state) {
-    const s       = DEBUG_STATE.style;
-    const buttons = control.config?.buttons || [];
-    const count   = buttons.length;
-    if (count === 0) return;
-
-    const btnW = (w - (count - 1) * WIDE_BTN_GAP) / count;
-
-    for (let i = 0; i < count; i++) {
-      const bx       = x + i * (btnW + WIDE_BTN_GAP);
-      const btn      = buttons[i];
-      const isActive = state.pressIdx === i;
-      const isHover  = state.hoverIdx === i;
-      const isSel    = state.selectedIdx === i;
-
-      ctx.fillStyle = isActive
-        ? 'rgba(130, 210, 255, 0.6)'
-        : isSel
-          ? 'rgba(130, 210, 255, 0.3)'
-          : isHover
-            ? 'rgba(255,255,255,0.15)'
-            : 'rgba(255,255,255,0.07)';
-      ctx.beginPath();
-      ctx.roundRect(bx, y, btnW, WIDE_BTN_H, 5);
-      ctx.fill();
-
-      ctx.strokeStyle = isSel
-        ? 'rgba(130, 210, 255, 0.8)'
-        : isActive
-          ? 'rgba(130, 210, 255, 0.5)'
-          : 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = isSel ? 1.5 : 1;
-      ctx.beginPath();
-      ctx.roundRect(bx + 0.5, y + 0.5, btnW - 1, WIDE_BTN_H - 1, 5);
-      ctx.stroke();
-
-      ctx.fillStyle = isSel
-        ? 'rgba(130, 210, 255, 1)'
-        : 'rgba(240,245,255,0.85)';
-      ctx.font      = `bold 10px ${s.font}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(btn.label || String(i), bx + btnW / 2, y + WIDE_BTN_H / 2);
-    }
-  },
-
-  hitTest(control, x, y, bounds) {
-    const { x: bx, y: by, w: bw } = bounds;
-    const buttons = control.config?.buttons || [];
-    const count   = buttons.length;
-    if (count === 0) return null;
-    const btnW = (bw - (count - 1) * WIDE_BTN_GAP) / count;
-
-    for (let i = 0; i < count; i++) {
-      const btnX = bx + i * (btnW + WIDE_BTN_GAP);
-      if (x >= btnX && x <= btnX + btnW && y >= by && y <= by + WIDE_BTN_H) {
-        return { btnIdx: i };
-      }
-    }
-    return null;
-  },
-
-  getBounds(control, x, y, w) {
-    return { x, y, w, h: WIDE_BTN_H };
   }
 };
 
@@ -582,12 +500,11 @@ export const ColorPickerControl = {
 export const ControlRenderer = {
   render(ctx, control, x, y, w, h, state) {
     switch (control.type) {
-      case ControlType.BUTTON:       ButtonControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.WIDE_BUTTON:  WideButtonControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.SLIDER:       SliderControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.KNOB:         KnobControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.DROPDOWN:     DropdownControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.CHECKBOX:     CheckboxControl.render(ctx, control, x, y, w, h, state); break;
+      case ControlType.BUTTON: ButtonControl.render(ctx, control, x, y, w, h, state); break;
+      case ControlType.SLIDER: SliderControl.render(ctx, control, x, y, w, h, state); break;
+      case ControlType.KNOB: KnobControl.render(ctx, control, x, y, w, h, state); break;
+      case ControlType.DROPDOWN: DropdownControl.render(ctx, control, x, y, w, h, state); break;
+      case ControlType.CHECKBOX: CheckboxControl.render(ctx, control, x, y, w, h, state); break;
       case ControlType.COLOR_PICKER: ColorPickerControl.render(ctx, control, x, y, w, h, state); break;
       default: console.warn('[ControlRenderer] Unknown control type:', control.type);
     }
@@ -595,12 +512,11 @@ export const ControlRenderer = {
 
   hitTest(control, x, y, bounds) {
     switch (control.type) {
-      case ControlType.BUTTON:       return ButtonControl.hitTest(control, x, y, bounds);
-      case ControlType.WIDE_BUTTON:  return WideButtonControl.hitTest(control, x, y, bounds);
-      case ControlType.SLIDER:       return SliderControl.hitTest(control, x, y, bounds);
-      case ControlType.KNOB:         return KnobControl.hitTest(control, x, y, bounds);
-      case ControlType.DROPDOWN:     return DropdownControl.hitTest(control, x, y, bounds);
-      case ControlType.CHECKBOX:     return CheckboxControl.hitTest(control, x, y, bounds);
+      case ControlType.BUTTON: return ButtonControl.hitTest(control, x, y, bounds);
+      case ControlType.SLIDER: return SliderControl.hitTest(control, x, y, bounds);
+      case ControlType.KNOB: return KnobControl.hitTest(control, x, y, bounds);
+      case ControlType.DROPDOWN: return DropdownControl.hitTest(control, x, y, bounds);
+      case ControlType.CHECKBOX: return CheckboxControl.hitTest(control, x, y, bounds);
       case ControlType.COLOR_PICKER: return ColorPickerControl.hitTest(control, x, y, bounds);
       default: return null;
     }
@@ -608,12 +524,11 @@ export const ControlRenderer = {
 
   getBounds(control, x, y, w) {
     switch (control.type) {
-      case ControlType.BUTTON:       return ButtonControl.getBounds(control, x, y);
-      case ControlType.WIDE_BUTTON:  return WideButtonControl.getBounds(control, x, y, w);
-      case ControlType.SLIDER:       return SliderControl.getBounds(control, x, y, w);
-      case ControlType.KNOB:         return KnobControl.getBounds(control, x, y);
-      case ControlType.DROPDOWN:     return DropdownControl.getBounds(control, x, y, w);
-      case ControlType.CHECKBOX:     return CheckboxControl.getBounds(control, x, y);
+      case ControlType.BUTTON: return ButtonControl.getBounds(control, x, y);
+      case ControlType.SLIDER: return SliderControl.getBounds(control, x, y, w);
+      case ControlType.KNOB: return KnobControl.getBounds(control, x, y);
+      case ControlType.DROPDOWN: return DropdownControl.getBounds(control, x, y, w);
+      case ControlType.CHECKBOX: return CheckboxControl.getBounds(control, x, y);
       case ControlType.COLOR_PICKER: return ColorPickerControl.getBounds(control, x, y);
       default: return { x, y, w: 0, h: 0 };
     }

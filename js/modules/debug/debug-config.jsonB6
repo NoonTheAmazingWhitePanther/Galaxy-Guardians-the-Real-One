@@ -74,8 +74,7 @@
           "value": "ManualOverrides.cacheVaultSize.value"
         }
       ],
-      "maxHeight": 360,
-      "background": null
+      "maxHeight": 360
     },
     {
       "id": "fps",
@@ -183,8 +182,7 @@
         "integer": true
       },
       "summaryExtra": "FpsCounter.debugInfo.skipLabel",
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "drawCalls",
@@ -243,8 +241,7 @@
       "collapsedByDefault": [
         "method totals",
         "per pass"
-      ],
-      "background": null
+      ]
     },
     {
       "id": "physics",
@@ -336,8 +333,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "queops",
@@ -499,8 +495,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "msProbe",
@@ -543,8 +538,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "stateCache",
@@ -602,8 +596,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "aim",
@@ -700,8 +693,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     }
   ]
 }

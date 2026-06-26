@@ -7,7 +7,7 @@
         "x": 16,
         "y": 80
       },
-      "refreshRate": 250,
+      "refreshRate": 33,
       "minimized": false,
       "summaryVariable": "GovernorProfiles.label",
       "summaryLabel": "Profile",
@@ -74,8 +74,7 @@
           "value": "ManualOverrides.cacheVaultSize.value"
         }
       ],
-      "maxHeight": 360,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "fps",
@@ -84,7 +83,7 @@
         "x": 16,
         "y": 140
       },
-      "refreshRate": 500,
+      "refreshRate": 33,
       "minimized": true,
       "summaryVariable": "FpsCounter.debugInfo.real",
       "summaryLabel": "fps",
@@ -183,8 +182,7 @@
         "integer": true
       },
       "summaryExtra": "FpsCounter.debugInfo.skipLabel",
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "drawCalls",
@@ -193,7 +191,7 @@
         "x": 16,
         "y": 200
       },
-      "refreshRate": 100,
+      "refreshRate": 33,
       "summaryVariable": "DrawCallCounter.total",
       "summaryLabel": "draw calls",
       "lines": [
@@ -243,8 +241,7 @@
       "collapsedByDefault": [
         "method totals",
         "per pass"
-      ],
-      "background": null
+      ]
     },
     {
       "id": "physics",
@@ -253,7 +250,7 @@
         "x": 16,
         "y": 260
       },
-      "refreshRate": 100,
+      "refreshRate": 33,
       "summaryVariable": "PhysicsGov.timeScale",
       "summaryLabel": "Time Scale",
       "lines": [
@@ -336,8 +333,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "queops",
@@ -346,7 +342,7 @@
         "x": 159,
         "y": 80
       },
-      "refreshRate": 200,
+      "refreshRate": 33,
       "summaryVariable": "QueOps.budget",
       "summaryLabel": "Budget",
       "lines": [
@@ -499,8 +495,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "msProbe",
@@ -509,7 +504,7 @@
         "x": 159,
         "y": 140
       },
-      "refreshRate": 250,
+      "refreshRate": 33,
       "summaryVariable": "MsProbe.topAvg",
       "summaryLabel": "Slowest avg ms",
       "lines": [
@@ -543,8 +538,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "stateCache",
@@ -553,7 +547,7 @@
         "x": 159,
         "y": 200
       },
-      "refreshRate": 250,
+      "refreshRate": 33,
       "summaryVariable": "StateCache.debugInfo.fill",
       "summaryLabel": "Vault fill",
       "lines": [
@@ -602,8 +596,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     },
     {
       "id": "aim",
@@ -612,7 +605,7 @@
         "x": 159,
         "y": 260
       },
-      "refreshRate": 16,
+      "refreshRate": 33,
       "summaryVariable": "Aims.debugInfo.effective",
       "summaryLabel": "Effective",
       "lines": [
@@ -700,8 +693,7 @@
         }
       ],
       "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "maxHeight": 280
     }
   ]
 }

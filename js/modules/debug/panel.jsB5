@@ -23,7 +23,6 @@ export class Panel {
     }
 
     this.panelMasterValue   = 1.0;
-    this.pinned             = false;
     this._collapsedSections = new Set(
       (config.collapsedByDefault || [])
     );
@@ -75,6 +74,17 @@ export class Panel {
           variable:         { get: () => null, set: () => {} },
           governor:         null,
           state:            { hoverIdx: -1, pressIdx: -1, selectedIdx: this._getActiveProfileIdx(line.buttons) }
+        });
+        const variable = resolveVariable(line.variable);
+        if (!variable) continue;
+        this._controls.push({
+          type: ControlType.SLIDER,
+          config: line,
+          min: line.min,
+          max: line.max,
+          step: line.step ?? 1,
+          variable,
+          state: { hover: false, dragging: false, value: variable.get() }
         });
       } else if (line.type === 'knob') {
         const variable = resolveVariable(line.variable);
@@ -168,20 +178,6 @@ export class Panel {
 
   scroll(deltaY) {
     this._scrollOffset = Math.max(0, this._scrollOffset + deltaY);
-  }
-
-  pin() {
-    this.pinned = true;
-    if (window._TuningLayer) window._TuningLayer.add(this);
-  }
-
-  unpin() {
-    this.pinned = false;
-    if (window._TuningLayer) window._TuningLayer.remove(this);
-  }
-
-  togglePin() {
-    this.pinned ? this.unpin() : this.pin();
   }
 
   toggleMinimize() {
@@ -396,12 +392,7 @@ export class Panel {
 
     const totalContentH = cy;
     const maxH          = this.config.maxHeight ?? Infinity;
-    const keepMax       = this.config.keepMaxHeight ?? false;
-    // keepMaxHeight=true  → panel is always exactly maxHeight (fixed size)
-    // keepMaxHeight=false → panel grows naturally, scrolls when over maxHeight
-    const clampedH      = keepMax
-      ? (this.config.maxHeight ?? cy)
-      : Math.min(cy, maxH);
+    const clampedH      = Math.min(cy, maxH);
 
     // Clamp scroll so we never go past the bottom
     if (this._scrollOffset > totalContentH - clampedH) {
@@ -428,35 +419,19 @@ export class Panel {
       return null;
     }
 
-    const s       = DEBUG_STATE.style;
-    const sc      = DEBUG_STATE.scale;
-    const lh      = s.lineHeight * sc;
-    const px      = s.padX * sc;
-    const py      = s.padY * sc;
-    const pw      = layout.w;
+    const s  = DEBUG_STATE.style;
+    const sc = DEBUG_STATE.scale;
+    const lh = s.lineHeight * sc;
+    const px = s.padX * sc;
+    const py = s.padY * sc;
 
-    // Hit test minimize and pin buttons (top-right of panel, in panel-local coords)
-    const minBtnSize = 16;
-    const minBtnX    = pw - minBtnSize - 6;
-    const pinBtnX    = minBtnX - minBtnSize - 4;
-    const btnY       = 6;
+    // Hit test section headers by reconstructing their y positions
     const lx = x - this.x;
-    const ly = y - this.y;
-
-    if (lx >= minBtnX && lx <= minBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'minimize' };
-    }
-    if (lx >= pinBtnX && lx <= pinBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'pin' };
-    }
-
-    // Hit test section headers
-    const scrollY = layout.scrollOffset ?? 0;
+    const ly = y - this.y + (layout.scrollOffset ?? 0);
     let lineY = py + lh / 2;
     for (const ln of layout.lines) {
-      const adjLY = lineY - scrollY;
       if (ln.isSectionHeader) {
-        if (lx >= px && lx <= pw - px && adjLY >= btnY && adjLY <= adjLY + lh) {
+        if (lx >= px && lx <= layout.w - px && ly >= lineY - lh / 2 && ly <= lineY + lh / 2) {
           return { type: 'sectionHeader', key: ln.key };
         }
       }
@@ -650,19 +625,12 @@ export class Panel {
     return this.refreshRate;
   }
 
-  // Pure check — no side effect. Safe to call from multiple systems.
-  isDue(now) {
-    return (now - this._lastRender) >= this.refreshRate;
-  }
-
-  // Explicitly advance the timer. Call after data has been fetched.
-  markRendered(now) {
-    this._lastRender = now;
-  }
-
-  // Legacy — kept for any callers not yet updated. Pure check only, no side effect.
   shouldRender(now) {
-    return this.isDue(now);
+    if (now - this._lastRender >= this.refreshRate) {
+      this._lastRender = now;
+      return true;
+    }
+    return false;
   }
 }
 

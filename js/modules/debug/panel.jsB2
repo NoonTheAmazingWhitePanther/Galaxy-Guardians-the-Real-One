@@ -22,12 +22,7 @@ export class Panel {
       this._summaryVariable = resolveVariable(config.summaryVariable);
     }
 
-    this.panelMasterValue   = 1.0;
-    this.pinned             = false;
-    this._collapsedSections = new Set(
-      (config.collapsedByDefault || [])
-    );
-    this._scrollOffset      = 0;   // pixels scrolled down
+    this.panelMasterValue = 1.0;
     this._masterDragging = false;
 
     this.refreshRates = DEBUG_STATE.refreshRates;
@@ -68,13 +63,24 @@ export class Panel {
         });
       } else if (line.type === 'profileButtons') {
         this._controls.push({
-          type:             ControlType.WIDE_BUTTON,
-          config:           line,
-          labels:           line.buttons.map(b => b.label),
+          type: ControlType.BUTTON,
+          config: line,
+          labels: line.buttons.map(b => b.label),
           isProfileButtons: true,
-          variable:         { get: () => null, set: () => {} },
-          governor:         null,
-          state:            { hoverIdx: -1, pressIdx: -1, selectedIdx: this._getActiveProfileIdx(line.buttons) }
+          variable: { get: () => null, set: () => {} }, // dummy
+          governor: null,
+          state: { hoverIdx: -1, pressIdx: -1 }
+        });
+        const variable = resolveVariable(line.variable);
+        if (!variable) continue;
+        this._controls.push({
+          type: ControlType.SLIDER,
+          config: line,
+          min: line.min,
+          max: line.max,
+          step: line.step ?? 1,
+          variable,
+          state: { hover: false, dragging: false, value: variable.get() }
         });
       } else if (line.type === 'knob') {
         const variable = resolveVariable(line.variable);
@@ -134,56 +140,6 @@ export class Panel {
     return this.config.summaryLabel || this.title;
   }
 
-  // true if any governor control on this panel has been manually set
-  get isManual() {
-    return this._controls.some(c => c.governor?.isManual === true);
-  }
-
-  get manualLabel() {
-    return this.isManual ? 'MANUAL' : 'AUTO';
-  }
-
-  get summaryExtra() {
-    if (!this.config.summaryExtra) return null;
-    const ref = resolveVariable(this.config.summaryExtra);
-    if (!ref) return null;
-    const v = ref.get();
-    return v !== undefined && v !== null ? String(v) : null;
-  }
-
-  _getActiveProfileIdx(buttons) {
-    const GP = window._GovernorProfiles;
-    if (!GP) return -1;
-    const active = GP.activeProfile;
-    return buttons.findIndex(b => b.profile === active);
-  }
-
-  toggleSection(key) {
-    if (this._collapsedSections.has(key)) {
-      this._collapsedSections.delete(key);
-    } else {
-      this._collapsedSections.add(key);
-    }
-  }
-
-  scroll(deltaY) {
-    this._scrollOffset = Math.max(0, this._scrollOffset + deltaY);
-  }
-
-  pin() {
-    this.pinned = true;
-    if (window._TuningLayer) window._TuningLayer.add(this);
-  }
-
-  unpin() {
-    this.pinned = false;
-    if (window._TuningLayer) window._TuningLayer.remove(this);
-  }
-
-  togglePin() {
-    this.pinned ? this.unpin() : this.pin();
-  }
-
   toggleMinimize() {
     this.minimized = !this.minimized;
     this._chromeDirty = true;
@@ -197,44 +153,8 @@ export class Panel {
   buildLines(data) {
     const s = DEBUG_STATE.style;
     const lines = [];
-    let currentSection = null;   // key of the active section
-    let sectionSkipping = false; // true when inside a collapsed section
 
     for (const line of this.config.lines || []) {
-
-      // sectionHeader — collapsible group header
-      if (line.type === 'sectionHeader') {
-        const key       = line.key || line.text;
-        const collapsed = this._collapsedSections.has(key);
-        currentSection  = key;
-        sectionSkipping = collapsed;
-
-        // Compute section total if collapsed
-        let sectionTotal = null;
-        if (collapsed && line.totalSource) {
-          const src = this._resolveValue(line.totalSource, data);
-          if (typeof src === 'object' && src !== null) {
-            sectionTotal = Object.values(src).reduce((a, b) => a + (Number(b) || 0), 0);
-          } else if (typeof src === 'number') {
-            sectionTotal = src;
-          }
-        }
-
-        lines.push({
-          isSectionHeader: true,
-          key,
-          label:     line.text,
-          collapsed,
-          total:     sectionTotal,
-          color:     s.textDim,
-          bold:      false,
-        });
-        continue;
-      }
-
-      // Skip lines inside a collapsed section
-      if (sectionSkipping) continue;
-
       switch (line.type) {
         case 'header': {
           const value = this._resolveValue(line.value, data);
@@ -378,7 +298,7 @@ export class Panel {
 
     const lines = this.buildLines(data);
     let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
-    pw = Math.floor(pw * 0.75);
+    pw = Math.floor(pw * 0.75); 
 
     let cy = s.padY * sc;
     cy += s.lineHeight * sc * lines.length;
@@ -394,30 +314,7 @@ export class Panel {
 
     cy += s.padY * sc;
 
-    const totalContentH = cy;
-    const maxH          = this.config.maxHeight ?? Infinity;
-    const keepMax       = this.config.keepMaxHeight ?? false;
-    // keepMaxHeight=true  → panel is always exactly maxHeight (fixed size)
-    // keepMaxHeight=false → panel grows naturally, scrolls when over maxHeight
-    const clampedH      = keepMax
-      ? (this.config.maxHeight ?? cy)
-      : Math.min(cy, maxH);
-
-    // Clamp scroll so we never go past the bottom
-    if (this._scrollOffset > totalContentH - clampedH) {
-      this._scrollOffset = Math.max(0, totalContentH - clampedH);
-    }
-
-    return {
-      w:             pw,
-      h:             clampedH,
-      totalContentH,
-      scrollOffset:  this._scrollOffset,
-      scrollable:    totalContentH > clampedH,
-      lines,
-      controls:      layoutControls,
-      minimized:     false
-    };
+    return { w: pw, h: cy, lines, controls: layoutControls, minimized: false };
   }
 
   hitTest(x, y, layout) {
@@ -428,51 +325,15 @@ export class Panel {
       return null;
     }
 
-    const s       = DEBUG_STATE.style;
-    const sc      = DEBUG_STATE.scale;
-    const lh      = s.lineHeight * sc;
-    const px      = s.padX * sc;
-    const py      = s.padY * sc;
-    const pw      = layout.w;
-
-    // Hit test minimize and pin buttons (top-right of panel, in panel-local coords)
-    const minBtnSize = 16;
-    const minBtnX    = pw - minBtnSize - 6;
-    const pinBtnX    = minBtnX - minBtnSize - 4;
-    const btnY       = 6;
-    const lx = x - this.x;
-    const ly = y - this.y;
-
-    if (lx >= minBtnX && lx <= minBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'minimize' };
-    }
-    if (lx >= pinBtnX && lx <= pinBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'pin' };
-    }
-
-    // Hit test section headers
-    const scrollY = layout.scrollOffset ?? 0;
-    let lineY = py + lh / 2;
-    for (const ln of layout.lines) {
-      const adjLY = lineY - scrollY;
-      if (ln.isSectionHeader) {
-        if (lx >= px && lx <= pw - px && adjLY >= btnY && adjLY <= adjLY + lh) {
-          return { type: 'sectionHeader', key: ln.key };
-        }
-      }
-      lineY += lh;
-    }
-
     for (const ctrl of layout.controls) {
       const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
       if (hit) {
-        if (ctrl.type === ControlType.BUTTON)       return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
-        if (ctrl.type === ControlType.WIDE_BUTTON)  return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
-        if (ctrl.type === ControlType.SLIDER)       return { type: 'slider',   control: ctrl, frac: hit.frac };
-        if (ctrl.type === ControlType.KNOB)         return { type: 'knob',     control: ctrl };
-        if (ctrl.type === ControlType.DROPDOWN)     return { type: 'dropdown', control: ctrl, hitType: hit.type, idx: hit.idx };
-        if (ctrl.type === ControlType.CHECKBOX)     return { type: 'checkbox', control: ctrl };
-        if (ctrl.type === ControlType.COLOR_PICKER) return { type: 'color',    control: ctrl, hitType: hit.type, idx: hit.idx };
+        if (ctrl.type === ControlType.BUTTON) return { type: 'button', control: ctrl, btnIdx: hit.btnIdx };
+        else if (ctrl.type === ControlType.SLIDER) return { type: 'slider', control: ctrl, frac: hit.frac };
+        else if (ctrl.type === ControlType.KNOB) return { type: 'knob', control: ctrl };
+        else if (ctrl.type === ControlType.DROPDOWN) return { type: 'dropdown', control: ctrl, hitType: hit.type, idx: hit.idx };
+        else if (ctrl.type === ControlType.CHECKBOX) return { type: 'checkbox', control: ctrl };
+        else if (ctrl.type === ControlType.COLOR_PICKER) return { type: 'color', control: ctrl, hitType: hit.type, idx: hit.idx };
       }
     }
 
@@ -488,23 +349,18 @@ export class Panel {
 
     this._chromeDirty = true;
 
-    if (hit.type === 'sectionHeader') {
-      this.toggleSection(hit.key);
-      return true;
-    }
-
     if (hit.type === 'button') {
       const ctrl = hit.control;
       ctrl.state.pressIdx = hit.btnIdx;
 
       if (ctrl.isProfileButtons) {
+        // Profile button — call GovernorProfiles directly
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn) {
           const GP = window._GovernorProfiles;
           if (GP) {
             if (btn.profile === null) GP.resetAll();
             else GP.applyProfile(btn.profile);
-            ctrl.state.selectedIdx = hit.btnIdx;
           }
         }
       } else {
@@ -650,19 +506,12 @@ export class Panel {
     return this.refreshRate;
   }
 
-  // Pure check — no side effect. Safe to call from multiple systems.
-  isDue(now) {
-    return (now - this._lastRender) >= this.refreshRate;
-  }
-
-  // Explicitly advance the timer. Call after data has been fetched.
-  markRendered(now) {
-    this._lastRender = now;
-  }
-
-  // Legacy — kept for any callers not yet updated. Pure check only, no side effect.
   shouldRender(now) {
-    return this.isDue(now);
+    if (now - this._lastRender >= this.refreshRate) {
+      this._lastRender = now;
+      return true;
+    }
+    return false;
   }
 }
 

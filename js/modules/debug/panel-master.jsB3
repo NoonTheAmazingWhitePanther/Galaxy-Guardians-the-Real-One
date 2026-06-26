@@ -12,8 +12,8 @@ import { DEBUG_STATE } from './debug-state.js';
 import { resolveVariable } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
-const SLIDER_W        = 12;
-const SLIDER_PAD      = 1;
+const SLIDER_W        = 20;
+const SLIDER_PAD      = 6;
 const THUMB_H         = 16;
 const MINIMIZE_BTN_SIZE = 16;
 
@@ -56,7 +56,7 @@ export const PanelMasterSlider = {
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
         knobMin   = 0;
-        knobMax   = 10;
+        knobMax   = 2;
         knobLabel = 'x';
       }
 
@@ -127,47 +127,33 @@ export const PanelMasterSlider = {
       ctx.textBaseline = 'top';
       ctx.fillText(panel.title, x + 6, y + 4);
 
-      // — summary value — true centre of the whole panel, vertically centred —
+      // — MANUAL / AUTO label — left side, vertically centred —
+      const manualLabel = panel.manualLabel ?? 'AUTO';
+      ctx.fillStyle    = manualLabel === 'MANUAL'
+        ? 'rgba(255,180,80,0.9)'
+        : 'rgba(130,210,255,0.55)';
+      ctx.font         = `bold 8px ${s.font}`;
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(manualLabel, x + 6, y + panelH - 12);
+
+      // — summary value — centre, large —
       const sv = panel.summaryValue;
       if (sv !== undefined && sv !== null) {
         ctx.fillStyle    = s.accent;
         ctx.font         = `bold 15px ${s.font}`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(sv), x + panelW / 2, y + panelH / 2);
+        // Centre between left text area and knob
+        const centreX = x + (panelW - KNOB_PAD_RIGHT * 2 - KNOB_R * 2) / 2;
+        ctx.fillText(String(sv), centreX, y + panelH / 2);
       }
-
-      // — MANUAL/AUTO bottom-left, clipped so it never overflows —
-      const manualLabel = panel.manualLabel ?? 'AUTO';
-      const maxLabelW   = panelW / 2 - 8;  // never past mid-panel
-      ctx.fillStyle    = manualLabel === 'MANUAL'
-        ? 'rgba(255,180,80,0.9)'
-        : 'rgba(130,210,255,0.55)';
-      ctx.font         = `bold 7px ${s.font}`;
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 4, y, maxLabelW, panelH);
-      ctx.clip();
-      ctx.fillText(manualLabel, x + 6, y + panelH - 4);
-      ctx.restore();
       ctx.restore();
 
       // — expand button ▲ top-right —
       const btnSize = 12;
       const btnX    = x + panelW - btnSize - 2;
       const btnY    = y + 2;
-
-      // Pin button — emoji only, no box
-      const pinBtnX = btnX - btnSize - 2;
-      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
-      ctx.font         = `8px ${s.font}`;
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('📌', pinBtnX + btnSize / 2, btnY + btnSize / 2);
-
-      // Expand button ▲
       ctx.fillStyle    = 'rgba(130,210,255,0.25)';
       ctx.beginPath();
       ctx.roundRect(btnX, btnY, btnSize, btnSize, 2);
@@ -239,21 +225,15 @@ export const PanelMasterSlider = {
   // ── hitTest ──────────────────────────────────────────────────────────────
   hitTest(panel, x, y, panelX, panelY, panelW, panelH, minimized) {
     if (minimized) {
+      // Expand button
       const btnSize = 12;
       const btnX    = panelX + panelW - btnSize - 2;
       const btnY    = panelY + 2;
-      const pinBtnX = btnX - btnSize - 2;
-
-      // Pin button
-      if (x >= pinBtnX && x <= pinBtnX + btnSize && y >= btnY && y <= btnY + btnSize) {
-        return { type: 'pin' };
-      }
-      // Expand button
       if (x >= btnX && x <= btnX + btnSize && y >= btnY && y <= btnY + btnSize) {
         return { type: 'minimize' };
       }
 
-      // Knob hit area
+      // Knob — circular hit area
       const kx   = panelX + panelW - KNOB_PAD_RIGHT - KNOB_R;
       const ky   = panelY + panelH / 2;
       const dist = Math.hypot(x - kx, y - ky);

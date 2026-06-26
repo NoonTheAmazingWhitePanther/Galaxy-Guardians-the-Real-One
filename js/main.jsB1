@@ -16,7 +16,6 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
-import { TuningLayer } from './modules/tuning/tuning-layer.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
 // ✅ FIX: Import from unified governor
@@ -288,7 +287,6 @@ function mainLoop(t) {
                 + (CameraModule.isPanning ? 30 : 0);
   RenderGov.feedChaos(_camVel, 0, didPhysicsTick);
 
-  // Debug panels — inside shouldRender per your architecture rule
   if (RenderGov.shouldRender()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
@@ -302,21 +300,13 @@ function mainLoop(t) {
       );
     });
 
-    OverlaysModule.drawCharge(
-      ctx,
-      InputState.isHolding,
-      InputState.holdTime,
-      InputState.mouseX,
-      InputState.mouseY,
-      slider.value
-    );
+    
 
     
     OverlaysModule.updateCount(pcountEl);
     DebugRouter.drawAll(ctx);
     _drawAimCursor(ctx);
-    TuningLayer.drawAll(ctx);
-    
+  
   }
   
   if (cursorEl) {
@@ -324,7 +314,14 @@ function mainLoop(t) {
     cursorEl.style.top = InputState.mouseY + "px";
   }
   
-  
+OverlaysModule.drawCharge(
+      ctx,
+      InputState.isHolding,
+      InputState.holdTime,
+      InputState.mouseX,
+      InputState.mouseY,
+      slider.value
+    );
 }
 
 if (document.readyState === 'loading') {

@@ -1,91 +1,14 @@
 {
   "panels": [
     {
-      "id": "governor",
-      "title": "GOVERNOR",
-      "position": {
-        "x": 16,
-        "y": 80
-      },
-      "refreshRate": 250,
-      "minimized": false,
-      "summaryVariable": "GovernorProfiles.label",
-      "summaryLabel": "Profile",
-      "lines": [
-        {
-          "type": "header",
-          "text": "GOVERNOR",
-          "value": "GovernorProfiles.label",
-          "color": "accent",
-          "bold": true
-        },
-        {
-          "type": "divider",
-          "text": "— select profile —"
-        },
-        {
-          "type": "profileButtons",
-          "buttons": [
-            {
-              "label": "MAX",
-              "profile": "MAX"
-            },
-            {
-              "label": "BALANCE",
-              "profile": "BALANCE"
-            },
-            {
-              "label": "MIN",
-              "profile": "MIN"
-            },
-            {
-              "label": "AUTO",
-              "profile": null
-            }
-          ]
-        },
-        {
-          "type": "divider",
-          "text": "— current —"
-        },
-        {
-          "type": "display",
-          "text": "profile",
-          "value": "GovernorProfiles.label"
-        },
-        {
-          "type": "display",
-          "text": "frame skip",
-          "value": "ManualOverrides.renderFrameSkip.value"
-        },
-        {
-          "type": "display",
-          "text": "substeps",
-          "value": "ManualOverrides.physicsSubsteps.value"
-        },
-        {
-          "type": "display",
-          "text": "que budget",
-          "value": "ManualOverrides.queOpsBudget.value"
-        },
-        {
-          "type": "display",
-          "text": "cache",
-          "value": "ManualOverrides.cacheVaultSize.value"
-        }
-      ],
-      "maxHeight": 360,
-      "background": null
-    },
-    {
       "id": "fps",
       "title": "FPS",
       "position": {
         "x": 16,
-        "y": 140
+        "y": 80
       },
       "refreshRate": 500,
-      "minimized": true,
+      "minimized": false,
       "summaryVariable": "FpsCounter.debugInfo.real",
       "summaryLabel": "fps",
       "lines": [
@@ -182,16 +105,14 @@
         "label": "Skip",
         "integer": true
       },
-      "summaryExtra": "FpsCounter.debugInfo.skipLabel",
-      "maxHeight": 280,
-      "background": null
+      "summaryExtra": "FpsCounter.debugInfo.skipLabel"
     },
     {
       "id": "drawCalls",
       "title": "DRAW CALLS",
       "position": {
         "x": 16,
-        "y": 200
+        "y": 140
       },
       "refreshRate": 100,
       "summaryVariable": "DrawCallCounter.total",
@@ -215,10 +136,8 @@
           "value": "DrawCallCounter.pathOps"
         },
         {
-          "type": "sectionHeader",
-          "key": "method totals",
-          "text": "method totals",
-          "totalSource": "DrawCallCounter.methodTotals"
+          "type": "divider",
+          "text": "— method totals —"
         },
         {
           "type": "displayMap",
@@ -227,10 +146,8 @@
           "sort": "desc"
         },
         {
-          "type": "sectionHeader",
-          "key": "per pass",
-          "text": "per pass",
-          "totalSource": "DrawCallCounter.total"
+          "type": "divider",
+          "text": "— per pass —"
         },
         {
           "type": "displayMap",
@@ -238,20 +155,14 @@
           "filter": "positive"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "collapsedByDefault": [
-        "method totals",
-        "per pass"
-      ],
-      "background": null
+      "minimized": true
     },
     {
       "id": "physics",
       "title": "PHYSICS",
       "position": {
         "x": 16,
-        "y": 260
+        "y": 200
       },
       "refreshRate": 100,
       "summaryVariable": "PhysicsGov.timeScale",
@@ -335,16 +246,14 @@
           }
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "queops",
       "title": "QUEUE OPS",
       "position": {
-        "x": 159,
-        "y": 80
+        "x": 16,
+        "y": 260
       },
       "refreshRate": 200,
       "summaryVariable": "QueOps.budget",
@@ -498,9 +407,7 @@
           }
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "msProbe",
@@ -542,9 +449,7 @@
           "label": "queops.tick"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "stateCache",
@@ -601,16 +506,14 @@
           "value": "StateCache.debugInfo.loose"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "aim",
       "title": "AIM CURSOR",
       "position": {
         "x": 159,
-        "y": 260
+        "y": 80
       },
       "refreshRate": 16,
       "summaryVariable": "Aims.debugInfo.effective",
@@ -699,9 +602,7 @@
           "step": 1
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     }
   ]
 }

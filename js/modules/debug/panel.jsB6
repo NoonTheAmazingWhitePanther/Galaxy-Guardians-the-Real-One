@@ -76,6 +76,17 @@ export class Panel {
           governor:         null,
           state:            { hoverIdx: -1, pressIdx: -1, selectedIdx: this._getActiveProfileIdx(line.buttons) }
         });
+        const variable = resolveVariable(line.variable);
+        if (!variable) continue;
+        this._controls.push({
+          type: ControlType.SLIDER,
+          config: line,
+          min: line.min,
+          max: line.max,
+          step: line.step ?? 1,
+          variable,
+          state: { hover: false, dragging: false, value: variable.get() }
+        });
       } else if (line.type === 'knob') {
         const variable = resolveVariable(line.variable);
         if (!variable) continue;
@@ -650,19 +661,12 @@ export class Panel {
     return this.refreshRate;
   }
 
-  // Pure check — no side effect. Safe to call from multiple systems.
-  isDue(now) {
-    return (now - this._lastRender) >= this.refreshRate;
-  }
-
-  // Explicitly advance the timer. Call after data has been fetched.
-  markRendered(now) {
-    this._lastRender = now;
-  }
-
-  // Legacy — kept for any callers not yet updated. Pure check only, no side effect.
   shouldRender(now) {
-    return this.isDue(now);
+    if (now - this._lastRender >= this.refreshRate) {
+      this._lastRender = now;
+      return true;
+    }
+    return false;
   }
 }
 

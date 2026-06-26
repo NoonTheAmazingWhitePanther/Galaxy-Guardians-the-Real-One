@@ -30,7 +30,6 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { DebugRouter } from '../debug/debug-router.js';
-import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { resolveVariable } from '../debug/governor.js';
@@ -73,18 +72,10 @@ export const InDebug = {
     }, { passive: true });
   },
 
-  // Returns all panels that should receive pointer input.
-  // Debug panels when debug is on, plus tuning (pinned) panels always.
-  _activePanels() {
-    const debugPanels  = DebugRouter.masterEnabled ? DebugRouter.panels : [];
-    const tuningPanels = TuningLayer._panels.filter(p => !debugPanels.includes(p));
-    return [...debugPanels, ...tuningPanels];
-  },
-
   _handleWheel(e) {
     const x = e.offsetX;
     const y = e.offsetY;
-    for (const panel of this._activePanels()) {
+    for (const panel of DebugRouter.panels) {
       if (!panel.visible || panel.minimized) continue;
       if (x >= panel.x && x <= panel.x + panel.w &&
           y >= panel.y && y <= panel.y + panel.h) {
@@ -155,7 +146,7 @@ export const InDebug = {
     }
 
     // ── 2-4. Check panels ─────────────────────────────────────────────
-    for (const panel of this._activePanels()) {
+    for (const panel of DebugRouter.panels) {
       if (!panel.visible) continue;
 
       // Get layout for this panel (needed for hit-testing)
@@ -173,11 +164,6 @@ export const InDebug = {
       if (masterHit) {
         if (masterHit.type === 'minimize') {
           panel.toggleMinimize();
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return true;
-        } else if (masterHit.type === 'pin') {
-          panel.togglePin();
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
@@ -228,17 +214,9 @@ export const InDebug = {
 
       if (!hit) continue;
 
-      // ── Minimize button ──────────────────────────────────────────────
-      if (hit.type === 'minimize' || (hit.type === 'button' && hit.control?.config?.__minimize__)) {
+      // ── Minimize button (special case) ──────────────────────────────
+      if (hit.type === 'button' && hit.control?.config?.__minimize__) {
         panel.toggleMinimize();
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return true;
-      }
-
-      // ── Pin button ───────────────────────────────────────────────────
-      if (hit.type === 'pin') {
-        panel.togglePin();
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;

@@ -650,19 +650,12 @@ export class Panel {
     return this.refreshRate;
   }
 
-  // Pure check — no side effect. Safe to call from multiple systems.
-  isDue(now) {
-    return (now - this._lastRender) >= this.refreshRate;
-  }
-
-  // Explicitly advance the timer. Call after data has been fetched.
-  markRendered(now) {
-    this._lastRender = now;
-  }
-
-  // Legacy — kept for any callers not yet updated. Pure check only, no side effect.
   shouldRender(now) {
-    return this.isDue(now);
+    if (now - this._lastRender >= this.refreshRate) {
+      this._lastRender = now;
+      return true;
+    }
+    return false;
   }
 }
 

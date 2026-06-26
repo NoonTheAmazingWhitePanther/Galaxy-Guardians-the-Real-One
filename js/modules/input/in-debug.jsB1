@@ -30,7 +30,6 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { DebugRouter } from '../debug/debug-router.js';
-import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { resolveVariable } from '../debug/governor.js';
@@ -38,9 +37,6 @@ import { resolveVariable } from '../debug/governor.js';
 export const InDebug = {
   _canvas: null,
   isDragging: false,
-  _scrollingPanel: null,
-  _scrollStartY:   0,
-  _scrollStartOff: 0,
   activePanel: null,
   pointerId: null,
   startX: 0,
@@ -63,35 +59,10 @@ export const InDebug = {
   init(canvas) {
     this._canvas = canvas;
 
+    // Force release if pointer capture is lost (finger lifted outside window)
     canvas.addEventListener('lostpointercapture', () => {
       this._releaseAll();
     });
-
-    // Scroll panels with mouse wheel / trackpad
-    canvas.addEventListener('wheel', (e) => {
-      this._handleWheel(e);
-    }, { passive: true });
-  },
-
-  // Returns all panels that should receive pointer input.
-  // Debug panels when debug is on, plus tuning (pinned) panels always.
-  _activePanels() {
-    const debugPanels  = DebugRouter.masterEnabled ? DebugRouter.panels : [];
-    const tuningPanels = TuningLayer._panels.filter(p => !debugPanels.includes(p));
-    return [...debugPanels, ...tuningPanels];
-  },
-
-  _handleWheel(e) {
-    const x = e.offsetX;
-    const y = e.offsetY;
-    for (const panel of this._activePanels()) {
-      if (!panel.visible || panel.minimized) continue;
-      if (x >= panel.x && x <= panel.x + panel.w &&
-          y >= panel.y && y <= panel.y + panel.h) {
-        panel.scroll(e.deltaY * 0.5);
-        return;
-      }
-    }
   },
 
   /**
@@ -118,7 +89,6 @@ export const InDebug = {
     this._panelMasterDragging = false;
     this._panelMasterKnob = false;
     this._activePanelMaster = null;
-    this._scrollingPanel = null;
   },
 
   /**
@@ -155,7 +125,7 @@ export const InDebug = {
     }
 
     // ── 2-4. Check panels ─────────────────────────────────────────────
-    for (const panel of this._activePanels()) {
+    for (const panel of DebugRouter.panels) {
       if (!panel.visible) continue;
 
       // Get layout for this panel (needed for hit-testing)
@@ -173,11 +143,6 @@ export const InDebug = {
       if (masterHit) {
         if (masterHit.type === 'minimize') {
           panel.toggleMinimize();
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return true;
-        } else if (masterHit.type === 'pin') {
-          panel.togglePin();
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
@@ -228,17 +193,9 @@ export const InDebug = {
 
       if (!hit) continue;
 
-      // ── Minimize button ──────────────────────────────────────────────
-      if (hit.type === 'minimize' || (hit.type === 'button' && hit.control?.config?.__minimize__)) {
+      // ── Minimize button (special case) ──────────────────────────────
+      if (hit.type === 'button' && hit.control?.config?.__minimize__) {
         panel.toggleMinimize();
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return true;
-      }
-
-      // ── Pin button ───────────────────────────────────────────────────
-      if (hit.type === 'pin') {
-        panel.togglePin();
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;
@@ -260,21 +217,8 @@ export const InDebug = {
         }
       }
 
-      // ── 4. Panel body hit → drag to move, or scroll if scrollable ──────
+      // ── 4. Panel body hit → start drag ──────────────────────────────
       if (hit.type === 'panel') {
-        // If panel is scrollable, drag scrolls it instead of moving it
-        const cachedLayout = panel._cachedData ? panel.computeLayout(panel._cachedData) : null;
-        if (cachedLayout?.scrollable) {
-          this._scrollingPanel  = panel;
-          this._scrollStartY    = y;
-          this._scrollStartOff  = panel._scrollOffset;
-          this.pointerId = e.pointerId;
-          try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return true;
-        }
-
         this.activePanel = panel;
         this.pointerId = e.pointerId;
         this.isDragging = true;
@@ -284,7 +228,8 @@ export const InDebug = {
         this.startPanelX = panel.x;
         this.startPanelY = panel.y;
 
-        try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+        try {          if (this._canvas) this._canvas.setPointerCapture(this.pointerId);
+        } catch (_) {}
 
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -312,13 +257,6 @@ export const InDebug = {
 
     const x = e.clientX;
     const y = e.clientY;
-
-    // ── Panel scroll drag ─────────────────────────────────────────────
-    if (this._scrollingPanel) {
-      const dy = this._scrollStartY - y;
-      this._scrollingPanel._scrollOffset = Math.max(0, this._scrollStartOff + dy);
-      return true;
-    }
 
     // ── Global master slider drag ─────────────────────────────────────
     if (this._globalMasterDragging) {

@@ -12,8 +12,8 @@ import { DEBUG_STATE } from './debug-state.js';
 import { resolveVariable } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
-const SLIDER_W        = 12;
-const SLIDER_PAD      = 1;
+const SLIDER_W        = 20;
+const SLIDER_PAD      = 6;
 const THUMB_H         = 16;
 const MINIMIZE_BTN_SIZE = 16;
 
@@ -56,7 +56,7 @@ export const PanelMasterSlider = {
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
         knobMin   = 0;
-        knobMax   = 10;
+        knobMax   = 2;
         knobLabel = 'x';
       }
 
@@ -159,9 +159,22 @@ export const PanelMasterSlider = {
       const btnX    = x + panelW - btnSize - 2;
       const btnY    = y + 2;
 
-      // Pin button — emoji only, no box
+      // Pin button — left of expand
       const pinBtnX = btnX - btnSize - 2;
-      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
+      ctx.fillStyle = panel.pinned
+        ? 'rgba(255,200,80,0.35)'
+        : 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.roundRect(pinBtnX, btnY, btnSize, btnSize, 2);
+      ctx.fill();
+      if (panel.pinned) {
+        ctx.strokeStyle = 'rgba(255,200,80,0.7)';
+        ctx.lineWidth   = 1;
+        ctx.beginPath();
+        ctx.roundRect(pinBtnX + 0.5, btnY + 0.5, btnSize - 1, btnSize - 1, 2);
+        ctx.stroke();
+      }
+      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
       ctx.font         = `8px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';

@@ -73,9 +73,7 @@
           "text": "cache",
           "value": "ManualOverrides.cacheVaultSize.value"
         }
-      ],
-      "maxHeight": 360,
-      "background": null
+      ]
     },
     {
       "id": "fps",
@@ -182,9 +180,7 @@
         "label": "Skip",
         "integer": true
       },
-      "summaryExtra": "FpsCounter.debugInfo.skipLabel",
-      "maxHeight": 280,
-      "background": null
+      "summaryExtra": "FpsCounter.debugInfo.skipLabel"
     },
     {
       "id": "drawCalls",
@@ -215,10 +211,8 @@
           "value": "DrawCallCounter.pathOps"
         },
         {
-          "type": "sectionHeader",
-          "key": "method totals",
-          "text": "method totals",
-          "totalSource": "DrawCallCounter.methodTotals"
+          "type": "divider",
+          "text": "— method totals —"
         },
         {
           "type": "displayMap",
@@ -227,10 +221,8 @@
           "sort": "desc"
         },
         {
-          "type": "sectionHeader",
-          "key": "per pass",
-          "text": "per pass",
-          "totalSource": "DrawCallCounter.total"
+          "type": "divider",
+          "text": "— per pass —"
         },
         {
           "type": "displayMap",
@@ -238,13 +230,7 @@
           "filter": "positive"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "collapsedByDefault": [
-        "method totals",
-        "per pass"
-      ],
-      "background": null
+      "minimized": true
     },
     {
       "id": "physics",
@@ -335,9 +321,7 @@
           }
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "queops",
@@ -498,9 +482,7 @@
           }
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "msProbe",
@@ -542,9 +524,7 @@
           "label": "queops.tick"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "stateCache",
@@ -601,9 +581,7 @@
           "value": "StateCache.debugInfo.loose"
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     },
     {
       "id": "aim",
@@ -699,9 +677,7 @@
           "step": 1
         }
       ],
-      "minimized": true,
-      "maxHeight": 280,
-      "background": null
+      "minimized": true
     }
   ]
 }

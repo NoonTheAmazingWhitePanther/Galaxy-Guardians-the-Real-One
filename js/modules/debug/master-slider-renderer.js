@@ -1,9 +1,9 @@
 import { DEBUG_STATE } from './debug-state.js';
 import { MasterGovernor } from './master-governor.js';
 
-const SLIDER_W = 24;
+const SLIDER_W = 20;
 const SLIDER_PAD = 8;
-const THUMB_H = 20;
+const THUMB_H = 16;
 
 export const MasterSliderRenderer = {
   _bounds: null,

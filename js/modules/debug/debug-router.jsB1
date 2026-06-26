@@ -15,7 +15,6 @@ import { config } from '../../core/config.js';
 import { FpsCounter } from './fps-counter.js';
 import { MsProbe } from '../../core/ms-probe.js';
 import { StateCache } from '../../core/state-cache.js';
-import { GovernorProfiles } from './governor-profiles.js';
 
 export const DebugRouter = {
   panels: [],
@@ -39,10 +38,8 @@ export const DebugRouter = {
     GovernorRegistry.register('FpsCounter',       FpsCounter);
     GovernorRegistry.register('MsProbe',          MsProbe);
     GovernorRegistry.register('StateCache',       StateCache);
-    GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
 
     window._DebugRouter = this;
-    window._GovernorProfiles = GovernorProfiles;
 
     try {
       const response = await fetch('./js/modules/debug/debug-config.json');
@@ -69,7 +66,6 @@ export const DebugRouter = {
 
   _getDataForPanel(panel) {
     switch (panel.id) {
-      case 'governor':   return GovernorProfiles;
       case 'fps':        return FpsCounter.debugInfo;
       case 'physics':    return PhysicsCounter;
       case 'drawCalls':  return DrawCallCounter;
@@ -86,16 +82,12 @@ export const DebugRouter = {
 
     const now = performance.now();
 
-    // Data update — time-based only, explicit mark after fetch
     for (const panel of this.panels) {
-      if (panel.visible && panel.isDue(now)) {
-        panel.markRendered(now);
-        panel._cachedData  = this._getDataForPanel(panel);
-        panel._dataDirty   = true;   // trigger offscreen redraw
+      if (panel.visible && panel.shouldRender(now)) {
+        panel._cachedData = this._getDataForPanel(panel);
       }
     }
 
-    // Draw every visible panel every frame using cached data
     for (const panel of this.panels) {
       if (!panel.visible) continue;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
