@@ -207,20 +207,17 @@ export const DebugRenderer = {
         ctx.fill();
       }
 
-      // Pin button 📌 — only shown when debug is on
+      // Pin button 📌 — emoji only, no box (amber border on panel is the indicator)
       const minBtnSize = 16;
       const minBtnX    = pw - minBtnSize - 6;
       const minBtnY    = 6;
       const pinBtnX    = minBtnX - minBtnSize - 4;
       const pinBtnY    = 6;
-
-      if (window._DebugRouter?.masterEnabled) {
-        ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
-        ctx.font         = `10px ${s.font}`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('📌', pinBtnX + minBtnSize / 2, pinBtnY + minBtnSize / 2);
-      }
+      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
+      ctx.font         = `10px ${s.font}`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📌', pinBtnX + minBtnSize / 2, pinBtnY + minBtnSize / 2);
 
       // Minimize button ▼
       ctx.fillStyle    = 'rgba(255,255,255,0.08)';

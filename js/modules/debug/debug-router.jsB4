@@ -81,36 +81,21 @@ export const DebugRouter = {
     }
   },
 
-  // Called every rAF unconditionally — but only does work when needed
-  updateData() {
-    if (!this._initialized) return;
-
-    const debugOn  = this.masterEnabled;
-    const tuningOn = window._TuningLayer?._panels?.length > 0;
-
-    // Nothing active — skip entirely, zero overhead
-    if (!debugOn && !tuningOn) return;
-
-    const now = performance.now();
-
-    for (const panel of this.panels) {
-      // Debug on → update all panels
-      // Tuning on (debug off) → update only pinned panels
-      const shouldUpdate = debugOn || (tuningOn && panel.pinned);
-      if (!shouldUpdate) continue;
-
-      if (panel.isDue(now)) {
-        panel.markRendered(now);
-        panel._cachedData = this._getDataForPanel(panel);
-        panel._dataDirty  = true;
-      }
-    }
-  },
-
   drawAll(ctx) {
     if (!this.masterEnabled || !this._initialized) return;
 
-    // Data already updated by updateData() — just draw
+    const now = performance.now();
+
+    // Data update — time-based only, explicit mark after fetch
+    for (const panel of this.panels) {
+      if (panel.visible && panel.isDue(now)) {
+        panel.markRendered(now);
+        panel._cachedData  = this._getDataForPanel(panel);
+        panel._dataDirty   = true;   // trigger offscreen redraw
+      }
+    }
+
+    // Draw every visible panel every frame using cached data
     for (const panel of this.panels) {
       if (!panel.visible) continue;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
@@ -121,8 +106,6 @@ export const DebugRouter = {
 
   toggleAll() {
     this.masterEnabled = !this.masterEnabled;
-    // Force all panels to redraw — pin button visibility changes with debug state
-    for (const panel of this.panels) panel._chromeDirty = true;
     try { window.InAims?.onDebugToggle(this.masterEnabled); } catch (_) {}
   },
 

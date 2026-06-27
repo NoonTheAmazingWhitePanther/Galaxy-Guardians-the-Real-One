@@ -346,7 +346,7 @@
         "x": 159,
         "y": 80
       },
-      "refreshRate": 250,
+      "refreshRate": 200,
       "summaryVariable": "QueOps.budget",
       "summaryLabel": "Budget",
       "lines": [

@@ -29,11 +29,20 @@ export const TuningLayer = {
     console.log(`[TuningLayer] Unpinned: ${panel.id}`);
   },
 
-  // Called every rAF from main.js inside shouldRender block
-  // Data is already fresh from DebugRouter.updateData() called unconditionally
+  // Called every rAF from main.js — outside debug toggle gate
   drawAll(ctx) {
     if (this._panels.length === 0) return;
+
+    const now = performance.now();
+
     for (const panel of this._panels) {
+      // Same isDue/markRendered pattern as DebugRouter — shared timer, no conflict
+      if (panel.isDue(now)) {
+        panel.markRendered(now);
+        if (window._DebugRouter) {
+          panel._cachedData = window._DebugRouter._getDataForPanel(panel);
+        }
+      }
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
   },

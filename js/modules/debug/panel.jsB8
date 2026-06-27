@@ -30,11 +30,11 @@ export class Panel {
     this._scrollOffset      = 0;   // pixels scrolled down
     this._masterDragging = false;
 
-    this.refreshRates   = DEBUG_STATE.refreshRates;
-    this.refreshRate    = config.refreshRate ?? 100;   // use exact config value
-    this.currentRateIdx = this.refreshRates.reduce((best, r, i) =>
-      Math.abs(r - this.refreshRate) < Math.abs(this.refreshRates[best] - this.refreshRate) ? i : best, 0);
-    this._lastRender    = 0;
+    this.refreshRates = DEBUG_STATE.refreshRates;
+    this.currentRateIdx = this.refreshRates.indexOf(config.refreshRate ?? 100);
+    if (this.currentRateIdx === -1) this.currentRateIdx = 2;
+    this.refreshRate = this.refreshRates[this.currentRateIdx];
+    this._lastRender = 0;
     
     // ✅ FIX: Cache for stable rendering
     this._cachedData = {};
@@ -652,8 +652,7 @@ export class Panel {
 
   // Pure check — no side effect. Safe to call from multiple systems.
   isDue(now) {
-    const rate = this.refreshRate || 100;
-    return (now - this._lastRender) >= rate;
+    return (now - this._lastRender) >= this.refreshRate;
   }
 
   // Explicitly advance the timer. Call after data has been fetched.

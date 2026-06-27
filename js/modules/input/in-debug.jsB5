@@ -133,8 +133,9 @@ export const InDebug = {
    *
    * Returns: true if consumed, false otherwise   */
   handleDown(e) {
-    // When debug is off, only process input if tuning panels exist
-    if (!DebugRouter.masterEnabled && TuningLayer._panels.length === 0) {
+    // Hard gate — if debug is off, never consume any input
+    if (!DebugRouter.masterEnabled) {
+      this._releaseAll();
       return false;
     }
 
@@ -303,16 +304,10 @@ export const InDebug = {
   handleMove(e) {
     if (e.pointerId !== this.pointerId) return false;
 
-    // If debug is off, only continue if there's an active tuning panel interaction
+    // Safety — if debug turned off, release
     if (!DebugRouter.masterEnabled) {
-      const hasTuning = this._scrollingPanel?.pinned
-        || this._activePanelMaster?.pinned
-        || this.activePanel?.pinned
-        || this._panelMasterDragging;
-      if (!hasTuning) {
-        this._releaseAll();
-        return false;
-      }
+      this._releaseAll();
+      return false;
     }
 
     const x = e.clientX;

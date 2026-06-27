@@ -12,14 +12,14 @@ import { DEBUG_STATE } from './debug-state.js';
 import { resolveVariable } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
-const SLIDER_W        = 20;
-const SLIDER_PAD      = 6;
+const SLIDER_W        = 12;
+const SLIDER_PAD      = 1;
 const THUMB_H         = 16;
 const MINIMIZE_BTN_SIZE = 16;
 
 // ── Minimized knob constants ──────────────────────────────────────────────
 const KNOB_R          = 16;   // outer radius
-const KNOB_PAD_RIGHT  = 10;   // gap from panel right edge to knob centre
+const KNOB_PAD_RIGHT  = 10;   // gap from panel right edge to knob a,
 const ARC_START       = Math.PI * 0.75;   // 135° — bottom-left
 const ARC_END         = Math.PI * 2.25;   // 405° — bottom-right  (270° sweep)
 
@@ -56,7 +56,7 @@ export const PanelMasterSlider = {
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
         knobMin   = 0;
-        knobMax   = 2;
+        knobMax   = 10;
         knobLabel = 'x';
       }
 
@@ -159,15 +159,13 @@ export const PanelMasterSlider = {
       const btnX    = x + panelW - btnSize - 2;
       const btnY    = y + 2;
 
-      // Pin button — only shown when debug is on
+      // Pin button — emoji only, no box
       const pinBtnX = btnX - btnSize - 2;
-      if (window._DebugRouter?.masterEnabled) {
-        ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
-        ctx.font         = `8px ${s.font}`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('📌', pinBtnX + btnSize / 2, btnY + btnSize / 2);
-      }
+      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
+      ctx.font         = `8px ${s.font}`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📌', pinBtnX + btnSize / 2, btnY + btnSize / 2);
 
       // Expand button ▲
       ctx.fillStyle    = 'rgba(130,210,255,0.25)';
@@ -246,11 +244,9 @@ export const PanelMasterSlider = {
       const btnY    = panelY + 2;
       const pinBtnX = btnX - btnSize - 2;
 
-      // Pin button only hittable when debug is on
-      if (window._DebugRouter?.masterEnabled) {
-        if (x >= pinBtnX && x <= pinBtnX + btnSize && y >= btnY && y <= btnY + btnSize) {
-          return { type: 'pin' };
-        }
+      // Pin button
+      if (x >= pinBtnX && x <= pinBtnX + btnSize && y >= btnY && y <= btnY + btnSize) {
+        return { type: 'pin' };
       }
       // Expand button
       if (x >= btnX && x <= btnX + btnSize && y >= btnY && y <= btnY + btnSize) {

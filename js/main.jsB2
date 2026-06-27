@@ -288,9 +288,6 @@ function mainLoop(t) {
                 + (CameraModule.isPanning ? 30 : 0);
   RenderGov.feedChaos(_camVel, 0, didPhysicsTick);
 
-  // Data update — every rAF, unconditionally, before any drawing
-  DebugRouter.updateData();
-
   // Debug panels — inside shouldRender per your architecture rule
   if (RenderGov.shouldRender()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
@@ -314,16 +311,20 @@ function mainLoop(t) {
       slider.value
     );
 
+    
     OverlaysModule.updateCount(pcountEl);
     DebugRouter.drawAll(ctx);
-    TuningLayer.drawAll(ctx);
     _drawAimCursor(ctx);
+    TuningLayer.drawAll(ctx);
+    
   }
-
+  
   if (cursorEl) {
     cursorEl.style.left = InputState.mouseX + "px";
     cursorEl.style.top = InputState.mouseY + "px";
   }
+  
+  
 }
 
 if (document.readyState === 'loading') {
