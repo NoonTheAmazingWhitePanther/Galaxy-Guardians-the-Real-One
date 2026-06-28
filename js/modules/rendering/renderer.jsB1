@@ -21,7 +21,6 @@ import { CameraModule }   from '../camera/camera.module.js';
 import { StateCache }     from '../../core/state-cache.js';
 import { state }          from '../../core/state.js';
 import { DrawCallCounter, PassProbe } from '../debug/draw-call-counter.js';
-import { MsProbe } from '../../core/ms-probe.js';
 
 export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore = null) {
   const w   = CameraModule.width;
@@ -92,8 +91,8 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     TweenRenderer.revertTween();
   }
 
-  // 15. Flip: blit finished stage to main canvas
-  MsProbe.call('render.accumulator', () => Accumulator.flip(ctx));
+  // 14. Flip: blit finished stage to main canvas, swap buffers
+  Accumulator.flip(ctx);
 
   // 15. Commit draw call counts for this frame
   DrawCallCounter.endFrame();

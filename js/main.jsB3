@@ -17,7 +17,6 @@ import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 import { TuningLayer } from './modules/tuning/tuning-layer.js';
-import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
 // ✅ FIX: Import from unified governor
@@ -143,11 +142,9 @@ export function resetGame(newThemeName = null) {
 
 function physicsTick() {
   StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
-  MsProbe.call('physics.tick', () => {
-    tickBodies(currentPhysicsStep);
-    tickLoose(currentPhysicsStep);
-    AsteroidsModule.tick(currentPhysicsStep);
-  });
+  tickBodies(currentPhysicsStep);
+  tickLoose(currentPhysicsStep);
+  AsteroidsModule.tick(currentPhysicsStep);
 }
 
 function runPreCalc() {
@@ -221,7 +218,7 @@ function _drawAimCursor(ctx) {
 
 function mainLoop(t) {
   DebugRouter.resetAll();
-  MsProbe.call('queops.tick', () => QueOps.tick());
+  QueOps.tick();
   requestAnimationFrame(mainLoop);
 
   // Feed FPS counter every frame — before any frame-skip logic
@@ -298,7 +295,7 @@ function mainLoop(t) {
   if (RenderGov.shouldRender()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
-    MsProbe.call('render.drawAll', () => DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
       OverlaysModule.drawOrbitPreview(
         drawCtx,
         InputState.isHolding,
@@ -306,7 +303,7 @@ function mainLoop(t) {
         InputState.mouseX,
         InputState.mouseY
       );
-    }));
+    });
 
     OverlaysModule.drawCharge(
       ctx,
@@ -318,8 +315,13 @@ function mainLoop(t) {
     );
 
     OverlaysModule.updateCount(pcountEl);
+    
+    
+    
     DebugRouter.drawAll(ctx);
+    
     TuningLayer.drawAll(ctx);
+    
     _drawAimCursor(ctx);
   }
 

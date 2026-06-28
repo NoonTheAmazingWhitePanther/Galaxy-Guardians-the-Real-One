@@ -41,158 +41,171 @@ export const PanelMasterSlider = {
     const s = DEBUG_STATE.style;
 
     if (minimized) {
-      // ── KNOB MODE ────────────────────────────────────────────────────────
-      // Decide knob value source: variable knob or panel master gain
-      const kCfg     = panel.config?.minimizedKnob;
-      const isVar    = !!kCfg;
+      // ── KNOB VALUE SOURCE ───────────────────────────────────────────────
+      const kCfg    = panel.config?.minimizedKnob;
+      const isVar   = !!kCfg;
       let knobValue, knobMin, knobMax, knobLabel;
-
       if (isVar) {
         const varRef = resolveVariable(kCfg.variable);
-        knobValue    = varRef?.get() ?? 0;
-        knobMin      = kCfg.min   ?? 0;
-        knobMax      = kCfg.max   ?? 10;
-        knobLabel    = kCfg.label ?? '';
+        knobValue = varRef?.get() ?? 0;
+        knobMin   = kCfg.min   ?? 0;
+        knobMax   = kCfg.max   ?? 10;
+        knobLabel = kCfg.label ?? '';
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
         knobMin   = 0;
         knobMax   = 2;
         knobLabel = 'x';
       }
-
-      const kx    = x + panelW - KNOB_PAD_RIGHT - KNOB_R;
-      const ky    = y + panelH / 2;
       const frac  = knobMax > knobMin
-        ? Math.max(0, Math.min(1, (knobValue - knobMin) / (knobMax - knobMin)))
-        : 0;
-      const angle = ARC_START + frac * (ARC_END - ARC_START);
-
-      // — track arc —
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth   = 4;
-      ctx.lineCap     = 'round';
-      ctx.beginPath();
-      ctx.arc(kx, ky, KNOB_R, ARC_START, ARC_END);
-      ctx.stroke();
-
-      // — value arc —
+        ? Math.max(0, Math.min(1, (knobValue - knobMin) / (knobMax - knobMin))) : 0;
+      const angle    = ARC_START + frac * (ARC_END - ARC_START);
       const arcColor = isVar
         ? (knobValue > 0 ? 'rgba(130,210,255,0.85)' : 'rgba(255,255,255,0.3)')
         : _fillColor(knobValue);
-      ctx.strokeStyle = arcColor;
-      ctx.lineWidth   = 4;
-      ctx.beginPath();
-      ctx.arc(kx, ky, KNOB_R, ARC_START, angle);
-      ctx.stroke();
-
-      // — knob body —
-      const grad = ctx.createRadialGradient(kx - 3, ky - 3, 2, kx, ky, KNOB_R - 2);
-      grad.addColorStop(0, 'rgba(80,90,110,0.95)');
-      grad.addColorStop(1, 'rgba(20,22,32,0.95)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(kx, ky, KNOB_R - 5, 0, Math.PI * 2);
-      ctx.fill();
-
-      // — pointer line —
-      const px = kx + Math.cos(angle) * (KNOB_R - 8);
-      const py = ky + Math.sin(angle) * (KNOB_R - 8);
-      ctx.strokeStyle = panel._masterDragging
-        ? 'rgba(255,255,255,1)'
-        : 'rgba(240,245,255,0.75)';
-      ctx.lineWidth = 2;
-      ctx.lineCap   = 'round';
-      ctx.beginPath();
-      ctx.moveTo(kx, ky);
-      ctx.lineTo(px, py);
-      ctx.stroke();
-      ctx.restore();
-
-      // — value label below knob —
-      ctx.fillStyle    = 'rgba(240,245,255,0.7)';
-      ctx.font         = `bold 8px ${s.font}`;
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'top';
       const valStr = isVar
-        ? `${Math.round(knobValue)}${knobLabel}`
-        : `${knobValue.toFixed(2)}x`;
-      ctx.fillText(valStr, kx, y + panelH - 11);
+        ? `${Math.round(knobValue)}${knobLabel}` : `${knobValue.toFixed(2)}x`;
+      const sv          = panel.summaryValue;
+      const manualLabel = panel.manualLabel ?? 'AUTO';
+      const isVert      = panel._minVertical;
 
-      // — title tiny top-left —
-      ctx.save();
-      ctx.fillStyle    = 'rgba(240,245,255,0.35)';
-      ctx.font         = `7px ${s.font}`;
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillText(panel.title, x + 6, y + 4);
+      const _drawKnob = (kx, ky) => {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(kx, ky, KNOB_R, ARC_START, ARC_END); ctx.stroke();
+        ctx.strokeStyle = arcColor; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(kx, ky, KNOB_R, ARC_START, angle); ctx.stroke();
+        const grad = ctx.createRadialGradient(kx-3, ky-3, 2, kx, ky, KNOB_R-2);
+        grad.addColorStop(0, 'rgba(80,90,110,0.95)');
+        grad.addColorStop(1, 'rgba(20,22,32,0.95)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(kx, ky, KNOB_R-5, 0, Math.PI*2); ctx.fill();
+        const px = kx + Math.cos(angle)*(KNOB_R-8);
+        const py = ky + Math.sin(angle)*(KNOB_R-8);
+        ctx.strokeStyle = 'rgba(240,245,255,0.75)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(px, py); ctx.stroke();
+        ctx.restore();
+      };
 
-      // — summary value — true centre of the whole panel, vertically centred —
-      const sv = panel.summaryValue;
-      if (sv !== undefined && sv !== null) {
-        ctx.fillStyle    = s.accent;
-        ctx.font         = `bold 15px ${s.font}`;
+      const _drawIcons = (btnX, btnY, btnSize, orientIcon, orientX, orientY) => {
+        // Orientation toggle
+        ctx.fillStyle    = 'rgba(130,210,255,0.7)';
+        ctx.font         = `9px ${s.font}`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(sv), x + panelW / 2, y + panelH / 2);
-      }
-
-      // — MANUAL/AUTO bottom-left, clipped so it never overflows —
-      const manualLabel = panel.manualLabel ?? 'AUTO';
-      const maxLabelW   = panelW / 2 - 8;  // never past mid-panel
-      ctx.fillStyle    = manualLabel === 'MANUAL'
-        ? 'rgba(255,180,80,0.9)'
-        : 'rgba(130,210,255,0.55)';
-      ctx.font         = `bold 7px ${s.font}`;
-      ctx.textAlign    = 'left';
-      ctx.textBaseline = 'bottom';
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x + 4, y, maxLabelW, panelH);
-      ctx.clip();
-      ctx.fillText(manualLabel, x + 6, y + panelH - 4);
-      ctx.restore();
-      ctx.restore();
-
-      // — expand button ▲ top-right —
-      const btnSize = 12;
-      const btnX    = x + panelW - btnSize - 2;
-      const btnY    = y + 2;
-
-      // Pin button — only shown when debug is on
-      const pinBtnX = btnX - btnSize - 2;
-      if (window._DebugRouter?.masterEnabled) {
-        ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
+        ctx.fillText(orientIcon, orientX, orientY);
+        // Pin
+        if (window._DebugRouter?.masterEnabled) {
+          ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
+          ctx.font         = `8px ${s.font}`;
+          ctx.textAlign    = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('📌', btnX - btnSize - 2 + btnSize/2, btnY + btnSize/2);
+        }
+        // Expand ▲
+        ctx.fillStyle = 'rgba(130,210,255,0.25)';
+        ctx.beginPath();
+        ctx.roundRect(btnX, btnY, btnSize, btnSize, 2);
+        ctx.fill();
+        ctx.fillStyle    = 'rgba(240,245,255,0.7)';
         ctx.font         = `8px ${s.font}`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('📌', pinBtnX + btnSize / 2, btnY + btnSize / 2);
+        ctx.fillText('▲', btnX + btnSize/2, btnY + btnSize/2);
+        // Resize ⊿
+        ctx.fillStyle    = 'rgba(240,245,255,0.25)';
+        ctx.font         = `10px ${s.font}`;
+        ctx.textAlign    = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('⊿', x + panelW - 2, y + panelH - 2);
+      };
+
+      if (isVert) {
+        // ── VERTICAL ──────────────────────────────────────────────────────
+        const kx = x + panelW / 2;
+        const ky = y + 20 + 14 + 18 + KNOB_R;
+        const btnSize = 12;
+        const btnX    = x + panelW - btnSize - 2;
+        const btnY    = y + 2;
+
+        // Title
+        ctx.fillStyle = 'rgba(240,245,255,0.35)';
+        ctx.font      = `7px ${s.font}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(panel.title, x + panelW/2, y + 20);
+        // Summary value
+        if (sv !== undefined && sv !== null) {
+          ctx.fillStyle = s.accent;
+          ctx.font      = `bold 11px ${s.font}`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+          ctx.fillText(String(sv), x + panelW/2, y + 32);
+        }
+        // Knob
+        _drawKnob(kx, ky);
+        // Value label
+        ctx.fillStyle = 'rgba(240,245,255,0.7)';
+        ctx.font      = `bold 7px ${s.font}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(valStr, kx, ky + KNOB_R + 3);
+        // Manual label
+        ctx.fillStyle = manualLabel === 'MANUAL' ? 'rgba(255,180,80,0.9)' : 'rgba(130,210,255,0.55)';
+        ctx.font      = `bold 7px ${s.font}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(manualLabel, x + panelW/2, ky + KNOB_R + 14);
+        // Icons
+        _drawIcons(btnX, btnY, btnSize, '⇔', x + 8, btnY + btnSize/2);
+
+      } else {
+        // ── HORIZONTAL ────────────────────────────────────────────────────
+        const kx = x + panelW - KNOB_PAD_RIGHT - KNOB_R;
+        const ky = y + panelH / 2;
+        const btnSize = 12;
+        const btnX    = x + panelW - btnSize - 2;
+        const btnY    = y + 2;
+
+        // Knob
+        _drawKnob(kx, ky);
+        // Value label below knob
+        ctx.fillStyle = 'rgba(240,245,255,0.7)';
+        ctx.font      = `bold 8px ${s.font}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(valStr, kx, y + panelH - 11);
+        // Title top-left
+        ctx.fillStyle = 'rgba(240,245,255,0.35)';
+        ctx.font      = `7px ${s.font}`;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText(panel.title, x + 6, y + 4);
+        // Summary value centre
+        if (sv !== undefined && sv !== null) {
+          ctx.fillStyle = s.accent;
+          ctx.font      = `bold 15px ${s.font}`;
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(String(sv), x + panelW/2, y + panelH/2);
+        }
+        // Manual label bottom-left clipped
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x + 4, y, panelW/2 - 8, panelH);
+        ctx.clip();
+        ctx.fillStyle = manualLabel === 'MANUAL' ? 'rgba(255,180,80,0.9)' : 'rgba(130,210,255,0.55)';
+        ctx.font      = `bold 7px ${s.font}`;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+        ctx.fillText(manualLabel, x + 6, y + panelH - 4);
+        ctx.restore();
+        // Icons
+        _drawIcons(btnX, btnY, btnSize, '⇕', x + 8, y + panelH - 6);
       }
 
-      // Expand button ▲
-      ctx.fillStyle    = 'rgba(130,210,255,0.25)';
-      ctx.beginPath();
-      ctx.roundRect(btnX, btnY, btnSize, btnSize, 2);
-      ctx.fill();
-      ctx.fillStyle    = 'rgba(240,245,255,0.7)';
-      ctx.font         = `8px ${s.font}`;
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('▲', btnX + btnSize / 2, btnY + btnSize / 2);
-
     } else {
-      // — resize grip ⊿ bottom-right —
-      ctx.fillStyle    = 'rgba(240,245,255,0.25)';
-      ctx.font         = `10px ${s.font}`;
-      ctx.textAlign    = 'right';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('⊿', x + panelW - 2, y + panelH - 2);
+      // ── EXPANDED — vertical slider on right edge ──────────────────────
       const value   = panel.panelMasterValue ?? 1.0;
       const sliderX = x + panelW + SLIDER_PAD;
       const sliderY = y;
       const sliderH = panelH;
 
-      // minimize button
+      // Minimize button ▼
       const btnX = x + panelW - MINIMIZE_BTN_SIZE - 4;
       const btnY = y + 4;
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
@@ -206,44 +219,41 @@ export const PanelMasterSlider = {
       ctx.font         = `10px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('▼', btnX + MINIMIZE_BTN_SIZE / 2, btnY + MINIMIZE_BTN_SIZE / 2);
+      ctx.fillText('▼', btnX + MINIMIZE_BTN_SIZE/2, btnY + MINIMIZE_BTN_SIZE/2);
 
-      // track
+      // Track
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.beginPath();
       ctx.roundRect(sliderX, sliderY, SLIDER_W, sliderH, 4);
       ctx.fill();
 
-      // fill
-      const thumbY    = sliderY + sliderH - (value / 2.0) * sliderH;
-      ctx.fillStyle   = _fillColor(value);
+      // Fill
+      const thumbY  = sliderY + sliderH - (value / 2.0) * sliderH;
+      ctx.fillStyle = _fillColor(value);
       ctx.beginPath();
       ctx.roundRect(sliderX, thumbY, SLIDER_W, sliderH - (thumbY - sliderY), 4);
       ctx.fill();
 
-      // thumb
+      // Thumb
       ctx.fillStyle   = panel._masterDragging
-        ? 'rgba(255,255,255,0.95)'
-        : 'rgba(240,245,255,0.85)';
+        ? 'rgba(255,255,255,0.95)' : 'rgba(240,245,255,0.85)';
       ctx.beginPath();
-      ctx.roundRect(sliderX + 2, thumbY - THUMB_H / 2, SLIDER_W - 4, THUMB_H, 3);
+      ctx.roundRect(sliderX + 2, thumbY - THUMB_H/2, SLIDER_W - 4, THUMB_H, 3);
       ctx.fill();
       ctx.strokeStyle = panel._masterDragging
-        ? 'rgba(130,210,255,0.8)'
-        : 'rgba(255,255,255,0.3)';
+        ? 'rgba(130,210,255,0.8)' : 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // value label
+      // Value label
       ctx.fillStyle    = 'rgba(240,245,255,0.9)';
       ctx.font         = `bold 10px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`${value.toFixed(2)}x`, sliderX + SLIDER_W / 2, thumbY);
+      ctx.fillText(`${value.toFixed(2)}x`, sliderX + SLIDER_W/2, thumbY);
     }
   },
 
-  // ── hitTest ──────────────────────────────────────────────────────────────
   hitTest(panel, x, y, panelX, panelY, panelW, panelH, minimized) {
     if (minimized) {
       const btnSize = 12;
@@ -262,9 +272,16 @@ export const PanelMasterSlider = {
         return { type: 'minimize' };
       }
 
-      // Knob hit area — exclude bottom-right corner (reserved for resize grip)
+      // Orientation toggle — top-left 18×18 area
+      if (x >= panelX && x <= panelX + 18 && y >= panelY && y <= panelY + 18) {
+        return { type: 'orientToggle' };
+      }
+
+      // Knob hit area — exclude bottom-right corner (resize grip)
       const kx   = panelX + panelW - KNOB_PAD_RIGHT - KNOB_R;
-      const ky   = panelY + panelH / 2;
+      const ky   = panel._minVertical
+        ? panelY + 20 + 14 + 18 + KNOB_R
+        : panelY + panelH / 2;
       const dist = Math.hypot(x - kx, y - ky);
       const inResizeCorner = x >= panelX + panelW - 36 && y >= panelY + panelH - 36;
       if (dist <= KNOB_R + 4 && !inResizeCorner) {

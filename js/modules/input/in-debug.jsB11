@@ -206,11 +206,6 @@ export const InDebug = {
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
-        } else if (masterHit.type === 'orientToggle') {
-          panel.toggleMinOrientation();
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          return true;
         } else if (masterHit.type === 'slider') {
           panel.panelMasterValue = masterHit.value;
           this._panelMasterDragging = true;
