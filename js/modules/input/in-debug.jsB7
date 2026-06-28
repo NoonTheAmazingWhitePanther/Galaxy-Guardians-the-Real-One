@@ -38,14 +38,9 @@ import { resolveVariable } from '../debug/governor.js';
 export const InDebug = {
   _canvas: null,
   isDragging: false,
-  _scrollingPanel:  null,
-  _scrollStartY:    0,
-  _scrollStartOff:  0,
-  _resizingPanel:   null,
-  _resizeStartX:    0,
-  _resizeStartY:    0,
-  _resizeStartW:    0,
-  _resizeStartH:    0,
+  _scrollingPanel: null,
+  _scrollStartY:   0,
+  _scrollStartOff: 0,
   activePanel: null,
   pointerId: null,
   startX: 0,
@@ -123,8 +118,7 @@ export const InDebug = {
     this._panelMasterDragging = false;
     this._panelMasterKnob = false;
     this._activePanelMaster = null;
-    this._scrollingPanel  = null;
-    this._resizingPanel   = null;
+    this._scrollingPanel = null;
   },
 
   /**
@@ -166,26 +160,6 @@ export const InDebug = {
       // Get layout for this panel (needed for hit-testing)
       const data = panel.getData();
       const layout = panel.computeLayout(data);
-      const pw = layout.w;
-      const ph = layout.h;
-
-      // ── Resize grip — bottom-right, checked FIRST before knob/master
-      const GRIP  = 36;
-      const gripX = panel.x + pw - GRIP;
-      const gripY = panel.y + ph - GRIP;
-
-      if (x >= gripX && x <= gripX + GRIP && y >= gripY && y <= gripY + GRIP) {
-        this._resizingPanel = panel;
-        this._resizeStartX  = x;
-        this._resizeStartY  = y;
-        this._resizeStartW  = pw;
-        this._resizeStartH  = ph;
-        this.pointerId = e.pointerId;
-        try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return true;
-      }
 
       // ── 2. Check per-panel master slider ────────────────────────────
       const masterHit = PanelMasterSlider.hitTest(
@@ -343,7 +317,6 @@ export const InDebug = {
       const hasTuning = this._scrollingPanel?.pinned
         || this._activePanelMaster?.pinned
         || this.activePanel?.pinned
-        || this._resizingPanel?.pinned
         || this._panelMasterDragging;
       if (!hasTuning) {
         this._releaseAll();
@@ -353,24 +326,6 @@ export const InDebug = {
 
     const x = e.clientX;
     const y = e.clientY;
-
-    // ── Panel resize drag ─────────────────────────────────────────────
-    if (this._resizingPanel) {
-      const panel = this._resizingPanel;
-      const MIN   = 52;
-      const newW  = Math.max(MIN, this._resizeStartW + (x - this._resizeStartX));
-      const newH  = Math.max(MIN, this._resizeStartH + (y - this._resizeStartY));
-      if (panel.minimized) {
-        panel._userMinW = newW;
-        panel._userMinH = newH;
-      } else {
-        panel._userW = newW;
-        panel._userH = newH;
-      }
-      panel._chromeDirty = true;
-      e.preventDefault();
-      return true;
-    }
 
     // ── Panel scroll drag ─────────────────────────────────────────────
     if (this._scrollingPanel) {

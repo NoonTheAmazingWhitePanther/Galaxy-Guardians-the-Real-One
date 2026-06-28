@@ -166,26 +166,6 @@ export const InDebug = {
       // Get layout for this panel (needed for hit-testing)
       const data = panel.getData();
       const layout = panel.computeLayout(data);
-      const pw = layout.w;
-      const ph = layout.h;
-
-      // ── Resize grip — bottom-right, checked FIRST before knob/master
-      const GRIP  = 36;
-      const gripX = panel.x + pw - GRIP;
-      const gripY = panel.y + ph - GRIP;
-
-      if (x >= gripX && x <= gripX + GRIP && y >= gripY && y <= gripY + GRIP) {
-        this._resizingPanel = panel;
-        this._resizeStartX  = x;
-        this._resizeStartY  = y;
-        this._resizeStartW  = pw;
-        this._resizeStartH  = ph;
-        this.pointerId = e.pointerId;
-        try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        return true;
-      }
 
       // ── 2. Check per-panel master slider ────────────────────────────
       const masterHit = PanelMasterSlider.hitTest(
@@ -292,6 +272,24 @@ export const InDebug = {
           e.stopImmediatePropagation();
           return true;
         }
+      }
+
+      // ── Resize grip — 32×32 transparent hit area, bottom-right corner ──
+      const GRIP = 32;
+      if (x >= panel.x + (panel.w ?? 0) - GRIP &&
+          y >= panel.y + (panel.h ?? 0) - GRIP &&
+          panel.w && panel.h) {
+        this._resizingPanel = panel;
+        this._resizeStartX  = x;
+        this._resizeStartY  = y;
+        // Capture current size for the current state (min vs expanded)
+        this._resizeStartW  = panel.w ?? 135;
+        this._resizeStartH  = panel.h ?? 52;
+        this.pointerId = e.pointerId;
+        try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
       }
 
       // ── 4. Panel body hit → drag to move, or scroll if scrollable ──────

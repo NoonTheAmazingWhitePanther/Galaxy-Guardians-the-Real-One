@@ -24,10 +24,6 @@ export class Panel {
 
     this.panelMasterValue   = 1.0;
     this.pinned             = false;
-    this._userW             = null;   // expanded width override
-    this._userH             = null;   // expanded height override
-    this._userMinW          = null;   // minimized width override
-    this._userMinH          = null;   // minimized height override
     this._collapsedSections = new Set(
       (config.collapsedByDefault || [])
     );
@@ -379,22 +375,16 @@ export class Panel {
     const s = DEBUG_STATE.style;
     const sc = DEBUG_STATE.scale;
 
-    const MIN_W = 52;
-    const MIN_H = 52;
-
     if (this.minimized) {
       let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
-      pw = Math.floor(pw * 0.75);
+      pw = Math.floor(pw * 0.75); 
       const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * 2);
-      const fw = this._userMinW ? Math.max(MIN_W, this._userMinW) : pw;
-      const fh = this._userMinH ? Math.max(MIN_H, this._userMinH) : ph;
-      return { w: fw, h: fh, lines: [], controls: [], minimized: true };
+      return { w: pw, h: ph, lines: [], controls: [], minimized: true };
     }
 
     const lines = this.buildLines(data);
     let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
     pw = Math.floor(pw * 0.75);
-    if (this._userW) pw = Math.max(MIN_W, this._userW);
 
     let cy = s.padY * sc;
     cy += s.lineHeight * sc * lines.length;
@@ -413,10 +403,11 @@ export class Panel {
     const totalContentH = cy;
     const maxH          = this.config.maxHeight ?? Infinity;
     const keepMax       = this.config.keepMaxHeight ?? false;
-    let clampedH        = keepMax
+    // keepMaxHeight=true  → panel is always exactly maxHeight (fixed size)
+    // keepMaxHeight=false → panel grows naturally, scrolls when over maxHeight
+    const clampedH      = keepMax
       ? (this.config.maxHeight ?? cy)
       : Math.min(cy, maxH);
-    if (this._userH) clampedH = Math.max(MIN_H, this._userH);
 
     // Clamp scroll so we never go past the bottom
     if (this._scrollOffset > totalContentH - clampedH) {
@@ -467,14 +458,11 @@ export class Panel {
 
     // Hit test section headers
     const scrollY = layout.scrollOffset ?? 0;
-    const tapLX   = x - this.x;
-    const tapLY   = y - this.y;
     let lineY = py + lh / 2;
     for (const ln of layout.lines) {
-      const linePY = lineY - scrollY;
+      const adjLY = lineY - scrollY;
       if (ln.isSectionHeader) {
-        if (tapLX >= px && tapLX <= pw - px &&
-            tapLY >= linePY - lh / 2 && tapLY <= linePY + lh / 2) {
+        if (lx >= px && lx <= pw - px && adjLY >= btnY && adjLY <= adjLY + lh) {
           return { type: 'sectionHeader', key: ln.key };
         }
       }

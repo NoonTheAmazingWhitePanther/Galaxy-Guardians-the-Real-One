@@ -262,12 +262,11 @@ export const PanelMasterSlider = {
         return { type: 'minimize' };
       }
 
-      // Knob hit area — exclude bottom-right corner (reserved for resize grip)
+      // Knob hit area
       const kx   = panelX + panelW - KNOB_PAD_RIGHT - KNOB_R;
       const ky   = panelY + panelH / 2;
       const dist = Math.hypot(x - kx, y - ky);
-      const inResizeCorner = x >= panelX + panelW - 36 && y >= panelY + panelH - 36;
-      if (dist <= KNOB_R + 4 && !inResizeCorner) {
+      if (dist <= KNOB_R + 4) {
         return { type: 'knob', kx, ky };
       }
       return null;

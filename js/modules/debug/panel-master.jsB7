@@ -181,12 +181,7 @@ export const PanelMasterSlider = {
       ctx.fillText('▲', btnX + btnSize / 2, btnY + btnSize / 2);
 
     } else {
-      // — resize grip ⊿ bottom-right —
-      ctx.fillStyle    = 'rgba(240,245,255,0.25)';
-      ctx.font         = `10px ${s.font}`;
-      ctx.textAlign    = 'right';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('⊿', x + panelW - 2, y + panelH - 2);
+      // ── SLIDER MODE (expanded) ────────────────────────────────────────────
       const value   = panel.panelMasterValue ?? 1.0;
       const sliderX = x + panelW + SLIDER_PAD;
       const sliderY = y;
@@ -262,12 +257,11 @@ export const PanelMasterSlider = {
         return { type: 'minimize' };
       }
 
-      // Knob hit area — exclude bottom-right corner (reserved for resize grip)
+      // Knob hit area
       const kx   = panelX + panelW - KNOB_PAD_RIGHT - KNOB_R;
       const ky   = panelY + panelH / 2;
       const dist = Math.hypot(x - kx, y - ky);
-      const inResizeCorner = x >= panelX + panelW - 36 && y >= panelY + panelH - 36;
-      if (dist <= KNOB_R + 4 && !inResizeCorner) {
+      if (dist <= KNOB_R + 4) {
         return { type: 'knob', kx, ky };
       }
       return null;

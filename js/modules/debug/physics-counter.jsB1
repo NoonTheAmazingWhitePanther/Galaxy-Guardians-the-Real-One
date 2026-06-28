@@ -8,9 +8,7 @@
  */
 
 function _debugOn() {
-  if (window._DebugRouter?.masterEnabled) return true;
-  if (window._TuningLayer?._panels?.length > 0) return true;
-  return false;
+  return window._DebugRouter?.masterEnabled ?? true;
 }
 
 export const PhysicsCounter = {

@@ -161,16 +161,9 @@ export const DebugRenderer = {
       ctx.textBaseline = 'middle';
       ctx.fillText('▼', minBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
     }
-    // Resize grip ⊿ bottom-right corner — always shown
-    const gripSize = 12;
-    const gripX    = pw - gripSize - 2;
-    const gripY    = ph - gripSize - 2;
-    ctx.fillStyle  = 'rgba(240,245,255,0.25)';
-    ctx.font       = `${gripSize}px ${s.font}`;
-    ctx.textAlign  = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('⊿', pw - 2, ph - 2);
   },
+
+  // Data = lines + controls — drawn live every rendered frame, never cached
   _drawData(ctx, panel, data, layout, pw, ph, sc, s) {
     const { lines, controls } = layout;
     const fontSize   = s.fontSize * sc;

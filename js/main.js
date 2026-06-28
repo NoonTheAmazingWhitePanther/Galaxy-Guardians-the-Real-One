@@ -315,8 +315,13 @@ function mainLoop(t) {
     );
 
     OverlaysModule.updateCount(pcountEl);
+    
+    
+    
     DebugRouter.drawAll(ctx);
+    
     TuningLayer.drawAll(ctx);
+    
     _drawAimCursor(ctx);
   }
 

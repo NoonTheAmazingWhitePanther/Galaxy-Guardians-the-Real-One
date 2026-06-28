@@ -24,10 +24,8 @@ export class Panel {
 
     this.panelMasterValue   = 1.0;
     this.pinned             = false;
-    this._userW             = null;   // expanded width override
-    this._userH             = null;   // expanded height override
-    this._userMinW          = null;   // minimized width override
-    this._userMinH          = null;   // minimized height override
+    this._userW             = null;   // null = auto width
+    this._userH             = null;   // null = auto height
     this._collapsedSections = new Set(
       (config.collapsedByDefault || [])
     );
@@ -386,8 +384,8 @@ export class Panel {
       let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
       pw = Math.floor(pw * 0.75);
       const ph = (s.padY * 2 * sc) + (s.lineHeight * sc * 2);
-      const fw = this._userMinW ? Math.max(MIN_W, this._userMinW) : pw;
-      const fh = this._userMinH ? Math.max(MIN_H, this._userMinH) : ph;
+      const fw = this._userW ? Math.max(MIN_W, this._userW) : pw;
+      const fh = this._userH ? Math.max(MIN_H, this._userH) : ph;
       return { w: fw, h: fh, lines: [], controls: [], minimized: true };
     }
 
