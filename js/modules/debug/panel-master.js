@@ -9,7 +9,7 @@
  * Drag up = increase, drag down = decrease (standard knob feel).
  */
 import { DEBUG_STATE } from './debug-state.js';
-import { resolveVariable, RenderGov } from './governor.js';
+import { resolveVariable, resolveDynamicMax } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
 const SLIDER_W        = 20;
@@ -55,9 +55,10 @@ export const PanelMasterSlider = {
         const varRef = resolveVariable(kCfg.variable);
         knobValue = varRef?.get() ?? 0;
         knobMin   = kCfg.min   ?? 0;
-        // Dynamic max — tracks RenderGov.BASE live (e.g. frame skip knob
-        // must always cap at the currently selected base: 60/120/240/...)
-        knobMax   = kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 10);
+        // Dynamic max — tracks the configured governor's BASE live (e.g. a
+        // frame/tick-skip knob must always cap at the currently selected
+        // base: 60/120/240/...)
+        knobMax   = resolveDynamicMax(kCfg, 10);
         knobLabel = kCfg.label ?? '';
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
@@ -227,7 +228,7 @@ export const PanelMasterSlider = {
       const kCfg      = panel.config?.minimizedKnob;
       const boundVar  = kCfg ? resolveVariable(kCfg.variable) : null;
       const sliderMin = kCfg?.min ?? 0;
-      const sliderMax = kCfg?.dynamicMaxFromBase ? RenderGov.BASE : (kCfg?.max ?? 2);
+      const sliderMax = resolveDynamicMax(kCfg, 2);
       const rawValue  = boundVar ? boundVar.get() : (panel.panelMasterValue ?? 1.0);
       const value     = boundVar
         ? (rawValue - sliderMin) / Math.max(1, sliderMax - sliderMin) * 2  // normalize to 0-2 for thumb math
@@ -343,7 +344,7 @@ export const PanelMasterSlider = {
       const kCfg = panel.config?.minimizedKnob;
       if (kCfg) {
         const min = kCfg.min ?? 0;
-        const max = kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2);
+        const max = resolveDynamicMax(kCfg, 2);
         let boundValue = min + frac * (max - min);
         if (kCfg.integer) boundValue = Math.round(boundValue);
         return { type: 'slider', value: boundValue, isBound: true };

@@ -89,17 +89,26 @@ export const ManualOverrides = {
   // Physics
   physicsSubsteps:          { isManual: false, value: 4 },
   physicsTimeScale:         { isManual: false, value: 1.0 },
+  physicsFrameSkip:         { isManual: false, value: 0 },
+  physicsSkipBase:          { isManual: false, value: 60 },  // 60/120/240/480/960 — independent from render's
   // Render
   renderFrameSkip:          { isManual: false, value: 0 },
   renderSkipBase:           { isManual: false, value: 60 },  // 60/120/240/480/960
+  // Input
+  inputFrameSkip:           { isManual: false, value: 0 },
+  inputSkipBase:            { isManual: false, value: 60 },  // 30/60/120 — pointermove events, not rAF frames
   // QueOps
   queOpsBudget:             { isManual: false, value: 128 },
   queOpsDelay:              { isManual: false, value: 0.2 },
   queOpsDeferredThreshold:  { isManual: false, value: 50 },
   queOpsSkippedThreshold:   { isManual: false, value: 20 },
-  // StateCache
+  // StateCache (old interpolation vault)
   cacheVaultSize:           { isManual: false, value: 120 },
   cacheSnapshotInterval:    { isManual: false, value: 1 },
+  // FutureCache (new ahead-of-time tick cache)
+  cacheEnabled:             { isManual: false, value: 1 },
+  cacheTargetAhead:         { isManual: false, value: 100 },  // "amount of future steps to cache"
+  cacheMsBudget:            { isManual: false, value: 2.0 },  // spare ms/frame spent caching ahead
 
   // set() — marks as manual and updates value. Used by Governor buttons.
   set(key, value) {
@@ -149,6 +158,12 @@ export const PhysicsGov = {
   _step: 0.016,
   _autoTimeScale: 1.0,
 
+  // AUTO tick-skip always stays 0 — physics correctness comes first, unlike
+  // render where auto-skipping a draw is harmless. This is a manual-only
+  // performance knob; feedChaos() never touches it.
+  _autoFrameSkip: 0,
+  _skipAccum:     0,    // fractional accumulator — Bresenham-style, same as RenderGov
+
   feedChaos(chaos, dt, didPhysicsTick) {
     this._chaosLevel = Math.max(0, Math.min(1, chaos / 100));
   },
@@ -168,12 +183,54 @@ export const PhysicsGov = {
     return ManualOverrides.get('physicsTimeScale', this._autoTimeScale);
   },
 
+  // Base cadence — skip count is "N out of BASE" physics ticks.
+  // Independent from RenderGov.BASE — tuned separately from render.
+  get BASE() {
+    return ManualOverrides.get('physicsSkipBase', 60);
+  },
+
+  // Raw skip count — "skip N out of BASE physics ticks"
+  get frameSkip() {
+    return ManualOverrides.get('physicsFrameSkip', this._autoFrameSkip);
+  },
+
+  // Fractional, evenly-distributed tick skip — identical math to
+  // RenderGov.shouldRender(). Gates ONLY the substep-consuming loop in
+  // main.js; physicsAccumulator keeps banking real dt every frame
+  // regardless of this, so a skipped tick never loses simulation time —
+  // it just gets caught up in a bigger batch on the next allowed tick.
+  shouldTick() {
+    const skip = this.frameSkip;
+    if (skip <= 0) return true;
+
+    this._skipAccum += skip / this.BASE;
+    if (this._skipAccum >= 1) {
+      this._skipAccum -= 1;
+      return false;   // this tick is the one we skip
+    }
+    return true;
+  },
+
+  // Label for panel display: "1/60", "0/60" (no skip), etc.
+  get fractionLabel() {
+    const skip = this.frameSkip;
+    return `${skip}/${this.BASE}`;
+  },
+
+  // Inverse — ticks actually run out of base, e.g. skip=1 → "59/60"
+  get tickedLabel() {
+    const skip = this.frameSkip;
+    return `${this.BASE - skip}/${this.BASE}`;
+  },
+
   get substepLabel() {
     return `${this.substeps}x`;
   },
 
   get label() {
-    const manual = ManualOverrides.isManual('physicsSubsteps') || ManualOverrides.isManual('physicsTimeScale');
+    const manual = ManualOverrides.isManual('physicsSubsteps')
+      || ManualOverrides.isManual('physicsTimeScale')
+      || ManualOverrides.isManual('physicsFrameSkip');
     return manual ? 'MANUAL' : 'AUTO';
   },
 
@@ -250,6 +307,110 @@ export const RenderGov = {
   }
 };
 
+// ── Input Tick-Skip (pointermove throttle) ─────────────────────────────────
+// Input isn't on the rAF clock like render/physics — it's raw browser
+// events. pointerdown/up are discrete and must never be skipped (would drop
+// taps/spawns/drag-releases). pointermove is the one continuous, high-
+// frequency stream, so it's the input equivalent of a "frame" — this gates
+// it with the exact same Bresenham math, just counted per move-event
+// instead of per rAF frame ("skip N out of every BASE move events").
+export const InputGov = {
+  // AUTO always stays 0 — same conservative default as PhysicsGov. Skipping
+  // move-processing mid-drag would make a dragged panel/camera visibly lag
+  // behind the finger, so this is a manual-only profiling knob, never
+  // auto-engaged.
+  _autoFrameSkip: 0,
+  _skipAccum:     0,    // fractional accumulator — Bresenham-style, same as RenderGov/PhysicsGov
+
+  // Base cadence — skip count is "N out of BASE" pointermove events.
+  // Independent from RenderGov.BASE / PhysicsGov.BASE.
+  get BASE() {
+    return ManualOverrides.get('inputSkipBase', 60);
+  },
+
+  // Raw skip count — "skip N out of BASE pointermove events"
+  get frameSkip() {
+    return ManualOverrides.get('inputFrameSkip', this._autoFrameSkip);
+  },
+
+  // Call once per pointermove event — identical math to RenderGov.shouldRender()
+  // / PhysicsGov.shouldTick(), just driven by event count instead of rAF ticks.
+  shouldProcess() {
+    const skip = this.frameSkip;
+    if (skip <= 0) return true;
+
+    this._skipAccum += skip / this.BASE;
+    if (this._skipAccum >= 1) {
+      this._skipAccum -= 1;
+      return false;   // this move event is the one we skip
+    }
+    return true;
+  },
+
+  // Label for panel display: "1/60", "0/60" (no skip), etc.
+  get fractionLabel() {
+    const skip = this.frameSkip;
+    return `${skip}/${this.BASE}`;
+  },
+
+  // Inverse — move events actually processed out of base, e.g. skip=1 → "59/60"
+  get processedLabel() {
+    const skip = this.frameSkip;
+    return `${this.BASE - skip}/${this.BASE}`;
+  },
+
+  get label() {
+    return ManualOverrides.isManual('inputFrameSkip') ? 'MANUAL' : 'AUTO';
+  }
+};
+
+// ── Cache-Ahead Governor (FutureCache adaptive scheduler) ─────────────────
+// Decides how much spare time to spend pre-computing future physics ticks.
+// Not a Bresenham skip gate like the other three — this one is a straight
+// time budget, because "sometimes 1 step, sometimes 100" isn't a fixed
+// ratio, it's just whatever fits in the leftover frame time. FutureCache
+// itself does the actual work; this just holds the tunable knobs.
+export const CacheGov = {
+  get enabled() {
+    return ManualOverrides.get('cacheEnabled', 1) !== 0;
+  },
+
+  // How many steps ahead to try to keep buffered — a ceiling, not a
+  // guarantee. Caching stops the moment the time budget runs out, even if
+  // this target hasn't been reached yet.
+  get targetAhead() {
+    return ManualOverrides.get('cacheTargetAhead', 100);
+  },
+
+  // Spare ms/frame allowed for cache-ahead work. Kept modest by default so
+  // it never competes with the frame's actual required work.
+  get msBudget() {
+    return ManualOverrides.get('cacheMsBudget', 2.0);
+  },
+
+  get label() {
+    const manual = ManualOverrides.isManual('cacheEnabled')
+      || ManualOverrides.isManual('cacheTargetAhead')
+      || ManualOverrides.isManual('cacheMsBudget');
+    return manual ? 'MANUAL' : 'AUTO';
+  }
+};
+
+// ── Shared dynamic-max resolver ────────────────────────────────────────────
+// Used anywhere a knob/slider/control needs to track a governor's live BASE
+// (e.g. a frame-skip knob must always cap at the currently selected base).
+// cfg.dynamicMaxSource picks which governor: 'render' (default), 'physics', or 'input'.
+function _govBase(source) {
+  if (source === 'physics') return PhysicsGov.BASE;
+  if (source === 'input')   return InputGov.BASE;
+  return RenderGov.BASE;
+}
+
+export function resolveDynamicMax(cfg, fallback) {
+  if (!cfg?.dynamicMaxFromBase) return cfg?.max ?? fallback;
+  return _govBase(cfg.dynamicMaxSource);
+}
+
 // ── Governor Class (for debug panel buttons/sliders) ──────────────────────
 export class Governor {
   constructor(variable, config = {}) {
@@ -262,18 +423,20 @@ export class Governor {
     this.step = config.step ?? 1;
     this.min = config.min ?? -Infinity;
     this._maxConfig = config.max ?? Infinity;
-    // When true, .max always tracks RenderGov.BASE live — so the skip
+    // When true, .max always tracks a governor's BASE live — so the skip
     // slider/buttons can never exceed the currently selected base (60/120/...)
+    // dynamicMaxSource picks which one: 'render' (default), 'physics', or 'input'.
     this.dynamicMaxFromBase = !!config.dynamicMaxFromBase;
+    this.dynamicMaxSource = config.dynamicMaxSource || 'render';
     this.steps = config.steps || null;
     this.isManual = false;
   }
 
-  // Live max — tracks RenderGov.BASE when dynamicMaxFromBase is set,
-  // otherwise uses the static config value.
+  // Live max — tracks the configured governor's BASE when dynamicMaxFromBase
+  // is set, otherwise uses the static config value.
   get max() {
     if (this.dynamicMaxFromBase) {
-      return RenderGov.BASE;
+      return _govBase(this.dynamicMaxSource);
     }
     return this._maxConfig;
   }

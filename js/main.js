@@ -5,6 +5,7 @@
 import { CONFIG, setTheme } from './config/config-index.js';
 import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
+import { FutureCache } from './core/future-cache.js';
 import { InputModule, InputState, InAims } from './modules/input/input.module.js';
 import { Aims } from './core/aims.js';
 import { CameraModule } from './modules/camera/camera.module.js';
@@ -21,7 +22,7 @@ import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
 // ✅ FIX: Import from unified governor
-import { PhysicsGov, RenderGov } from './modules/debug/governor.js';
+import { PhysicsGov, RenderGov, CacheGov } from './modules/debug/governor.js';
 import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { QueOps } from './core/que-ops.js';
 
@@ -137,6 +138,7 @@ export function resetGame(newThemeName = null) {
   state.asteroids = [];
   state.astTimer = 0;
   StateCache.clear();
+  FutureCache.reset();
   Accumulator.clear();
   document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
 }
@@ -260,26 +262,58 @@ function mainLoop(t) {
     physicsAccumulator += realDt * state.physSpeed;
     if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
 
-    let stepsThisFrame = 0;
-    while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < PhysicsGov.substeps) {
-      if (isPreCalculating) {
-        if (runPreCalc()) {
-          isPreCalculating = false;
-          StateCache.isReady = true;
-          if (window.Sim) window.Sim.isPreCalculating = isPreCalculating;
-        }
-      } else {
-        physicsTick();
-      }
-      physicsAccumulator -= currentPhysicsStep;
-      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
-      stepsThisFrame++;
-      didPhysicsTick = true;
-    }
+    // Physics tick-skip governor — Bresenham-style, same math as RenderGov.
+    // Skipping here only means "don't drain the accumulator this frame":
+    // realDt keeps banking above regardless, so no simulation time is ever
+    // lost — it's caught up in a bigger batch on the next allowed tick.
+    if (PhysicsGov.shouldTick()) {
+      // At physSpeed=N, the accumulator banks ~N ticks' worth of time per
+      // frame (realDt * N), so it needs N ticks run back-to-back this same
+      // frame to actually keep pace — 2x → 2 ticks in a row, 6x → 6, 12x →
+      // 12, every frame, for as long as that speed is set. PhysicsGov.substeps
+      // (chaos-driven) is kept as a floor so normal 1x collision-heavy scenes
+      // still get their existing stability budget.
+      const speedTicksNeeded = Math.ceil(Math.max(1, state.physSpeed));
+      const maxStepsThisFrame = Math.max(PhysicsGov.substeps, speedTicksNeeded);
 
-    if (physicsAccumulator >= currentPhysicsStep) {
-      physicsAccumulator = physicsAccumulator % currentPhysicsStep;
-      if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+      let stepsThisFrame = 0;
+      while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < maxStepsThisFrame) {
+        if (isPreCalculating) {
+          if (runPreCalc()) {
+            isPreCalculating = false;
+            StateCache.isReady = true;
+            if (window.Sim) window.Sim.isPreCalculating = isPreCalculating;
+          }
+        } else if (CacheGov.enabled && FutureCache.hasNext) {
+          // Cache hit — this tick's state was pre-computed ahead of time and
+          // is byte-for-byte identical to a live tick. Snapshot BEFORE the
+          // swap, same convention physicsTick() uses (pre-tick state, so
+          // StateCache's interpolation buffer stays consistent either way).
+          StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
+          FutureCache.playNext();
+        } else {
+          physicsTick();
+          FutureCache.recordLiveTick();
+        }
+        physicsAccumulator -= currentPhysicsStep;
+        if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+        stepsThisFrame++;
+        didPhysicsTick = true;
+      }
+
+      if (physicsAccumulator >= currentPhysicsStep) {
+        physicsAccumulator = physicsAccumulator % currentPhysicsStep;
+        if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
+      }
+
+      // Adaptive cache-ahead top-up — spend whatever spare ms CacheGov
+      // allows pre-computing more future ticks, right now, while there's
+      // still budget left in this frame. Some frames that's 1 step, some
+      // frames it's 100 — purely a function of how much time is actually
+      // available, never a fixed count.
+      if (CacheGov.enabled && !isPreCalculating) {
+        FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead);
+      }
     }
   }
 

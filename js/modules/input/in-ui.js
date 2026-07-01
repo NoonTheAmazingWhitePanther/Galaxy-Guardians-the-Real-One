@@ -6,6 +6,7 @@ import { clamp, hypot } from '../../core/math.js';
 import { state, setPhysSpeed, setSunGravMult, togglePause, SPEED_MAX } from '../../core/state.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { StateCache } from '../../core/state-cache.js';
+import { FutureCache } from '../../core/future-cache.js';
 import { TrailsModule } from '../rendering/trails.js';
 import { InputState } from './input.module.js';
 
@@ -21,6 +22,9 @@ export const InUI = {
     if (gravSlider) {
       gravSlider.addEventListener('input', () => {
         setSunGravMult(parseFloat(gravSlider.value));
+        // Gravity is part of what every future tick computes — anything
+        // already cached ahead was computed under the old value.
+        FutureCache.invalidate();
         if (gravVal) gravVal.textContent = parseFloat(gravSlider.value).toFixed(2) + 'x';
       });
     }
@@ -64,7 +68,8 @@ export const InUI = {
     const clearBtn = document.getElementById('clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
       state.bodies = []; state.loose = []; state.flashes = [];
-      StateCache.clear(); 
+      StateCache.clear();
+      FutureCache.reset();
       for (const buf of TrailsModule.trailBufs) buf.used = false;
       if (pcountEl) pcountEl.textContent = '-';
     });

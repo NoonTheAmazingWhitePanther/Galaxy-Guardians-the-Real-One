@@ -17,6 +17,7 @@ import { CameraModule }  from '../camera/camera.module.js';
 import { DebugRouter }   from '../debug/debug-router.js';
 import { clamp }         from '../../core/math.js';
 import { Accumulator }   from '../rendering/accumulator.js';
+import { FutureCache }   from '../../core/future-cache.js';
 import {
   state, setPhysSpeed, togglePause
 } from '../../core/state.js';
@@ -128,6 +129,7 @@ function _registerAll() {
   // ── Depth 2: Toolbar ─────────────────────────────────────────────────
   _safeReg('clear-btn', { depth: 2, on: { tap: () => {
     state.bodies = []; state.loose = []; state.flashes = [];
+    FutureCache.reset();
     Accumulator.clear();
     const pc = el('pcount'); if (pc) pc.textContent = '—';
   }}});

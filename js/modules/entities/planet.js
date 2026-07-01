@@ -4,6 +4,7 @@ import { state, SUN, sunGravMult, PALS } from '../../core/state.js';
 import { config } from '../../core/config.js';
 import { hypot, clamp } from '../../core/math.js';
 import { makeBody } from '../physics/creation.js';
+import { FutureCache } from '../../core/future-cache.js';
 //import { PALS } from '../../core/palettes.js';
 
 
@@ -71,6 +72,10 @@ export class Planet {
         body.id = crypto.randomUUID();
 
         state.bodies.push(body);
+
+        // A new body wasn't accounted for in anything already cached ahead —
+        // that future is no longer valid, throw it away and let it rebuild.
+        FutureCache.invalidate();
 
         if (pcountEl) {
             pcountEl.textContent = state.bodies.length;

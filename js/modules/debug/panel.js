@@ -661,19 +661,22 @@ export class Panel {
 
       if (ctrl.type === ControlType.RESET_BUTTON) {
         if (ctrl.variable?.set) ctrl.variable.set(0);
-        console.log('[Panel] Reset Frame Skip → 0');
+        console.log(`[Panel] Reset ${ctrl.config?.text || 'value'} → 0`);
       } else if (ctrl.isBaseSelector) {
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn && ctrl.baseVar) {
           const newBase = Number(btn.label);
           ctrl.baseVar.set(newBase);
           ctrl.state.selectedIdx = hit.btnIdx;
-          // Clamp current frameSkip to the new base so skip never exceeds it
+          // Clamp the matching frameSkip key to the new base so skip never
+          // exceeds it. Which key depends on this control's config —
+          // defaults to renderFrameSkip for backward compat.
+          const clampKey = ctrl.config.clampVariable || 'renderFrameSkip';
           const ManualOverridesRef = window._ManualOverrides;
           if (ManualOverridesRef) {
-            const current = ManualOverridesRef.renderFrameSkip?.value ?? 0;
+            const current = ManualOverridesRef[clampKey]?.value ?? 0;
             if (current > newBase) {
-              ManualOverridesRef.set('renderFrameSkip', newBase);
+              ManualOverridesRef.set(clampKey, newBase);
             }
           }
         }

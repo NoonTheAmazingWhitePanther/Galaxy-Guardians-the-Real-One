@@ -135,8 +135,8 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 
 #debug-btn {
     position: fixed;
-    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px);
-    right: var(--safe);
+    top: calc(var(--safe) + var(--pad-size));
+    left: var(--safe);
     z-index: 55;
     width: var(--pad-size); height: var(--pad-size);
     background: var(--ui-bg);
@@ -157,7 +157,7 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 
 #aims-btn {
     position: fixed;
-    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px + var(--pad-size) + 6px);
+    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px);
     right: var(--safe);
     z-index: 55;
     width: var(--pad-size); height: var(--pad-size);

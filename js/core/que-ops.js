@@ -85,7 +85,21 @@ function _init(userConfig = {}) {
   _resetStats();
 }
 
+// ── Ghost capture (for FutureCache) ─────────────────────────────────────
+// When FutureCache pre-computes a future tick in the background, any
+// QueOps.add() calls made during that tick (e.g. spawnRing's metered
+// particle trickle) must NOT join the live queue — they'd fire during the
+// silent pre-compute pass, way before the player actually sees that tick.
+// While _ghostCapture is set, _add() redirects into it instead; FutureCache
+// re-submits those exact descriptors for real at the moment that cached
+// tick is actually played.
+let _ghostCapture = null;
+
 function _add(op) {
+  if (_ghostCapture) {
+    _ghostCapture.push(op);
+    return null;
+  }
   if (!_state.initialized) _init();
   const defaults = { id: Math.random().toString(36).slice(2, 9), subject: 'custom', type: 'single', fn: null, args: [], priority: 2, cost: 1, cycleEvery: 1, delayMs: 0, lastRunFrame: 0, isBatch: false, batchItems: null, batchProcessor: null };
   const merged = { ...defaults, ...op };
@@ -185,6 +199,9 @@ function _tick() {
 }
 
 export const QueOps = {  init: _init, add: _add, tick: _tick,
+  // Begin/end ghost capture — see _ghostCapture comment above _add().
+  beginGhostCapture(list) { _ghostCapture = list; },
+  endGhostCapture() { _ghostCapture = null; },
   updateConfig(subjectOrKey, value) {
     if (typeof subjectOrKey === 'string' && SUBJECTS[subjectOrKey]) { if (typeof value === 'object') Object.assign(SUBJECTS[subjectOrKey], value); }
     else if (typeof subjectOrKey === 'object') { Object.assign(_state.config, subjectOrKey); }

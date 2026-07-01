@@ -1,44 +1,65 @@
 import { DEBUG_STATE } from './debug-state.js';
 import { MasterGovernor } from './master-governor.js';
 
-const SLIDER_W = 20;
-const SLIDER_PAD = 8;
+// ── FIXED anchor — the right-edge button stack (#pan-pad, #aims-btn) ──────
+// #debug-btn moved to the left edge, but the vertical rhythm is unchanged
+// (aims-btn shifted up to take its old slot), so measuring the gap between
+// debug-btn's bottom and aims-btn's top still gives the correct value —
+// getBoundingClientRect() only cares about vertical position here, so
+// debug-btn's horizontal side doesn't matter for this measurement.
+// #aims-btn ("Toggle AIMS Input") is the last/bottom button in that stack.
+// Everything below is measured live off those real DOM elements — width,
+// x position, and the gap between them — so the slider always matches them
+// exactly (any breakpoint/CSS change) and is NEVER touched by any debug
+// panel's position, size, minimize state, or visibility.
 const THUMB_H = 16;
+const FALLBACK_GAP = 6;
 
 export const MasterSliderRenderer = {
   _bounds: null,
   _dragging: false,
   _dragStartY: 0,
-  
-  computeBounds(panels) {
-    if (!panels || panels.length === 0) {
-      return { x: 300, y: 80, w: SLIDER_W, h: 400 };
+
+  computeBounds() {
+    if (typeof document === 'undefined') return this._bounds;
+
+    const aimsBtn  = document.getElementById('aims-btn');
+    const debugBtn = document.getElementById('debug-btn');
+    if (!aimsBtn) return this._bounds;
+
+    const aimsRect = aimsBtn.getBoundingClientRect();
+
+    // Gap between the 3 buttons — measured live between debug-btn and
+    // aims-btn, so it's always the exact same spacing, at any screen size.
+    let gap = FALLBACK_GAP;
+    if (debugBtn) {
+      const debugRect = debugBtn.getBoundingClientRect();
+      const measured = aimsRect.top - debugRect.bottom;
+      if (measured > 0) gap = measured;
     }
-    
-    let maxX = 0;
-    let minY = Infinity;
-    let maxY = 0;
-    
-    for (const panel of panels) {
-      if (!panel.visible) continue;
-      const panelRight = panel.x + (panel.w || 220) + 30;
-      if (panelRight > maxX) maxX = panelRight;
-      if (panel.y < minY) minY = panel.y;
-      if (panel.y + (panel.h || 100) > maxY) maxY = panel.y + (panel.h || 100);
+
+    const x = aimsRect.left;
+    const w = aimsRect.width;
+    const y = aimsRect.bottom + gap;
+
+    // Bottom bound — same gap kept above the bottom bar (#ui)
+    let bottomLimit = window.innerHeight - gap;
+    const uiBar = document.getElementById('ui');
+    if (uiBar) {
+      const uiRect = uiBar.getBoundingClientRect();
+      if (uiRect.top > 0) bottomLimit = uiRect.top - gap;
     }
-    
-    const x = maxX + SLIDER_PAD;
-    const y = minY;
-    const h = Math.max(200, maxY - minY);
-    
-    this._bounds = { x, y, w: SLIDER_W, h };
+
+    const h = Math.max(40, bottomLimit - y);
+
+    this._bounds = { x, y, w, h };
     return this._bounds;
   },
   
   render(mainCtx, panels) {
     if (!MasterGovernor._panels || MasterGovernor._panels.length === 0) return;
     
-    const bounds = this.computeBounds(panels);
+    const bounds = this.computeBounds();
     if (!bounds || bounds.h <= 0) return;
     
     const s = DEBUG_STATE.style;
@@ -77,7 +98,8 @@ export const MasterSliderRenderer = {
     mainCtx.textBaseline = 'middle';
     mainCtx.fillText(MasterGovernor.label, bounds.x + bounds.w / 2, thumbY);
     
-    // Tick marks
+    // Tick marks — narrow bar near the screen's right edge, so labels go
+    // on the left (open canvas space), same as the original design.
     mainCtx.strokeStyle = 'rgba(255,255,255,0.2)';
     mainCtx.lineWidth = 1;
     const ticks = [0.0, 0.5, 1.0, 1.5, 2.0];
@@ -95,12 +117,18 @@ export const MasterSliderRenderer = {
       mainCtx.fillText(tick.toFixed(1), bounds.x - 2, tickY);
     }
     
-    // Title
-    mainCtx.fillStyle = 'rgba(240,245,255,0.7)';
-    mainCtx.font = `bold 9px ${s.font}`;
+    // Title — rotated, inside the top of the track. There's no room above
+    // the bar for it anymore (the aims button sits right there with only
+    // a small gap), so it lives inside the track instead.
+    mainCtx.save();
+    mainCtx.translate(bounds.x + bounds.w / 2, bounds.y + 18);
+    mainCtx.rotate(-Math.PI / 2);
+    mainCtx.fillStyle = 'rgba(240,245,255,0.5)';
+    mainCtx.font = `bold 8px ${s.font}`;
     mainCtx.textAlign = 'center';
-    mainCtx.textBaseline = 'top';
-    mainCtx.fillText('MASTER', bounds.x + bounds.w / 2, bounds.y - 14);
+    mainCtx.textBaseline = 'middle';
+    mainCtx.fillText('MASTER', 0, 0);
+    mainCtx.restore();
     
     mainCtx.restore();
   },

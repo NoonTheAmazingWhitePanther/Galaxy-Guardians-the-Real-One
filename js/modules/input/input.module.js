@@ -15,6 +15,7 @@ import { InKeyboard }   from './in-keyboard.js';
 import { InAims }      from './in-aims.js';
 import { Aims }        from '../../core/aims.js';
 import { DebugRouter } from '../debug/debug-router.js';
+import { InputGov }    from '../debug/governor.js';
 
 export const InputState = {
   mouseX: 0, mouseY: 0,
@@ -58,9 +59,18 @@ export const InputModule = {
 
     // POINTER MOVE
     window.addEventListener('pointermove', (e) => {
+      // Position tracking always runs — never skipped, so the latest
+      // coordinates are always accurate (same role as physicsAccumulator
+      // always banking real dt regardless of tick-skip).
       InputState.mouseX = e.clientX;
       InputState.mouseY = e.clientY;
       Aims.aim.moveTo(e.clientX, e.clientY);
+
+      // Tick-skip governor — throttles the expensive handler chain only.
+      // Bresenham-style, same math as RenderGov/PhysicsGov, counted per
+      // pointermove event instead of per rAF frame. AUTO stays at 0 skip
+      // (see InputGov) — this only engages when manually tuned.
+      if (!InputGov.shouldProcess()) return;
 
       if (InDebug.handleMove(e))  return;  // Debug drag takes priority
       if (InAims.handleMove(e))   return;

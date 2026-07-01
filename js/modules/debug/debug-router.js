@@ -1,7 +1,7 @@
 /**
  * js/modules/debug/debug-router.js
  */
-import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov } from './governor.js';
+import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov, InputGov, CacheGov } from './governor.js';
 import { Panel } from './panel.js';
 import { MasterGovernor } from './master-governor.js';
 import { DEBUG_STATE } from './debug-state.js';
@@ -15,6 +15,7 @@ import { config } from '../../core/config.js';
 import { FpsCounter } from './fps-counter.js';
 import { MsProbe } from '../../core/ms-probe.js';
 import { StateCache } from '../../core/state-cache.js';
+import { FutureCache } from '../../core/future-cache.js';
 import { GovernorProfiles } from './governor-profiles.js';
 
 export const DebugRouter = {
@@ -29,6 +30,8 @@ export const DebugRouter = {
 
     GovernorRegistry.register('PhysicsGov',      PhysicsGov);
     GovernorRegistry.register('RenderGov',        RenderGov);
+    GovernorRegistry.register('InputGov',         InputGov);
+    GovernorRegistry.register('CacheGov',         CacheGov);
     GovernorRegistry.register('ManualOverrides',  ManualOverrides);
     GovernorRegistry.register('QueOps',           QueOps);
     GovernorRegistry.register('Aims',             Aims);
@@ -39,6 +42,7 @@ export const DebugRouter = {
     GovernorRegistry.register('FpsCounter',       FpsCounter);
     GovernorRegistry.register('MsProbe',          MsProbe);
     GovernorRegistry.register('StateCache',       StateCache);
+    GovernorRegistry.register('FutureCache',      FutureCache);
     GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
 
     window._DebugRouter = this;
@@ -73,6 +77,7 @@ export const DebugRouter = {
       case 'governor':   return GovernorProfiles;
       case 'fps':        return FpsCounter.debugInfo;
       case 'physics':    return PhysicsCounter;
+      case 'input':      return InputGov;
       case 'drawCalls':  return DrawCallCounter;
       case 'queops':     return QueOps.getDebugInfo();
       case 'aim':        return Aims.debugInfo;

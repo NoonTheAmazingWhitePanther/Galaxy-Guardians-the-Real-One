@@ -33,7 +33,7 @@ import { DebugRouter } from '../debug/debug-router.js';
 import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
-import { resolveVariable, RenderGov } from '../debug/governor.js';
+import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 
 export const InDebug = {
   _canvas: null,
@@ -216,7 +216,7 @@ export const InDebug = {
             const kCfg = panel.config?.minimizedKnob;
             const boundVar = resolveVariable(kCfg.variable);
             boundVar?.set(masterHit.value);
-            panel.panelMasterValue = masterHit.value / (kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2));
+            panel.panelMasterValue = masterHit.value / resolveDynamicMax(kCfg, 2);
           } else {
             panel.panelMasterValue = masterHit.value;
           }
@@ -248,9 +248,8 @@ export const InDebug = {
             this._panelMasterKnobVar        = resolveVariable(kCfg.variable);
             this._panelMasterKnobMin        = kCfg.min  ?? 0;
             this._panelMasterKnobDynMax     = !!kCfg.dynamicMaxFromBase;
-            this._panelMasterKnobMax        = kCfg.dynamicMaxFromBase
-              ? RenderGov.BASE
-              : (kCfg.max ?? 10);
+            this._panelMasterKnobDynSource  = kCfg.dynamicMaxSource || 'render';
+            this._panelMasterKnobMax        = resolveDynamicMax(kCfg, 10);
             this._panelMasterKnobStep       = kCfg.step ?? 1;
             this._panelMasterKnobInteger    = !!kCfg.integer;
             this._panelMasterKnobStartValue = this._panelMasterKnobVar?.get() ?? 0;
@@ -420,7 +419,10 @@ export const InDebug = {
       if (this._panelMasterKnob) {
         // Refresh max live if it tracks base — base can change mid-drag
         if (this._panelMasterKnobDynMax) {
-          this._panelMasterKnobMax = RenderGov.BASE;
+          this._panelMasterKnobMax = resolveDynamicMax(
+            { dynamicMaxFromBase: true, dynamicMaxSource: this._panelMasterKnobDynSource },
+            this._panelMasterKnobMax
+          );
         }
         const range = this._panelMasterKnobMax - this._panelMasterKnobMin;
         const dy    = this._panelMasterKnobStartY - y;
@@ -452,7 +454,7 @@ export const InDebug = {
             const kCfg = panel.config?.minimizedKnob;
             const boundVar = resolveVariable(kCfg.variable);
             boundVar?.set(masterHit.value);
-            panel.panelMasterValue = masterHit.value / (kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2));
+            panel.panelMasterValue = masterHit.value / resolveDynamicMax(kCfg, 2);
           } else {
             panel.panelMasterValue = masterHit.value;
           }
