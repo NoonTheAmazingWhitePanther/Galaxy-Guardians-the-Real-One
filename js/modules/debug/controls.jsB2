@@ -31,7 +31,6 @@ import { DEBUG_STATE } from './debug-state.js';
 export const ControlType = {
   BUTTON:       'button',
   WIDE_BUTTON:  'wideButton',   // profile-style: spans full width, one selected
-  RESET_BUTTON: 'resetButton',  // single red full-width button
   SLIDER:       'slider',
   KNOB:         'knob',
   DROPDOWN:     'dropdown',
@@ -190,49 +189,6 @@ export const WideButtonControl = {
       if (x >= btnX && x <= btnX + btnW && y >= by && y <= by + WIDE_BTN_H) {
         return { btnIdx: i };
       }
-    }
-    return null;
-  },
-
-  getBounds(control, x, y, w) {
-    return { x, y, w, h: WIDE_BTN_H };
-  }
-};
-
-// ── Reset Button Control — single full-width red button ──────────────────
-export const ResetButtonControl = {
-  render(ctx, control, x, y, w, h, state) {
-    const s        = DEBUG_STATE.style;
-    const isActive = state.pressIdx === 0;
-    const isHover  = state.hoverIdx === 0;
-    const baseColor = control.config?.color || 'rgba(255,70,70,0.85)';
-
-    ctx.fillStyle = isActive
-      ? baseColor.replace(/[\d.]+\)$/, '0.5)')
-      : isHover
-        ? baseColor.replace(/[\d.]+\)$/, '0.3)')
-        : baseColor.replace(/[\d.]+\)$/, '0.15)');
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, WIDE_BTN_H, 5);
-    ctx.fill();
-
-    ctx.strokeStyle = baseColor;
-    ctx.lineWidth   = isActive ? 1.5 : 1;
-    ctx.beginPath();
-    ctx.roundRect(x + 0.5, y + 0.5, w - 1, WIDE_BTN_H - 1, 5);
-    ctx.stroke();
-
-    ctx.fillStyle    = baseColor;
-    ctx.font         = `bold 10px ${s.font}`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(control.config?.text || 'Reset', x + w / 2, y + WIDE_BTN_H / 2);
-  },
-
-  hitTest(control, x, y, bounds) {
-    const { x: bx, y: by, w: bw } = bounds;
-    if (x >= bx && x <= bx + bw && y >= by && y <= by + WIDE_BTN_H) {
-      return { btnIdx: 0 };
     }
     return null;
   },
@@ -628,7 +584,6 @@ export const ControlRenderer = {
     switch (control.type) {
       case ControlType.BUTTON:       ButtonControl.render(ctx, control, x, y, w, h, state); break;
       case ControlType.WIDE_BUTTON:  WideButtonControl.render(ctx, control, x, y, w, h, state); break;
-      case ControlType.RESET_BUTTON: ResetButtonControl.render(ctx, control, x, y, w, h, state); break;
       case ControlType.SLIDER:       SliderControl.render(ctx, control, x, y, w, h, state); break;
       case ControlType.KNOB:         KnobControl.render(ctx, control, x, y, w, h, state); break;
       case ControlType.DROPDOWN:     DropdownControl.render(ctx, control, x, y, w, h, state); break;
@@ -642,7 +597,6 @@ export const ControlRenderer = {
     switch (control.type) {
       case ControlType.BUTTON:       return ButtonControl.hitTest(control, x, y, bounds);
       case ControlType.WIDE_BUTTON:  return WideButtonControl.hitTest(control, x, y, bounds);
-      case ControlType.RESET_BUTTON: return ResetButtonControl.hitTest(control, x, y, bounds);
       case ControlType.SLIDER:       return SliderControl.hitTest(control, x, y, bounds);
       case ControlType.KNOB:         return KnobControl.hitTest(control, x, y, bounds);
       case ControlType.DROPDOWN:     return DropdownControl.hitTest(control, x, y, bounds);
@@ -656,7 +610,6 @@ export const ControlRenderer = {
     switch (control.type) {
       case ControlType.BUTTON:       return ButtonControl.getBounds(control, x, y);
       case ControlType.WIDE_BUTTON:  return WideButtonControl.getBounds(control, x, y, w);
-      case ControlType.RESET_BUTTON: return ResetButtonControl.getBounds(control, x, y, w);
       case ControlType.SLIDER:       return SliderControl.getBounds(control, x, y, w);
       case ControlType.KNOB:         return KnobControl.getBounds(control, x, y);
       case ControlType.DROPDOWN:     return DropdownControl.getBounds(control, x, y, w);

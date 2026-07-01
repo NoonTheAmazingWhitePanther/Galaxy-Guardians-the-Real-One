@@ -72,15 +72,6 @@ export class Panel {
           variable,
           state: { hoverIdx: -1, pressIdx: -1 }
         });
-      } else if (line.type === 'resetButton') {
-        const variable = resolveVariable(line.variable);
-        this._controls.push({
-          type:           ControlType.RESET_BUTTON,
-          config:         line,
-          variable,
-          governor:       null,
-          state:          { hoverIdx: -1, pressIdx: -1 }
-        });
       } else if (line.type === 'profileButtons') {
         const isBaseSelector = !!line.isBaseSelector;
         const baseVar = isBaseSelector ? resolveVariable(line.variable) : null;
@@ -629,7 +620,6 @@ export class Panel {
       if (hit) {
         if (ctrl.type === ControlType.BUTTON)       return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
         if (ctrl.type === ControlType.WIDE_BUTTON)  return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
-        if (ctrl.type === ControlType.RESET_BUTTON) return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
         if (ctrl.type === ControlType.SLIDER)       return { type: 'slider',   control: ctrl, frac: hit.frac };
         if (ctrl.type === ControlType.KNOB)         return { type: 'knob',     control: ctrl };
         if (ctrl.type === ControlType.DROPDOWN)     return { type: 'dropdown', control: ctrl, hitType: hit.type, idx: hit.idx };
@@ -659,23 +649,11 @@ export class Panel {
       const ctrl = hit.control;
       ctrl.state.pressIdx = hit.btnIdx;
 
-      if (ctrl.type === ControlType.RESET_BUTTON) {
-        if (ctrl.variable?.set) ctrl.variable.set(0);
-        console.log('[Panel] Reset Frame Skip → 0');
-      } else if (ctrl.isBaseSelector) {
+      if (ctrl.isBaseSelector) {
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn && ctrl.baseVar) {
-          const newBase = Number(btn.label);
-          ctrl.baseVar.set(newBase);
+          ctrl.baseVar.set(Number(btn.label));
           ctrl.state.selectedIdx = hit.btnIdx;
-          // Clamp current frameSkip to the new base so skip never exceeds it
-          const ManualOverridesRef = window._ManualOverrides;
-          if (ManualOverridesRef) {
-            const current = ManualOverridesRef.renderFrameSkip?.value ?? 0;
-            if (current > newBase) {
-              ManualOverridesRef.set('renderFrameSkip', newBase);
-            }
-          }
         }
       } else if (ctrl.isProfileButtons) {
         const btn = ctrl.config.buttons[hit.btnIdx];

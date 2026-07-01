@@ -42,16 +42,10 @@ export const PanelMasterSlider = {
 
     if (minimized) {
       // ── KNOB VALUE SOURCE ───────────────────────────────────────────────
-      const kCfg     = panel.config?.minimizedKnob;
-      const isRatio  = !!kCfg?.ratioVars;
-      const isVar    = !!kCfg && !isRatio;
+      const kCfg    = panel.config?.minimizedKnob;
+      const isVar   = !!kCfg;
       let knobValue, knobMin, knobMax, knobLabel;
-      if (isRatio) {
-        knobValue = panel.panelMasterValue ?? 1.0;
-        knobMin   = kCfg.min ?? 0.1;
-        knobMax   = kCfg.max ?? 3.0;
-        knobLabel = kCfg.label ?? 'x';
-      } else if (isVar) {
+      if (isVar) {
         const varRef = resolveVariable(kCfg.variable);
         knobValue = varRef?.get() ?? 0;
         knobMin   = kCfg.min   ?? 0;
@@ -65,14 +59,12 @@ export const PanelMasterSlider = {
       }
       const frac  = knobMax > knobMin
         ? Math.max(0, Math.min(1, (knobValue - knobMin) / (knobMax - knobMin))) : 0;
-      const angle = ARC_START + frac * (ARC_END - ARC_START);
-      const arcColor = (isVar || isRatio)
-        ? (knobValue > 1.0 ? 'rgba(255,100,80,0.85)' : knobValue < 1.0 ? 'rgba(130,210,255,0.85)' : 'rgba(255,255,255,0.5)')
+      const angle    = ARC_START + frac * (ARC_END - ARC_START);
+      const arcColor = isVar
+        ? (knobValue > 0 ? 'rgba(130,210,255,0.85)' : 'rgba(255,255,255,0.3)')
         : _fillColor(knobValue);
-      const valStr = isRatio
-        ? `${knobValue.toFixed(2)}x`
-        : isVar
-          ? `${Math.round(knobValue)}${knobLabel}` : `${knobValue.toFixed(2)}x`;
+      const valStr = isVar
+        ? `${Math.round(knobValue)}${knobLabel}` : `${knobValue.toFixed(2)}x`;
       const sv          = panel.summaryValue;
       const manualLabel = panel.manualLabel ?? 'AUTO';
       const isVert      = panel._minVertical;

@@ -43,7 +43,6 @@ export const DebugRouter = {
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
-    window._ManualOverrides = ManualOverrides;
 
     try {
       const response = await fetch('./js/modules/debug/debug-config.json');

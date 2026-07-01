@@ -24,8 +24,7 @@ export class Panel {
 
     this.panelMasterValue   = 1.0;
     this.pinned             = false;
-    this._minVertical       = false;
-    this._ratioBaseline     = null;   // captured on first ratio-knob drag   // minimized orientation: false=horizontal, true=vertical
+    this._minVertical       = false;   // minimized orientation: false=horizontal, true=vertical
     this._userW             = null;
     this._userH             = null;
     this._userMinW          = null;
@@ -72,32 +71,15 @@ export class Panel {
           variable,
           state: { hoverIdx: -1, pressIdx: -1 }
         });
-      } else if (line.type === 'resetButton') {
-        const variable = resolveVariable(line.variable);
-        this._controls.push({
-          type:           ControlType.RESET_BUTTON,
-          config:         line,
-          variable,
-          governor:       null,
-          state:          { hoverIdx: -1, pressIdx: -1 }
-        });
       } else if (line.type === 'profileButtons') {
-        const isBaseSelector = !!line.isBaseSelector;
-        const baseVar = isBaseSelector ? resolveVariable(line.variable) : null;
-        const selectedIdx = isBaseSelector
-          ? line.buttons.findIndex(b => Number(b.label) === baseVar?.get())
-          : this._getActiveProfileIdx(line.buttons);
-
         this._controls.push({
           type:             ControlType.WIDE_BUTTON,
           config:           line,
           labels:           line.buttons.map(b => b.label),
-          isProfileButtons: !isBaseSelector,
-          isBaseSelector,
-          baseVar,
+          isProfileButtons: true,
           variable:         { get: () => null, set: () => {} },
           governor:         null,
-          state:            { hoverIdx: -1, pressIdx: -1, selectedIdx }
+          state:            { hoverIdx: -1, pressIdx: -1, selectedIdx: this._getActiveProfileIdx(line.buttons) }
         });
       } else if (line.type === 'knob') {
         const variable = resolveVariable(line.variable);
@@ -145,18 +127,6 @@ export class Panel {
   }
 
   get summaryValue() {
-    // Composed summary format — e.g. "12, -8, 36" for X offset, Y offset, radius
-    if (this.config.summaryFormat === 'xyz3') {
-      const refs = this.config.summaryFormatVars || [];
-      const parts = refs.map(path => {
-        const ref = resolveVariable(path);
-        const v = ref?.get();
-        if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(1);
-        return String(v ?? '?');
-      });
-      return parts.join(', ');
-    }
-
     if (!this._summaryVariable) return '?';
     const v = this._summaryVariable.get();
     if (typeof v === 'number') {
@@ -223,31 +193,6 @@ export class Panel {
 
   togglePin() {
     this.pinned ? this.unpin() : this.pin();
-  }
-
-  // ── Ratio knob — scales multiple variables together preserving ratio ────
-  // Called once at drag start to snapshot current values as the 1.0x baseline
-  captureRatioBaseline() {
-    const cfg = this.config.minimizedKnob;
-    if (!cfg?.ratioVars) return;
-    this._ratioBaseline = cfg.ratioVars.map(v => {
-      const ref = resolveVariable(v.variable);
-      return { variable: v.variable, ref, base: ref?.get() ?? 0 };
-    });
-  }
-
-  // Called continuously while dragging — factor is e.g. 1.5 = 150% of baseline
-  applyRatioScale(factor) {
-    if (!this._ratioBaseline) return;
-    for (const entry of this._ratioBaseline) {
-      if (!entry.ref) continue;
-      const scaled = entry.base * factor;
-      entry.ref.set(Math.round(scaled * 10) / 10);
-    }
-  }
-
-  clearRatioBaseline() {
-    this._ratioBaseline = null;
   }
 
   toggleMinOrientation() {
@@ -375,71 +320,6 @@ export class Panel {
           break;
         }
 
-        case 'groupedDisplayMap': {
-          // Splits flat keys like "stars ∙ draws" into groups by prefix.
-          // Each group becomes its own collapsible sectionHeader automatically —
-          // no need to predeclare section names in config, works with any pass set.
-          const source = this._resolveValue(line.source, data);
-          if (!source || typeof source !== 'object') break;
-          const sep = line.separator || ' ∙ ';
-
-          // Group entries by prefix
-          const groups = new Map();   // prefix -> [{ subKey, value }]
-          for (const [k, v] of Object.entries(source)) {
-            if (line.filter === 'positive' && !(v > 0)) continue;
-            const idx = k.indexOf(sep);
-            const prefix  = idx === -1 ? k : k.slice(0, idx);
-            const subKey  = idx === -1 ? '' : k.slice(idx + sep.length);
-            if (!groups.has(prefix)) groups.set(prefix, []);
-            groups.get(prefix).push({ subKey, value: v });
-          }
-
-          // Sort groups by their own total descending if requested
-          let groupEntries = [...groups.entries()];
-          if (line.sortGroups === 'desc') {
-            groupEntries.sort((a, b) => {
-              const totalA = a[1].reduce((s, r) => s + (Number(r.value) || 0), 0);
-              const totalB = b[1].reduce((s, r) => s + (Number(r.value) || 0), 0);
-              return totalB - totalA;
-            });
-          }
-
-          for (const [prefix, rows] of groupEntries) {
-            const key = `${line.key || 'group'}:${prefix}`;
-            // Dynamic groups default to collapsed on first sight —
-            // mark as seen so toggling works normally afterward
-            if (!this._seenGroupKeys) this._seenGroupKeys = new Set();
-            if (!this._seenGroupKeys.has(key)) {
-              this._seenGroupKeys.add(key);
-              if (line.collapsedByDefault !== false) this._collapsedSections.add(key);
-            }
-            const collapsed = this._collapsedSections.has(key);
-            const total     = rows.reduce((s, r) => s + (Number(r.value) || 0), 0);
-
-            lines.push({
-              isSectionHeader: true,
-              key,
-              label: prefix,
-              collapsed,
-              total,
-              color: s.textDim,
-              bold: false,
-            });
-
-            if (!collapsed) {
-              for (const row of rows) {
-                lines.push({
-                  label: row.subKey || prefix,
-                  value: String(row.value),
-                  color: s.textDim,
-                  small: true,
-                });
-              }
-            }
-          }
-          break;
-        }
-
         case 'displayMap': {
           const source = this._resolveValue(line.source, data);
           if (!source || typeof source !== 'object') break;
@@ -510,24 +390,21 @@ export class Panel {
 
     const MIN_W      = 52;
     const MIN_H      = 48;
-    const MIN_VERT_H = 109;
-    // Horizontal minimized minimum width — precisely calculated:
-    // left_pad(8) + min_text(30) + gap(4) + knob_zone(46) = 88px
-    const MIN_HORIZ_W = 88;
+    // Vertical minimized minimum height = horizontal minimized width
+    // so switching orientation always has room for title+value+knob
+    const MIN_VERT_H = 135;
 
     if (this.minimized) {
       let pw, ph;
       if (this._minVertical) {
         pw = 52;
-        ph = 109;
+        ph = 135;   // starts at horizontal-width height
       } else {
         pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
         pw = Math.floor(pw * 0.75);
         ph = (s.padY * 2 * sc) + (s.lineHeight * sc * 2);
       }
-      const fw = this._userMinW
-        ? Math.max(this._minVertical ? MIN_W : MIN_HORIZ_W, this._userMinW)
-        : pw;
+      const fw = this._userMinW ? Math.max(MIN_W, this._userMinW) : pw;
       const fh = this._userMinH
         ? Math.max(this._minVertical ? MIN_VERT_H : MIN_H, this._userMinH)
         : ph;
@@ -629,7 +506,6 @@ export class Panel {
       if (hit) {
         if (ctrl.type === ControlType.BUTTON)       return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
         if (ctrl.type === ControlType.WIDE_BUTTON)  return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
-        if (ctrl.type === ControlType.RESET_BUTTON) return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
         if (ctrl.type === ControlType.SLIDER)       return { type: 'slider',   control: ctrl, frac: hit.frac };
         if (ctrl.type === ControlType.KNOB)         return { type: 'knob',     control: ctrl };
         if (ctrl.type === ControlType.DROPDOWN)     return { type: 'dropdown', control: ctrl, hitType: hit.type, idx: hit.idx };
@@ -659,25 +535,7 @@ export class Panel {
       const ctrl = hit.control;
       ctrl.state.pressIdx = hit.btnIdx;
 
-      if (ctrl.type === ControlType.RESET_BUTTON) {
-        if (ctrl.variable?.set) ctrl.variable.set(0);
-        console.log('[Panel] Reset Frame Skip → 0');
-      } else if (ctrl.isBaseSelector) {
-        const btn = ctrl.config.buttons[hit.btnIdx];
-        if (btn && ctrl.baseVar) {
-          const newBase = Number(btn.label);
-          ctrl.baseVar.set(newBase);
-          ctrl.state.selectedIdx = hit.btnIdx;
-          // Clamp current frameSkip to the new base so skip never exceeds it
-          const ManualOverridesRef = window._ManualOverrides;
-          if (ManualOverridesRef) {
-            const current = ManualOverridesRef.renderFrameSkip?.value ?? 0;
-            if (current > newBase) {
-              ManualOverridesRef.set('renderFrameSkip', newBase);
-            }
-          }
-        }
-      } else if (ctrl.isProfileButtons) {
+      if (ctrl.isProfileButtons) {
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn) {
           const GP = window._GovernorProfiles;

@@ -16,6 +16,8 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
+import { TuningLayer } from './modules/tuning/tuning-layer.js';
+import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
 // ✅ FIX: Import from unified governor
@@ -141,9 +143,11 @@ export function resetGame(newThemeName = null) {
 
 function physicsTick() {
   StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
-  tickBodies(currentPhysicsStep);
-  tickLoose(currentPhysicsStep);
-  AsteroidsModule.tick(currentPhysicsStep);
+  MsProbe.call('physics.tick', () => {
+    tickBodies(currentPhysicsStep);
+    tickLoose(currentPhysicsStep);
+    AsteroidsModule.tick(currentPhysicsStep);
+  });
 }
 
 function runPreCalc() {
@@ -217,7 +221,7 @@ function _drawAimCursor(ctx) {
 
 function mainLoop(t) {
   DebugRouter.resetAll();
-  QueOps.tick();
+  MsProbe.call('queops.tick', () => QueOps.tick());
   requestAnimationFrame(mainLoop);
 
   // Feed FPS counter every frame — before any frame-skip logic
@@ -287,10 +291,14 @@ function mainLoop(t) {
                 + (CameraModule.isPanning ? 30 : 0);
   RenderGov.feedChaos(_camVel, 0, didPhysicsTick);
 
+  // Data update — every rAF, unconditionally, before any drawing
+  DebugRouter.updateData();
+
+  // Debug panels — inside shouldRender per your architecture rule
   if (RenderGov.shouldRender()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
-    DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
+    MsProbe.call('render.drawAll', () => DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
       OverlaysModule.drawOrbitPreview(
         drawCtx,
         InputState.isHolding,
@@ -298,23 +306,9 @@ function mainLoop(t) {
         InputState.mouseX,
         InputState.mouseY
       );
-    });
+    }));
 
-    
-
-    
-    OverlaysModule.updateCount(pcountEl);
-    DebugRouter.drawAll(ctx);
-    _drawAimCursor(ctx);
-  
-  }
-  
-  if (cursorEl) {
-    cursorEl.style.left = InputState.mouseX + "px";
-    cursorEl.style.top = InputState.mouseY + "px";
-  }
-  
-OverlaysModule.drawCharge(
+    OverlaysModule.drawCharge(
       ctx,
       InputState.isHolding,
       InputState.holdTime,
@@ -322,6 +316,24 @@ OverlaysModule.drawCharge(
       InputState.mouseY,
       slider.value
     );
+
+    OverlaysModule.updateCount(pcountEl);
+
+    // AIMS map visualization — only relevant when debug or tuning is active.
+    // Draws BEFORE debug/tuning panels so it never overlaps them (z-order).
+    if (DebugRouter.masterEnabled || TuningLayer.count > 0) {
+      InAims.debugDraw(ctx, true);
+    }
+
+    DebugRouter.drawAll(ctx);
+    TuningLayer.drawAll(ctx);
+    _drawAimCursor(ctx);
+  }
+
+  if (cursorEl) {
+    cursorEl.style.left = InputState.mouseX + "px";
+    cursorEl.style.top = InputState.mouseY + "px";
+  }
 }
 
 if (document.readyState === 'loading') {

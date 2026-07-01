@@ -225,7 +225,7 @@ function mainLoop(t) {
   requestAnimationFrame(mainLoop);
 
   // Feed FPS counter every frame — before any frame-skip logic
-  FpsCounter.tick(t, RenderGov.frameSkip, RenderGov.BASE);
+  FpsCounter.tick(t, RenderGov.frameSkip);
   RenderGov.tick();
 
   const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
@@ -318,13 +318,6 @@ function mainLoop(t) {
     );
 
     OverlaysModule.updateCount(pcountEl);
-
-    // AIMS map visualization — only relevant when debug or tuning is active.
-    // Draws BEFORE debug/tuning panels so it never overlaps them (z-order).
-    if (DebugRouter.masterEnabled || TuningLayer.count > 0) {
-      InAims.debugDraw(ctx, true);
-    }
-
     DebugRouter.drawAll(ctx);
     TuningLayer.drawAll(ctx);
     _drawAimCursor(ctx);
@@ -334,6 +327,8 @@ function mainLoop(t) {
     cursorEl.style.left = InputState.mouseX + "px";
     cursorEl.style.top = InputState.mouseY + "px";
   }
+  
+  
 }
 
 if (document.readyState === 'loading') {

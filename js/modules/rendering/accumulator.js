@@ -21,8 +21,8 @@ const _make = (w, h) => {
 };
 
 export const Accumulator = {
-  trailDepth: 5,    // ring size — trail length in frames
-  fadeAlpha:  0.33, // 0.04=dreamy long, 0.5=short crisp
+  trailDepth: 8,    // ring size — trail length in frames
+  fadeAlpha:  0.55, // 0.04=dreamy long, 0.5=short crisp
 
   _bufs:  [],
   _head:  0,

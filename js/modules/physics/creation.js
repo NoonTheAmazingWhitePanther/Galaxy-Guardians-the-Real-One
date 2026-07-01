@@ -139,7 +139,7 @@ export const splitDeadParticles = (body) => {
         for (const nb of adj[c]) { if (!vis[nb]) { vis[nb] = 1; q.push(nb); } }
     }
     let alive = 0, debrisCount = 0;
-    const MAX_DEBRIS = 15;
+    const MAX_DEBRIS = 5;
     for (let i = 0; i < n; i++) {
         const p = ps[i];
         if (p.dead) continue;

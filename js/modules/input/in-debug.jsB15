@@ -228,16 +228,9 @@ export const InDebug = {
           this._panelMasterDragging    = true;
           this._panelMasterKnob        = true;
           this._panelMasterKnobStartY  = y;
-          this._panelMasterKnobIsVar   = !!kCfg && !kCfg.ratioVars;
-          this._panelMasterKnobIsRatio = !!kCfg?.ratioVars;
-
-          if (this._panelMasterKnobIsRatio) {
-            // Ratio knob — scales multiple variables together, preserving ratio
-            panel.captureRatioBaseline();
-            this._panelMasterKnobMin        = kCfg.min ?? 0.1;
-            this._panelMasterKnobMax        = kCfg.max ?? 3.0;
-            this._panelMasterKnobStartValue = 1.0;  // always starts at 100%
-          } else if (kCfg) {
+          this._panelMasterKnobIsVar   = !!kCfg;
+          if (kCfg) {
+            // Variable knob — store the variable reference and range
             this._panelMasterKnobVar        = resolveVariable(kCfg.variable);
             this._panelMasterKnobMin        = kCfg.min  ?? 0;
             this._panelMasterKnobMax        = kCfg.max  ?? 10;
@@ -373,7 +366,7 @@ export const InDebug = {
     // ── Panel resize drag ─────────────────────────────────────────────
     if (this._resizingPanel) {
       const panel = this._resizingPanel;
-      const MIN_W = panel.minimized && !panel._minVertical ? 88 : 52;
+      const MIN_W = 52;
       const MIN_H = panel.minimized && panel._minVertical ? 109 : 52;
       const newW  = Math.max(MIN_W, this._resizeStartW + (x - this._resizeStartX));
       const newH  = Math.max(MIN_H, this._resizeStartH + (y - this._resizeStartY));
@@ -416,10 +409,7 @@ export const InDebug = {
         next = Math.max(this._panelMasterKnobMin, Math.min(this._panelMasterKnobMax, next));
         if (this._panelMasterKnobInteger) next = Math.round(next);
 
-        if (this._panelMasterKnobIsRatio) {
-          panel.applyRatioScale(next);
-          panel.panelMasterValue = next;   // also drives the visual knob arc
-        } else if (this._panelMasterKnobIsVar && this._panelMasterKnobVar) {
+        if (this._panelMasterKnobIsVar && this._panelMasterKnobVar) {
           this._panelMasterKnobVar.set(next);
         } else {
           panel.panelMasterValue = next;
@@ -492,12 +482,8 @@ export const InDebug = {
 
     // ── Per-panel master slider release ───────────────────────────────
     if (this._panelMasterDragging) {
-      if (this._panelMasterKnobIsRatio && this._activePanelMaster) {
-        this._activePanelMaster.clearRatioBaseline();
-      }
       this._panelMasterDragging = false;
       this._panelMasterKnob = false;
-      this._panelMasterKnobIsRatio = false;
       this._activePanelMaster = null;
       this._releaseAll();
       return true;

@@ -3,17 +3,12 @@
  *
  * Tracks real FPS, virtual FPS, and rolling averages.
  *
- * Frame skip is now expressed as "N out of BASE" — e.g. skip=1, base=60
- * means roughly 1 in every 60 frames is dropped, evenly distributed
- * (see RenderGov.shouldRender's accumulator). This is finer-grained
- * than the old "skip N consecutive" model and works smoothly even
- * with bases beyond the display's actual Hz (480, 960).
+ * "Virtual FPS" = realFps × (frameSkip + 1)
+ * The render governor skips N frames between draws, so the simulation
+ * is running at a higher effective rate than what hits the screen.
+ * e.g. 60 real fps with frameSkip=1 → 120 virtual fps.
  *
- * "Virtual FPS" = realFps × BASE / (BASE - skip)
- * e.g. 60 real fps, skip=1, base=60 → 60 × 60/59 ≈ 61 virtual fps
- *      60 real fps, skip=30, base=60 → 60 × 60/30 = 120 virtual fps
- *
- * Feed every rAF tick via FpsCounter.tick(now, frameSkip, base).
+ * Feed every rAF tick via FpsCounter.tick(frameSkip).
  * Read .debugInfo for the panel.
  */
 
@@ -28,7 +23,6 @@ export const FpsCounter = {
   minReal:        Infinity,
   maxReal:        0,
   frameSkip:      0,
-  skipBase:       60,
   totalFrames:    0,
 
   // internals
@@ -43,17 +37,15 @@ export const FpsCounter = {
   /**
    * Call once per rAF, before anything else.
    * @param {number} now        — performance.now()
-   * @param {number} frameSkip  — current RenderGov.frameSkip value (N out of base)
-   * @param {number} base       — current RenderGov.BASE (60/120/240/480/960)
+   * @param {number} frameSkip  — current RenderGov.frameSkip value
    */
-  tick(now, frameSkip, base = 60) {
+  tick(now, frameSkip) {
     if (!this._initialized) {
       this._lastTime    = now;
       this._initialized = true;
     }
 
     this.frameSkip = frameSkip;
-    this.skipBase  = base;
     this.totalFrames++;
     this._frameCount++;
 
@@ -62,8 +54,7 @@ export const FpsCounter = {
     // Update once per second
     if (elapsed >= 1000) {
       const real    = (this._frameCount * 1000) / elapsed;
-      const denom   = Math.max(1, base - frameSkip);
-      const virtual = real * base / denom;
+      const virtual = real * (frameSkip + 1);
 
       this.realFps    = +real.toFixed(1);
       this.virtualFps = +virtual.toFixed(1);
@@ -111,13 +102,8 @@ export const FpsCounter = {
       min:         this.minReal === Infinity ? 0 : this.minReal,
       max:         this.maxReal,
       frameSkip:   this.frameSkip,
-      skipBase:    this.skipBase,
       totalFrames: this.totalFrames,
-      // "1/60" = skip 1 out of every 60 frames
-      skipFraction:   `${this.frameSkip}/${this.skipBase}`,
-      // "59/60" = 59 actually rendered out of every 60
-      renderedFraction: `${Math.max(0, this.skipBase - this.frameSkip)}/${this.skipBase}`,
-      skipLabel:   this.frameSkip === 0 ? 'FULL' : `${this.frameSkip}/${this.skipBase}`,
+      skipLabel:   this.frameSkip === 0 ? 'FULL' : `1 of ${this.frameSkip + 1}`,
     };
   }
 };

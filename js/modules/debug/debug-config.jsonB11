@@ -169,7 +169,7 @@
           "governor": {
             "mode": "add",
             "min": 0,
-            "dynamicMaxFromBase": true,
+            "max": 960,
             "step": 1
           }
         },
@@ -203,12 +203,6 @@
           ],
           "variable": "ManualOverrides.renderSkipBase.value",
           "isBaseSelector": true
-        },
-        {
-          "type": "resetButton",
-          "text": "Reset Frame Skip",
-          "variable": "ManualOverrides.renderFrameSkip.value",
-          "color": "rgba(255,70,70,0.85)"
         }
       ],
       "minimizedKnob": {

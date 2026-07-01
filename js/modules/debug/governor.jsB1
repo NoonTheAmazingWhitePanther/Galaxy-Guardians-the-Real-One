@@ -91,7 +91,6 @@ export const ManualOverrides = {
   physicsTimeScale:         { isManual: false, value: 1.0 },
   // Render
   renderFrameSkip:          { isManual: false, value: 0 },
-  renderSkipBase:           { isManual: false, value: 60 },  // 60/120/240/480/960
   // QueOps
   queOpsBudget:             { isManual: false, value: 128 },
   queOpsDelay:              { isManual: false, value: 0.2 },
@@ -184,15 +183,7 @@ export const PhysicsGov = {
 export const RenderGov = {
   _autoFrameSkip: 0,
   _chaosLevel:    0,
-  _frameCount:    0,    // incremented every rAF
-  _skipAccum:     0,    // fractional accumulator for even distribution
-
-  // Base cadence — skip count is "N out of BASE" frames.
-  // Reads live from ManualOverrides so changing it via the panel
-  // takes effect immediately, no extra wiring needed.
-  get BASE() {
-    return ManualOverrides.get('renderSkipBase', 60);
-  },
+  _frameCount:    0,   // incremented every rAF — drives clean frame-skip cadence
 
   feedChaos(camVel, dt, didPhysicsTick) {
     this._chaosLevel = Math.max(0, Math.min(1, camVel / 100));
@@ -208,41 +199,15 @@ export const RenderGov = {
     this._frameCount++;
   },
 
-  // Raw skip count — "skip N out of BASE frames"
   get frameSkip() {
     return ManualOverrides.get('renderFrameSkip', this._autoFrameSkip);
   },
 
-  // To switch base cadence: ManualOverrides.set('renderSkipBase', 120)
-  // Resets the accumulator automatically via the next tick — no burst,
-  // since accum is always < 1 and the ratio simply changes smoothly.
-
-  // Fractional, evenly-distributed skip — Bresenham-style accumulator.
-  // skip=1, BASE=60  → exactly 1 frame dropped per 60, spread evenly.
-  // skip=3, BASE=960 → very fine-grained, near-imperceptible skip rate,
-  //                    still exactly correct even on displays under 960Hz.
+  // Clean cadence: renders on frame 0, skips N, renders again — no clock drift
   shouldRender() {
     const skip = this.frameSkip;
     if (skip <= 0) return true;
-
-    this._skipAccum += skip / this.BASE;
-    if (this._skipAccum >= 1) {
-      this._skipAccum -= 1;
-      return false;   // this frame is the one we skip
-    }
-    return true;
-  },
-
-  // Label for panel display: "1/60", "0/60" (no skip), etc.
-  get fractionLabel() {
-    const skip = this.frameSkip;
-    return `${skip}/${this.BASE}`;
-  },
-
-  // Inverse — frames actually rendered out of base, e.g. skip=1 → "59/60"
-  get renderedLabel() {
-    const skip = this.frameSkip;
-    return `${this.BASE - skip}/${this.BASE}`;
+    return this._frameCount % (skip + 1) === 0;
   },
 
   get label() {
@@ -261,39 +226,19 @@ export class Governor {
     this.mode = config.mode || 'add';
     this.step = config.step ?? 1;
     this.min = config.min ?? -Infinity;
-    this._maxConfig = config.max ?? Infinity;
-    // When true, .max always tracks RenderGov.BASE live — so the skip
-    // slider/buttons can never exceed the currently selected base (60/120/...)
-    this.dynamicMaxFromBase = !!config.dynamicMaxFromBase;
+    this.max = config.max ?? Infinity;
     this.steps = config.steps || null;
     this.isManual = false;
-  }
-
-  // Live max — tracks RenderGov.BASE when dynamicMaxFromBase is set,
-  // otherwise uses the static config value.
-  get max() {
-    if (this.dynamicMaxFromBase) {
-      return RenderGov.BASE;
-    }
-    return this._maxConfig;
-  }
-
-  set max(v) {
-    this._maxConfig = v;
   }
 
   multiply() {
     this._step(1);
     this.isManual = true;
-    // Clamp current value to new max immediately — e.g. switching base
-    // from 960 to 60 while skip=500 should clamp to 60, not stay at 500
-    this._clampToRange();
   }
 
   divide() {
     this._step(-1);
     this.isManual = true;
-    this._clampToRange();
   }
   add() {
     this.multiply();
@@ -310,20 +255,6 @@ export class Governor {
     }
     this.isManual = false;
     console.log(`[Governor] IDLE → value=${this.variable.get()}`);
-  }
-
-  // Reset to zero — used by the red "Reset Frame Skip" button
-  resetToZero() {
-    this.variable.set(0);
-    this.isManual = true;
-    console.log(`[Governor] RESET → value=0`);
-  }
-
-  _clampToRange() {
-    const v = this.variable.get();
-    if (typeof v !== 'number') return;
-    const clamped = Math.max(this.min, Math.min(this.max, v));
-    if (clamped !== v) this.variable.set(clamped);
   }
 
   _step(direction) {

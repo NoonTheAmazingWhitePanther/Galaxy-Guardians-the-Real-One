@@ -14,7 +14,6 @@ import { InPlanet }     from './in-planet.js';
 import { InKeyboard }   from './in-keyboard.js';
 import { InAims }      from './in-aims.js';
 import { Aims }        from '../../core/aims.js';
-import { DebugRouter } from '../debug/debug-router.js';
 
 export const InputState = {
   mouseX: 0, mouseY: 0,
@@ -47,13 +46,12 @@ export const InputModule = {
       InputState.pointerButton = e.button;
       Aims.aim.x = e.clientX; Aims.aim.y = e.clientY;
 
-      if (InDebug.handleDown(e))     return;  // Debug panels first
-      if (InAims.handleDown(e))      return;  // AIMS second
+      if (InDebug.handleDown(e))     return;  // Debug panels first — need real pointer capture
+      if (InAims.handleDown(e))      return;  // AIMS second — pixel-perfect map
       if (InConfigMenu.handleDown(e)) return;
       if (InUI.handleDown(e))        return;
       if (InCamera.handleDown(e))    return;
-      // Planet planting disabled when debug is on — debug mode = tuning, not playing
-      if (!DebugRouter.masterEnabled) InPlanet.handleDown(e);
+      InPlanet.handleDown(e);
     });
 
     // POINTER MOVE

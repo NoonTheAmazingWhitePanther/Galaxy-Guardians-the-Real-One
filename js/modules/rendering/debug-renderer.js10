@@ -127,27 +127,39 @@ export const DebugRenderer = {
 
     // Amber border for pinned panels
     if (panel.pinned) {
-      ctx.strokeStyle = 'rgba(255,200,80,0.33)';
+      ctx.strokeStyle = 'rgba(255,200,80,0.6)';
       ctx.lineWidth   = 2;
       ctx.beginPath();
       ctx.roundRect(1, 1, pw - 2, ph - 2, 6);
       ctx.stroke();
     }
 
-    // Title bar — drag handle highlight + buttons (expanded only)
     if (!minimized) {
-      ctx.fillStyle = 'rgba(255,255,255,0.04)';
-      ctx.beginPath();
-      ctx.roundRect(1, 1, pw - 2, 28, [radius, radius, 0, 0]);
-      ctx.fill();
-      // Drag handle dots — three dots centred, subtle
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      for (let i = -1; i <= 1; i++) {
-        ctx.beginPath();
-        ctx.arc(pw / 2 + i * 5, 14, 1.5, 0, Math.PI * 2);
-        ctx.fill();
+      const minBtnSize = 16;
+      const minBtnX    = pw - minBtnSize - 6;
+      const minBtnY    = 6;
+      const pinBtnX    = minBtnX - minBtnSize - 4;
+      const pinBtnY    = 6;
+
+      // Pin button — only when debug is on
+      if (window._DebugRouter?.masterEnabled) {
+        ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
+        ctx.font         = `10px ${s.font}`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('📌', pinBtnX + minBtnSize / 2, pinBtnY + minBtnSize / 2);
       }
 
+      // Minimize button
+      ctx.fillStyle    = 'rgba(255,255,255,0.08)';
+      ctx.beginPath();
+      ctx.roundRect(minBtnX, minBtnY, minBtnSize, minBtnSize, 3);
+      ctx.fill();
+      ctx.fillStyle    = 'rgba(240,245,255,0.85)';
+      ctx.font         = `10px ${s.font}`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▼', minBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
     }
     // Resize grip ⊿ bottom-right corner — always shown
     const gripSize = 12;
@@ -207,13 +219,12 @@ export const DebugRenderer = {
 
     ctx.restore();
 
-    // 2px scroll indicator — clamped so it never exits panel bounds
+    // 2px scroll indicator
     if (layout.scrollable && layout.totalContentH > 0) {
       const trackH   = ph - padY * 2;
-      const progress = Math.min(1, scrollOff / Math.max(1, layout.totalContentH - ph));
+      const progress = scrollOff / Math.max(1, layout.totalContentH - ph);
+      const dotY     = padY + progress * trackH;
       const dotH     = Math.max(6, trackH * (ph / layout.totalContentH));
-      const dotY     = padY + progress * (trackH - dotH);  // clamp within track
-
       ctx.fillStyle  = 'rgba(130,210,255,0.35)';
       ctx.beginPath();
       ctx.roundRect(2, padY, 2, trackH, 1);
@@ -223,32 +234,6 @@ export const DebugRenderer = {
       ctx.roundRect(2, dotY, 2, dotH, 1);
       ctx.fill();
     }
-
-    // ── Icons drawn LAST — always on top of all text ─────────────────────
-    const minBtnSize = 16;
-    const minBtnX    = pw - minBtnSize - 6;
-    const minBtnY    = 6;
-    const pinBtnX    = minBtnX - minBtnSize - 4;
-
-    // Pin button
-    if (window._DebugRouter?.masterEnabled) {
-      ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
-      ctx.font         = `10px ${s.font}`;
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('📌', pinBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
-    }
-
-    // Minimize button — opaque bg so text doesn't bleed through
-    ctx.fillStyle = 'rgba(20,24,36,0.85)';
-    ctx.beginPath();
-    ctx.roundRect(minBtnX, minBtnY, minBtnSize, minBtnSize, 3);
-    ctx.fill();
-    ctx.fillStyle    = 'rgba(240,245,255,0.85)';
-    ctx.font         = `10px ${s.font}`;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('▼', minBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
   },
 
   renderMasterSlider(ctx, panels) {

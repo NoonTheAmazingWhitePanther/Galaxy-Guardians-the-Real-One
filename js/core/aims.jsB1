@@ -446,34 +446,32 @@ export const Aims = {
    */
   debugDraw(ctx, showMap = false) {
     const aim = _aim;
-    const dpr = (typeof DEBUG_STATE !== 'undefined' && DEBUG_STATE.dpr) || window.devicePixelRatio || 1;
 
-    // Aim circle — already in CSS px logic, scale to device px to match canvas
+    // Aim circle
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.beginPath();
-    ctx.arc(aim.ex * dpr, aim.ey * dpr, aim.radius * dpr, 0, Math.PI * 2);
+    ctx.arc(aim.ex, aim.ey, aim.radius, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(130,210,255,0.6)';
-    ctx.lineWidth   = 1.5 * dpr;
+    ctx.lineWidth   = 1.5;
     ctx.stroke();
 
     // Offset line from raw touch to effective aim
     if (aim.offsetX !== 0 || aim.offsetY !== 0) {
       ctx.beginPath();
-      ctx.moveTo(aim.x * dpr, aim.y * dpr);
-      ctx.lineTo(aim.ex * dpr, aim.ey * dpr);
+      ctx.moveTo(aim.x, aim.y);
+      ctx.lineTo(aim.ex, aim.ey);
       ctx.strokeStyle = 'rgba(255,200,80,0.5)';
-      ctx.lineWidth   = 1 * dpr;
+      ctx.lineWidth   = 1;
       ctx.stroke();
       // Raw touch dot
       ctx.beginPath();
-      ctx.arc(aim.x * dpr, aim.y * dpr, 3 * dpr, 0, Math.PI * 2);
+      ctx.arc(aim.x, aim.y, 3, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,200,80,0.7)';
       ctx.fill();
     }
 
-    // Item bounds overlay — bounds are CSS px (getBoundingClientRect),
-    // canvas backing store is device px. Must scale by dpr to align.
+    // Item bounds overlay
     if (showMap) {
       const depths = [..._layers.keys()].sort();
       const colors = ['rgba(255,80,80,0.3)', 'rgba(80,200,255,0.3)', 'rgba(80,255,130,0.3)',
@@ -484,16 +482,15 @@ export const Aims = {
           const item = _items.get(id);
           if (!item || !item.enabled) continue;
           const { x, y, w, h } = item.bounds;
-          const sx = x * dpr, sy = y * dpr, sw = w * dpr, sh = h * dpr;
           ctx.fillStyle   = col;
           ctx.strokeStyle = col.replace('0.3', '0.8');
           ctx.lineWidth   = 1;
-          ctx.fillRect(sx, sy, sw, sh);
-          ctx.strokeRect(sx, sy, sw, sh);
+          ctx.fillRect(x, y, w, h);
+          ctx.strokeRect(x, y, w, h);
           ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.font      = `${9 * dpr}px monospace`;
+          ctx.font      = '9px monospace';
           ctx.textAlign = 'left';
-          ctx.fillText(`[${depth}] ${id}`, sx + 2 * dpr, sy + 10 * dpr);
+          ctx.fillText(`[${depth}] ${id}`, x + 2, y + 10);
         }
       }
     }

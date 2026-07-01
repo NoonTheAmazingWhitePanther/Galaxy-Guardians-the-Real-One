@@ -261,39 +261,19 @@ export class Governor {
     this.mode = config.mode || 'add';
     this.step = config.step ?? 1;
     this.min = config.min ?? -Infinity;
-    this._maxConfig = config.max ?? Infinity;
-    // When true, .max always tracks RenderGov.BASE live — so the skip
-    // slider/buttons can never exceed the currently selected base (60/120/...)
-    this.dynamicMaxFromBase = !!config.dynamicMaxFromBase;
+    this.max = config.max ?? Infinity;
     this.steps = config.steps || null;
     this.isManual = false;
-  }
-
-  // Live max — tracks RenderGov.BASE when dynamicMaxFromBase is set,
-  // otherwise uses the static config value.
-  get max() {
-    if (this.dynamicMaxFromBase) {
-      return RenderGov.BASE;
-    }
-    return this._maxConfig;
-  }
-
-  set max(v) {
-    this._maxConfig = v;
   }
 
   multiply() {
     this._step(1);
     this.isManual = true;
-    // Clamp current value to new max immediately — e.g. switching base
-    // from 960 to 60 while skip=500 should clamp to 60, not stay at 500
-    this._clampToRange();
   }
 
   divide() {
     this._step(-1);
     this.isManual = true;
-    this._clampToRange();
   }
   add() {
     this.multiply();
@@ -310,20 +290,6 @@ export class Governor {
     }
     this.isManual = false;
     console.log(`[Governor] IDLE → value=${this.variable.get()}`);
-  }
-
-  // Reset to zero — used by the red "Reset Frame Skip" button
-  resetToZero() {
-    this.variable.set(0);
-    this.isManual = true;
-    console.log(`[Governor] RESET → value=0`);
-  }
-
-  _clampToRange() {
-    const v = this.variable.get();
-    if (typeof v !== 'number') return;
-    const clamped = Math.max(this.min, Math.min(this.max, v));
-    if (clamped !== v) this.variable.set(clamped);
   }
 
   _step(direction) {
