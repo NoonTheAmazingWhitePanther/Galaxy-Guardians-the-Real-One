@@ -9,7 +9,7 @@
  * Drag up = increase, drag down = decrease (standard knob feel).
  */
 import { DEBUG_STATE } from './debug-state.js';
-import { resolveVariable, RenderGov } from './governor.js';
+import { resolveVariable } from './governor.js';
 
 // ── Expanded slider constants ─────────────────────────────────────────────
 const SLIDER_W        = 20;
@@ -55,9 +55,7 @@ export const PanelMasterSlider = {
         const varRef = resolveVariable(kCfg.variable);
         knobValue = varRef?.get() ?? 0;
         knobMin   = kCfg.min   ?? 0;
-        // Dynamic max — tracks RenderGov.BASE live (e.g. frame skip knob
-        // must always cap at the currently selected base: 60/120/240/...)
-        knobMax   = kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 10);
+        knobMax   = kCfg.max   ?? 10;
         knobLabel = kCfg.label ?? '';
       } else {
         knobValue = panel.panelMasterValue ?? 1.0;
@@ -221,18 +219,7 @@ export const PanelMasterSlider = {
 
     } else {
       // ── EXPANDED — vertical slider on right edge ──────────────────────
-      // If minimizedKnob config exists, this slider drives that same
-      // variable directly (e.g. frame skip) instead of the generic
-      // decorative panelMasterValue multiplier.
-      const kCfg      = panel.config?.minimizedKnob;
-      const boundVar  = kCfg ? resolveVariable(kCfg.variable) : null;
-      const sliderMin = kCfg?.min ?? 0;
-      const sliderMax = kCfg?.dynamicMaxFromBase ? RenderGov.BASE : (kCfg?.max ?? 2);
-      const rawValue  = boundVar ? boundVar.get() : (panel.panelMasterValue ?? 1.0);
-      const value     = boundVar
-        ? (rawValue - sliderMin) / Math.max(1, sliderMax - sliderMin) * 2  // normalize to 0-2 for thumb math
-        : rawValue;
-
+      const value   = panel.panelMasterValue ?? 1.0;
       const sliderX = x + panelW + SLIDER_PAD;
       const sliderY = y;
       const sliderH = panelH;
@@ -277,15 +264,12 @@ export const PanelMasterSlider = {
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Value label — real bound value if connected, else the multiplier
+      // Value label
       ctx.fillStyle    = 'rgba(240,245,255,0.9)';
       ctx.font         = `bold 10px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
-      const labelStr = boundVar
-        ? `${Math.round(rawValue)}/${Math.round(sliderMax)}`
-        : `${value.toFixed(2)}x`;
-      ctx.fillText(labelStr, sliderX + SLIDER_W/2, thumbY);
+      ctx.fillText(`${value.toFixed(2)}x`, sliderX + SLIDER_W/2, thumbY);
     }
   },
 
@@ -338,17 +322,7 @@ export const PanelMasterSlider = {
     const sliderY = panelY;
     if (x >= sliderX && x <= sliderX + SLIDER_W &&
         y >= sliderY && y <= sliderY + panelH) {
-      const frac = 1.0 - (y - sliderY) / panelH;
-
-      const kCfg = panel.config?.minimizedKnob;
-      if (kCfg) {
-        const min = kCfg.min ?? 0;
-        const max = kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2);
-        let boundValue = min + frac * (max - min);
-        if (kCfg.integer) boundValue = Math.round(boundValue);
-        return { type: 'slider', value: boundValue, isBound: true };
-      }
-
+      const frac  = 1.0 - (y - sliderY) / panelH;
       const value = Math.max(0, Math.min(2.0, frac * 2.0));
       return { type: 'slider', value };
     }

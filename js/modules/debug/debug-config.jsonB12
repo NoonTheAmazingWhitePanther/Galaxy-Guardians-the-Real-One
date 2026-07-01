@@ -214,7 +214,7 @@
       "minimizedKnob": {
         "variable": "ManualOverrides.renderFrameSkip.value",
         "min": 0,
-        "dynamicMaxFromBase": true,
+        "max": 60,
         "step": 1,
         "label": "",
         "integer": true

@@ -33,7 +33,7 @@ import { DebugRouter } from '../debug/debug-router.js';
 import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
-import { resolveVariable, RenderGov } from '../debug/governor.js';
+import { resolveVariable } from '../debug/governor.js';
 
 export const InDebug = {
   _canvas: null,
@@ -212,14 +212,7 @@ export const InDebug = {
           e.stopImmediatePropagation();
           return true;
         } else if (masterHit.type === 'slider') {
-          if (masterHit.isBound) {
-            const kCfg = panel.config?.minimizedKnob;
-            const boundVar = resolveVariable(kCfg.variable);
-            boundVar?.set(masterHit.value);
-            panel.panelMasterValue = masterHit.value / (kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2));
-          } else {
-            panel.panelMasterValue = masterHit.value;
-          }
+          panel.panelMasterValue = masterHit.value;
           this._panelMasterDragging = true;
           this._panelMasterKnob = false;
           this._activePanelMaster = panel;
@@ -247,10 +240,7 @@ export const InDebug = {
           } else if (kCfg) {
             this._panelMasterKnobVar        = resolveVariable(kCfg.variable);
             this._panelMasterKnobMin        = kCfg.min  ?? 0;
-            this._panelMasterKnobDynMax     = !!kCfg.dynamicMaxFromBase;
-            this._panelMasterKnobMax        = kCfg.dynamicMaxFromBase
-              ? RenderGov.BASE
-              : (kCfg.max ?? 10);
+            this._panelMasterKnobMax        = kCfg.max  ?? 10;
             this._panelMasterKnobStep       = kCfg.step ?? 1;
             this._panelMasterKnobInteger    = !!kCfg.integer;
             this._panelMasterKnobStartValue = this._panelMasterKnobVar?.get() ?? 0;
@@ -418,10 +408,6 @@ export const InDebug = {
       const panel = this._activePanelMaster;
 
       if (this._panelMasterKnob) {
-        // Refresh max live if it tracks base — base can change mid-drag
-        if (this._panelMasterKnobDynMax) {
-          this._panelMasterKnobMax = RenderGov.BASE;
-        }
         const range = this._panelMasterKnobMax - this._panelMasterKnobMin;
         const dy    = this._panelMasterKnobStartY - y;
         // 150px = full range travel
@@ -448,14 +434,7 @@ export const InDebug = {
           panel.minimized
         );
         if (masterHit?.type === 'slider') {
-          if (masterHit.isBound) {
-            const kCfg = panel.config?.minimizedKnob;
-            const boundVar = resolveVariable(kCfg.variable);
-            boundVar?.set(masterHit.value);
-            panel.panelMasterValue = masterHit.value / (kCfg.dynamicMaxFromBase ? RenderGov.BASE : (kCfg.max ?? 2));
-          } else {
-            panel.panelMasterValue = masterHit.value;
-          }
+          panel.panelMasterValue = masterHit.value;
         }
       }
 
