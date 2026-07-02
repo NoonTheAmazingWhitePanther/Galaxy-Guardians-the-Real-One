@@ -1,7 +1,7 @@
 /**
  * js/modules/debug/debug-router.js
  */
-import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov, InputGov, CacheGov } from './governor.js';
+import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov, InputGov, CacheGov, TrailGov } from './governor.js';
 import { Panel } from './panel.js';
 import { MasterGovernor } from './master-governor.js';
 import { DEBUG_STATE } from './debug-state.js';
@@ -32,6 +32,7 @@ export const DebugRouter = {
     GovernorRegistry.register('RenderGov',        RenderGov);
     GovernorRegistry.register('InputGov',         InputGov);
     GovernorRegistry.register('CacheGov',         CacheGov);
+    GovernorRegistry.register('TrailGov',         TrailGov);
     GovernorRegistry.register('ManualOverrides',  ManualOverrides);
     GovernorRegistry.register('QueOps',           QueOps);
     GovernorRegistry.register('Aims',             Aims);
@@ -129,10 +130,90 @@ export const DebugRouter = {
     this.masterEnabled = !this.masterEnabled;
     // Force all panels to redraw — pin button visibility changes with debug state
     for (const panel of this.panels) panel._chromeDirty = true;
-    try { window.InAims?.onDebugToggle(this.masterEnabled); } catch (_) {}
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}
   },
 
   resetAll() {
     PhysicsCounter.reset();
+  },
+
+  // ── Satellite-button actions ────────────────────────────────────────────
+  // Rebuild the AIMS hit-map after panels change. The real, working call is
+  // window._InAims.syncDebugPanels() — NOT the onDebugToggle() used elsewhere,
+  // which doesn't exist on InAims and silently no-ops.
+  _rebuildAimsMap() {
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}
+  },
+
+  // Shared packer: minimize every visible panel to its true minimum size and
+  // lay them out with uniform spacing. Starts below the top-left toolbar/ray
+  // cluster and keeps clear of the right-edge button column, so panels never
+  // land under the controls.
+  //   vertical  — minimized orientation (false = horizontal, true = vertical)
+  //   rowMajor  — true: fill left→right then wrap down (rows)
+  //               false: fill top→bottom then wrap right (columns / left-dock)
+  _packMinimized({ vertical, rowMajor }) {
+    const LEFT   = 16;
+    const TOP    = 120;                       // clears speed-bar + debug rays
+    const GAP    = 8;
+    const RIGHT  = Math.max(LEFT + 60, window.innerWidth  - 70);  // dodge pan-pad/aims column
+    const BOTTOM = Math.max(TOP  + 60, window.innerHeight - 16);
+
+    const panels = this.panels.filter(p => p.visible);
+    for (const p of panels) {
+      p.minimized    = true;
+      p._minVertical = vertical;
+      p._userMinW    = null;   // drop any user resize so it collapses to minimum
+      p._userMinH    = null;
+      p._chromeDirty = true;
+    }
+
+    let cx = LEFT, cy = TOP, band = 0;
+    for (const p of panels) {
+      const { w, h } = p.computeLayout(p._cachedData ?? {});
+      if (rowMajor) {
+        if (cx + w > RIGHT && cx > LEFT) { cx = LEFT; cy += band + GAP; band = 0; }
+        p.x = cx; p.y = cy;
+        cx  += w + GAP;
+        band = Math.max(band, h);
+      } else {
+        if (cy + h > BOTTOM && cy > TOP) { cy = TOP; cx += band + GAP; band = 0; }
+        p.x = cx; p.y = cy;
+        cy  += h + GAP;
+        band = Math.max(band, w);
+      }
+    }
+    this._rebuildAimsMap();
+  },
+
+  // BUTTON 1 — "Close all": every panel → minimized minimum, docked down the
+  // left edge one after another, wrapping into a new column when it runs out
+  // of vertical room. Same spacing throughout, filling the screen.
+  closeAllDock() {
+    this._packMinimized({ vertical: false, rowMajor: false });
+  },
+
+  // BUTTON 2 — "Reset all": every ManualOverrides value → the selected startup
+  // profile (or engine defaults as fallback if no profile is active).
+  // Variables only — panels are NOT touched or re-arranged.
+  resetAllToProfile() {
+    ManualOverrides.resetAllVariables();          // everything → AUTO first
+    const p = GovernorProfiles.activeProfile;      // the selected startup profile
+    if (p) GovernorProfiles.applyProfile(p);       // re-apply it cleanly
+    // else: no profile selected → leave at AUTO (defaults fallback)
+    for (const panel of this.panels) panel._chromeDirty = true;
+  },
+
+  // BUTTON 3 — "Flip": minimize every panel and flip EACH ONE's own
+  // horizontal/vertical orientation individually, in place. No repositioning,
+  // no forced global orientation — wherever a panel sits it stays, and each
+  // just toggles its own state, so you can end up with a free mix.
+  arrangeToggle() {
+    for (const p of this.panels) {
+      if (!p.visible) continue;
+      p.minimized = true;             // ensure it's in minimized form
+      p.toggleMinOrientation();       // flip THIS panel's own orientation
+    }
+    this._rebuildAimsMap();           // w/h swapped, refresh the hit-map
   }
 };

@@ -110,6 +110,19 @@ export const ManualOverrides = {
   cacheTargetAhead:         { isManual: false, value: 100 },  // "amount of future steps to cache"
   cacheMsBudget:            { isManual: false, value: 2.0 },  // spare ms/frame spent caching ahead
 
+  // Trails (position-history stamp trail + phosphor glow ring)
+  trailEnabled:             { isManual: false, value: 1 },
+  trailMax:                 { isManual: false, value: 8 },    // # of past tick-positions stamped (0..1000)
+  trailDensity:             { isManual: false, value: 8 },    // stamps drawn along the trail (8..1000, interpolated)
+  trailAlpha:               { isManual: false, value: 0.6 },  // base stamp opacity
+  trailSpeedScale:          { isManual: false, value: 0 },    // 0 = length constant vs speed; >0 = grows with speed
+  trailSkip:                { isManual: false, value: 1 },    // stamp every Kth past position
+  trailShrink:              { isManual: false, value: 0 },    // 0..1 tail shrink (older = smaller)
+  trailBloom:               { isManual: false, value: 0 },    // 0..1 additive glow on stamps
+  trailDownscale:           { isManual: false, value: 0 },    // trail/glow buffer downscale power (0=full, 1=/2, …→64px)
+  trailGlowDepth:           { isManual: false, value: 8 },    // phosphor ring depth (persistence/soft tail)
+  trailGlowFade:            { isManual: false, value: 0.55 }, // phosphor fade strength
+
   // set() — marks as manual and updates value. Used by Governor buttons.
   set(key, value) {
     if (this[key] !== undefined) {
@@ -125,6 +138,21 @@ export const ManualOverrides = {
       this[key].isManual = false;
       console.log(`[Gov] AUTO → ${key}`);
     }
+  },
+
+  // resetAllVariables() — flip EVERY data entry back to AUTO in one shot.
+  // Skips methods and accessor/proxy keys (e.g. renderFrameSkipProxy) so it
+  // only ever touches the real { isManual, value } records and can't throw.
+  resetAllVariables() {
+    for (const key of Object.keys(this)) {
+      const desc = Object.getOwnPropertyDescriptor(this, key);
+      if (!desc || typeof desc.get === 'function') continue;   // skip getters/proxies
+      const entry = desc.value;
+      if (entry && typeof entry === 'object' && typeof entry.isManual === 'boolean') {
+        entry.isManual = false;
+      }
+    }
+    console.log('[Gov] ALL variables → AUTO');
   },
 
   get(key, autoValue) {
@@ -149,6 +177,51 @@ export const ManualOverrides = {
 
   // Expose named proxies so resolveVariable('ManualOverrides.renderFrameSkip.value') works
   get renderFrameSkipProxy() { return this._proxy('renderFrameSkip'); },
+};
+
+// ── Trails ────────────────────────────────────────────────────────────────
+// Governs the position-history stamp trail (main trail shape) and the phosphor
+// glow ring (soft persistence). All knobs are plain user settings read live
+// from ManualOverrides — no AUTO/MANUAL adaptation, just direct control.
+export const TrailGov = {
+  get enabled()    { return ManualOverrides.get('trailEnabled', 1) !== 0; },
+  get maxTrails()  { return Math.max(0, Math.min(1000, Math.round(ManualOverrides.get('trailMax', 8)))); },
+  get density()    { return Math.max(8, Math.min(1000, Math.round(ManualOverrides.get('trailDensity', 8)))); },
+  get alpha()      { return Math.max(0.02, Math.min(1, ManualOverrides.get('trailAlpha', 0.6))); },
+  get speedScale() { return Math.max(0, Math.min(4, ManualOverrides.get('trailSpeedScale', 0))); },
+  get skip()       { return Math.max(1, Math.min(16, Math.round(ManualOverrides.get('trailSkip', 1)))); },
+  get shrink()     { return Math.max(0, Math.min(1, ManualOverrides.get('trailShrink', 0))); },
+  get bloom()      { return Math.max(0, Math.min(1, ManualOverrides.get('trailBloom', 0))); },
+  get downscale()  { return Math.max(0, Math.min(8, Math.round(ManualOverrides.get('trailDownscale', 0)))); },
+  get glowDepth()  { return Math.max(2, Math.min(16, Math.round(ManualOverrides.get('trailGlowDepth', 8)))); },
+  get glowFade()   { return Math.max(0.04, Math.min(0.95, ManualOverrides.get('trailGlowFade', 0.55))); },
+
+  // Effective # of past positions to stamp this frame. Constant vs speed when
+  // speedScale is 0; grows with the speed multiplier as speedScale rises.
+  effectiveCount(physSpeed = 1) {
+    const s = this.speedScale;
+    const n = s > 0 ? this.maxTrails * (1 + (physSpeed - 1) * s) : this.maxTrails;
+    return Math.max(0, Math.min(1000, Math.round(n)));
+  },
+
+  get label() { return this.enabled ? `${this.maxTrails}·${this.density}${this.skip > 1 ? '/' + this.skip : ''}` : 'off'; },
+
+  get debugInfo() {
+    return {
+      enabled:    this.enabled,
+      maxTrails:  this.maxTrails,
+      count:      this.effectiveCount(),
+      density:    this.density,
+      skip:       this.skip,
+      alpha:      this.alpha.toFixed(2),
+      speedScale: this.speedScale.toFixed(2),
+      shrink:     this.shrink.toFixed(2),
+      bloom:      this.bloom.toFixed(2),
+      downscale:  `1/${Math.pow(2, this.downscale)}`,
+      glowDepth:  this.glowDepth,
+      glowFade:   this.glowFade.toFixed(2),
+    };
+  }
 };
 
 // ── Physics Auto-Adaptation (moved from physics-governor.js) ──────────────
@@ -375,11 +448,39 @@ export const CacheGov = {
     return ManualOverrides.get('cacheEnabled', 1) !== 0;
   },
 
+  // ── Automated cache-ahead depth ─────────────────────────────────────────
+  // In AUTO the target isn't a fixed number — it walks itself between a floor
+  // of 1 and a ceiling of 1000 based on whether FutureCache is keeping up.
+  // FutureCache.topUp() calls reportFill() once a frame with the pressure
+  // signal; AIMD converges on the deepest buffer the machine can actually
+  // sustain: climbs when there's spare time, halves the moment it falls
+  // behind. High-end machines settle near 1000; a busy scene collapses toward
+  // 1. Mirrors HARD_CAP in future-cache.js — keep the two 1000s in sync.
+  AUTO_MIN: 1,
+  AUTO_MAX: 1000,
+  _autoTarget: 60,
+
+  reportFill(budgetLimited) {
+    // Only self-tune in AUTO — a manual target is the user's explicit choice.
+    if (ManualOverrides.isManual('cacheTargetAhead')) return;
+    if (budgetLimited) {
+      // Fell behind this frame → back off hard (multiplicative decrease).
+      this._autoTarget = Math.max(this.AUTO_MIN, Math.floor(this._autoTarget / 2));
+    } else {
+      // Kept up with room to spare → reach a little deeper (additive increase).
+      this._autoTarget = Math.min(this.AUTO_MAX, this._autoTarget + 16);
+    }
+  },
+
   // How many steps ahead to try to keep buffered — a ceiling, not a
   // guarantee. Caching stops the moment the time budget runs out, even if
-  // this target hasn't been reached yet.
+  // this target hasn't been reached yet. MANUAL: the dialed-in value.
+  // AUTO: the self-adapting depth above.
   get targetAhead() {
-    return ManualOverrides.get('cacheTargetAhead', 100);
+    if (ManualOverrides.isManual('cacheTargetAhead')) {
+      return ManualOverrides.get('cacheTargetAhead', this._autoTarget);
+    }
+    return this._autoTarget;
   },
 
   // Spare ms/frame allowed for cache-ahead work. Kept modest by default so

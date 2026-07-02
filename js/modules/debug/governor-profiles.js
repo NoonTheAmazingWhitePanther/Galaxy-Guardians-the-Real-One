@@ -126,6 +126,21 @@ export const GovernorProfiles = {
   get profiles() {
     return PROFILES;
   },
+
+  /**
+   * Fold benchmarked best preferences into the Base (BALANCE) profile — the one
+   * all others and future user profiles inherit from. Only overwrites keys the
+   * profile already owns, so unknown keys can't corrupt the profile shape.
+   */
+  setBase(baseMap) {
+    if (!baseMap || typeof baseMap !== 'object') return;
+    for (const key of Object.keys(PROFILES.BALANCE)) {
+      if (key in baseMap && Number.isFinite(+baseMap[key])) {
+        PROFILES.BALANCE[key] = +baseMap[key];
+      }
+    }
+    console.log('[GovernorProfiles] Base (BALANCE) updated from benchmark');
+  },
 };
 
 export default GovernorProfiles;

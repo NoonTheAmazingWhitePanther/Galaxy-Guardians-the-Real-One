@@ -318,6 +318,13 @@ export const Aims = {
    * Fires listeners and dispatches synthetic events.
    */
   _resolve(x, y, radius, eventType) {
+    // Self-heal: if the map was invalidated (a panel moved / minimized / was
+    // unregistered), repaint it NOW before sampling. unregister() only marks
+    // _dirty and register() paints new pixels without clearing old ones, so
+    // without this the map keeps stale stamps — old positions still "hit" and
+    // moved buttons become untouchable. This is the tap path, so it's the one
+    // place we must guarantee a fresh map.
+    if (_dirty) this.rebuild();
     if (!_map) return [];
 
     // Sample a grid within the aim radius

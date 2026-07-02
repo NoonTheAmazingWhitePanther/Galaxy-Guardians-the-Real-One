@@ -225,24 +225,68 @@ export class Panel {
     this.pinned ? this.unpin() : this.pin();
   }
 
+  // ── Minimized mixer ─────────────────────────────────────────────────────
+  // The adjustable controls that become mixer "channels" when the panel is
+  // minimized: buttons (governor min/max), knobs and sliders. Each yields a
+  // normalized {ref,min,max,step,label}. Display-only rows are skipped.
+  _mixChannels() {
+    if (!this._controls) return [];
+    const out = [];
+    for (const c of this._controls) {
+      let min, max, step;
+      if (c.type === ControlType.BUTTON) {
+        const g = c.config?.governor; if (!g) continue;
+        min = g.min; max = g.max; step = g.step ?? 1;
+      } else if (c.type === ControlType.KNOB) {
+        min = c.min; max = c.max; step = c.step ?? 1;
+      } else if (c.type === ControlType.SLIDER) {
+        min = c.config?.min; max = c.config?.max; step = c.config?.step ?? 1;
+      } else continue;
+      const ref = c.variable;
+      if (!ref || typeof ref.get !== 'function' || typeof ref.set !== 'function') continue;
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) continue;
+      out.push({ ref, min, max, step, label: String(c.config?.text ?? '').trim() });
+    }
+    return out;
+  }
+
+  // Does the minimized view show the full mixer? (≥2 adjustable channels and
+  // no explicit single-knob config overriding it.)
+  isMixer() {
+    return !this.config?.minimizedKnob && this._mixChannels().length >= 2;
+  }
+
   // ── Ratio knob — scales multiple variables together preserving ratio ────
   // Called once at drag start to snapshot current values as the 1.0x baseline
   captureRatioBaseline() {
     const cfg = this.config.minimizedKnob;
-    if (!cfg?.ratioVars) return;
-    this._ratioBaseline = cfg.ratioVars.map(v => {
-      const ref = resolveVariable(v.variable);
-      return { variable: v.variable, ref, base: ref?.get() ?? 0 };
-    });
+    if (cfg?.ratioVars) {
+      this._ratioBaseline = cfg.ratioVars.map(v => {
+        const ref = resolveVariable(v.variable);
+        return { ref, base: ref?.get() ?? 0, min: v.min ?? 0, max: v.max ?? Infinity };
+      });
+      return;
+    }
+    // Mixer master: baseline = every channel's current value. base is retained
+    // unclamped so scaling past a channel's max is remembered — pulling the
+    // master back restores the true ratio (values "way past" 200% come back).
+    this._ratioBaseline = this._mixChannels().map(ch => ({
+      ref: ch.ref, base: ch.ref.get() ?? 0, min: ch.min, max: ch.max, step: ch.step
+    }));
   }
 
-  // Called continuously while dragging — factor is e.g. 1.5 = 150% of baseline
+  // Called continuously while dragging — factor is e.g. 1.5 = 150% of baseline.
+  // Each channel is set to base×factor, clamped to its own [min,max] for display
+  // while the baseline keeps the true (unclamped) intent.
   applyRatioScale(factor) {
     if (!this._ratioBaseline) return;
     for (const entry of this._ratioBaseline) {
       if (!entry.ref) continue;
-      const scaled = entry.base * factor;
-      entry.ref.set(Math.round(scaled * 10) / 10);
+      const raw   = entry.base * factor;
+      const step  = entry.step || 0.1;
+      let snapped = Math.round(raw / step) * step;
+      snapped = Math.max(entry.min ?? -Infinity, Math.min(entry.max ?? Infinity, snapped));
+      entry.ref.set(Math.round(snapped * 100) / 100);
     }
   }
 
@@ -516,6 +560,25 @@ export class Panel {
     const MIN_HORIZ_W = 88;
 
     if (this.minimized) {
+      // Mixer: size to fit one small knob per channel + the master knob.
+      // Horizontal → a row (master on the right); Vertical → a column (master
+      // at the bottom). Grows with channel count — "takes more space than usual".
+      if (this.isMixer()) {
+        const N   = this._mixChannels().length;
+        const chR = 9, mR = 14, gap = 6, pad = 8;
+        let mw, mh;
+        if (this._minVertical) {
+          mw = Math.max(52, mR * 2 + pad * 2);
+          mh = 20 + N * (chR * 2 + gap) + gap + mR * 2 + 14;
+        } else {
+          mw = pad + N * (chR * 2 + gap) + gap + mR * 2 + pad;
+          mh = Math.max(50, mR * 2 + 22);
+        }
+        const fw = this._userMinW ? Math.max(mw, this._userMinW) : mw;
+        const fh = this._userMinH ? Math.max(mh, this._userMinH) : mh;
+        return { w: fw, h: fh, lines: [], controls: [], minimized: true, mixer: true };
+      }
+
       let pw, ph;
       if (this._minVertical) {
         pw = 52;
@@ -625,7 +688,10 @@ export class Panel {
     }
 
     for (const ctrl of layout.controls) {
-      const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+      // ctrl.bounds live in unscrolled content space, but the controls are DRAWN
+      // shifted up by scrollY. Map the tap into content space (+scrollY) so a
+      // scrolled panel hits the button that's actually under the finger.
+      const hit = ControlRenderer.hitTest(ctrl, x - this.x, (y - this.y) + scrollY, ctrl.bounds);
       if (hit) {
         if (ctrl.type === ControlType.BUTTON)       return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
         if (ctrl.type === ControlType.WIDE_BUTTON)  return { type: 'button',   control: ctrl, btnIdx: hit.btnIdx };
@@ -752,15 +818,20 @@ export class Panel {
 
   handlePointerMove(x, y, layout) {
     let changed = false;
+    // Match hitTest: map the tap into unscrolled content space so hover/drag
+    // tracking stays aligned with the drawn controls when the panel is scrolled.
+    const scrollY = layout.scrollOffset ?? 0;
+    const lx = x - this.x;
+    const ly = (y - this.y) + scrollY;
     for (const ctrl of layout.controls) {
       if (ctrl.type === ControlType.BUTTON) {
-        const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+        const hit = ControlRenderer.hitTest(ctrl, lx, ly, ctrl.bounds);
         if (ctrl.state.hoverIdx !== (hit ? hit.btnIdx : -1)) {
           ctrl.state.hoverIdx = hit ? hit.btnIdx : -1;
           changed = true;
         }
       } else if (ctrl.type === ControlType.DROPDOWN) {
-        const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+        const hit = ControlRenderer.hitTest(ctrl, lx, ly, ctrl.bounds);
         const newHover = !!hit;
         const newIdx = hit?.type === 'option' ? hit.idx : -1;
         if (ctrl.state.hover !== newHover || ctrl.state.hoverIdx !== newIdx) {
@@ -769,7 +840,7 @@ export class Panel {
           changed = true;
         }
       } else if (ctrl.type === ControlType.COLOR_PICKER) {
-        const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+        const hit = ControlRenderer.hitTest(ctrl, lx, ly, ctrl.bounds);
         const newHover = !!hit;
         const newIdx = hit?.type === 'color' ? hit.idx : -1;
         if (ctrl.state.hover !== newHover || ctrl.state.hoverIdx !== newIdx) {
@@ -778,7 +849,7 @@ export class Panel {
           changed = true;
         }
       } else {
-        const hit = ControlRenderer.hitTest(ctrl, x - this.x, y - this.y, ctrl.bounds);
+        const hit = ControlRenderer.hitTest(ctrl, lx, ly, ctrl.bounds);
         if (ctrl.state.hover !== !!hit) {
           ctrl.state.hover = !!hit;
           changed = true;

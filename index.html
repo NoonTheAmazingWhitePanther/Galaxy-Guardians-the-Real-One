@@ -23,6 +23,11 @@
 <!-- Top Middle Fps Counter -->
 <div id="fpsCounter" role="toolbar" aria-label="Frames per second" class="fps-counter">0 FPS</div>
 
+<!-- BEST PREFERENCES / benchmark button (under FPS counter, shown when debug is on) -->
+<div id="bench-btn" title="Benchmark this device & save best preferences" aria-label="Best Preferences" role="button">BEST PREFERENCES</div>
+<!-- Benchmark history strip: runs completed + score/improvement (shown when prefs exist) -->
+<div id="bench-info" aria-hidden="true"></div>
+
 <!-- TOP RIGHT -->
 <div id="zoom-bar" role="toolbar" aria-label="Camera Zoom">
   <div class="zm-btn" id="zm-in" title="Zoom In">+</div>
@@ -41,6 +46,11 @@
 
 <!-- DEBUG TOGGLE (Below Pan Pad) -->
 <div id="debug-btn" title="Toggle Debug Panels" aria-label="Toggle Debug" role="button">〰️</div>
+
+<!-- DEBUG SATELLITES — 3 rays fanning right/below the debug button -->
+<div id="dbg-closeall" class="dbg-sat" title="Close all panels (minimize + dock left)" aria-label="Close all panels" role="button">⊟</div>
+<div id="dbg-reset"    class="dbg-sat" title="Reset all values to startup profile" aria-label="Reset all values" role="button">⟳</div>
+<div id="dbg-arrange"  class="dbg-sat" title="Flip each panel minimized horizontal/vertical" aria-label="Flip panel orientation" role="button">⊞</div>
 
 <!-- AIMS TOGGLE (Below Debug Button) -->
 <div id="aims-btn" title="Toggle AIMS Input" aria-label="Toggle AIMS" role="button">✒️</div>

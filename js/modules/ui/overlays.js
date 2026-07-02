@@ -8,6 +8,7 @@ import { CONFIG } from '../../../js/config/config-index.js';
 import { state, SUN, sunGravMult, physSpeed, PALS } from '../../core/state.js';
 import { makeBody } from '../physics/creation.js';
 import { CameraModule } from '../camera/camera.module.js';
+import { FutureCache } from '../../core/future-cache.js';
 
 export const OverlaysModule = {
   fpsSamples: [],
@@ -54,6 +55,12 @@ export const OverlaysModule = {
 
     for (const p of body.particles) { p.vx = vx; p.vy = vy; }
     state.bodies.push(body);
+
+    // A newly-planted body isn't in anything already cached ahead. Without this,
+    // stale future ticks (computed before this planet existed) replay and
+    // overwrite state.bodies via playNext(), wiping the new planet — which is
+    // why only the first planet (planted while the cache was still empty) stuck.
+    FutureCache.invalidate();
 
     state.flashes.push({
       x, y, r: radius * 0.1, maxR: radius * 2, gc: pal.gc,

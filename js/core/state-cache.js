@@ -7,14 +7,19 @@
  * - clear() now also resets isReady to false for clean session restarts
  */
 import { CONFIG } from '../config/config-index.js';
+import { TrailGov } from '../modules/debug/governor.js';
 
 export const StateCache = {
     buffer: [],
     isReady: false,
     
-    // Dynamically get maxSize from the active config profile
+    // Vault size = max of the interpolation vault and the trail's keyframe need,
+    // but capped at 130 so a high Max Trails can't balloon per-tick snapshot
+    // memory (each snapshot also stores loose particles). The trail's Density
+    // knob interpolates BETWEEN these keyframes, so length/smoothness beyond the
+    // stored keyframes comes for free without more memory.
     get maxSize() {
-        return CONFIG.physics.VAULT_SIZE;
+        return Math.max(CONFIG.physics.VAULT_SIZE, Math.min(130, TrailGov.maxTrails + 2));
     },
 
     /** Helper: return value if finite, else fallback */
@@ -87,6 +92,22 @@ export const StateCache = {
             stateB: this.buffer[len - 1],
             alpha: alpha
         };
+    },
+
+    // Body snapshots for the intermediate ticks that ran since the last draw,
+    // oldest→newest, EXCLUDING the very latest (that one is already shown at
+    // its interpolated position by the tween). Used to stamp a continuous
+    // motion trail when many ticks pass between two rendered frames. Returns
+    // an array of body-arrays (each = one past tick's bodies).
+    getRecentBodies(n) {
+        const len = this.buffer.length;
+        if (len < 2 || n < 1) return [];
+        const count = Math.min(n, len - 1);
+        const out = [];
+        for (let i = len - 1 - count; i < len - 1; i++) {
+            out.push(this.buffer[i].bodies);
+        }
+        return out;
     },
 
     clear() {

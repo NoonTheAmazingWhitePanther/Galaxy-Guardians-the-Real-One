@@ -198,16 +198,19 @@ export const InDebug = {
       if (masterHit) {
         if (masterHit.type === 'minimize') {
           panel.toggleMinimize();
+          try { window._InAims?.syncDebugPanels(); } catch (_) {}
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
         } else if (masterHit.type === 'pin') {
           panel.togglePin();
+          try { window._InAims?.syncDebugPanels(); } catch (_) {}
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
         } else if (masterHit.type === 'orientToggle') {
           panel.toggleMinOrientation();
+          try { window._InAims?.syncDebugPanels(); } catch (_) {}
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
@@ -230,20 +233,28 @@ export const InDebug = {
           e.preventDefault();
           e.stopImmediatePropagation();
           return true;
+        } else if (masterHit.type === 'mixChannel') {
+          // Slice 1: channel knobs are visual — consume the tap so it doesn't
+          // start a panel drag. (Individual channel drag comes next.)
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
         } else if (masterHit.type === 'knob') {
           const kCfg = panel.config?.minimizedKnob;
           this._panelMasterDragging    = true;
           this._panelMasterKnob        = true;
           this._panelMasterKnobStartY  = y;
           this._panelMasterKnobIsVar   = !!kCfg && !kCfg.ratioVars;
-          this._panelMasterKnobIsRatio = !!kCfg?.ratioVars;
+          this._panelMasterKnobIsRatio = !!kCfg?.ratioVars || !!masterHit.ratio;
 
           if (this._panelMasterKnobIsRatio) {
-            // Ratio knob — scales multiple variables together, preserving ratio
+            // Ratio knob — scales all channels together, preserving ratio.
+            // Baseline is captured now so scaling past a channel's max is
+            // remembered and restored when the master comes back down.
             panel.captureRatioBaseline();
-            this._panelMasterKnobMin        = kCfg.min ?? 0.1;
-            this._panelMasterKnobMax        = kCfg.max ?? 3.0;
-            this._panelMasterKnobStartValue = 1.0;  // always starts at 100%
+            this._panelMasterKnobMin        = kCfg?.min ?? 0.1;
+            this._panelMasterKnobMax        = kCfg?.max ?? 3.0;
+            this._panelMasterKnobStartValue = 1.0;  // factor starts at 100%
           } else if (kCfg) {
             this._panelMasterKnobVar        = resolveVariable(kCfg.variable);
             this._panelMasterKnobMin        = kCfg.min  ?? 0;
@@ -277,6 +288,7 @@ export const InDebug = {
       // ── Minimize button ──────────────────────────────────────────────
       if (hit.type === 'minimize' || (hit.type === 'button' && hit.control?.config?.__minimize__)) {
         panel.toggleMinimize();
+        try { window._InAims?.syncDebugPanels(); } catch (_) {}
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;
@@ -285,6 +297,7 @@ export const InDebug = {
       // ── Pin button ───────────────────────────────────────────────────
       if (hit.type === 'pin') {
         panel.togglePin();
+        try { window._InAims?.syncDebugPanels(); } catch (_) {}
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;
@@ -537,10 +550,9 @@ export const InDebug = {
     if (this.isDragging) {
       this._releaseAll();
 
-      // Rebuild AIMS map with updated panel positions after drag
-      try {
-        window.InAims?.onDebugToggle(true);
-      } catch (_) {}
+      // Rebuild the AIMS hit-map with the panel's new position (the real,
+      // working call — the old onDebugToggle() was a dead no-op).
+      try { window._InAims?.syncDebugPanels(); } catch (_) {}
 
       return true;
     }

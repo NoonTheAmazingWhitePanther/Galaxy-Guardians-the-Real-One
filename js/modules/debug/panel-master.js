@@ -34,11 +34,113 @@ function _fillColor(value) {
        :                'rgba(255,255,255,0.5)';
 }
 
+// Compact knob for the minimized mixer — channel knobs (small) + master (accent).
+// frac 0..1 maps to the 270° arc. Scales cleanly with radius.
+function _drawMixKnob(ctx, kx, ky, r, frac, accent) {
+  const ang = ARC_START + Math.max(0, Math.min(1, frac)) * (ARC_END - ARC_START);
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = Math.max(2, r * 0.24);
+  ctx.beginPath(); ctx.arc(kx, ky, r, ARC_START, ARC_END); ctx.stroke();
+  ctx.strokeStyle = accent
+    ? 'rgba(255,200,100,0.95)'
+    : (frac > 0.5 ? 'rgba(255,120,90,0.85)' : 'rgba(130,210,255,0.85)');
+  ctx.lineWidth = Math.max(2, r * 0.24);
+  ctx.beginPath(); ctx.arc(kx, ky, r, ARC_START, ang); ctx.stroke();
+  const grad = ctx.createRadialGradient(kx - 2, ky - 2, 1, kx, ky, r - 1);
+  grad.addColorStop(0, 'rgba(80,90,110,0.95)');
+  grad.addColorStop(1, 'rgba(20,22,32,0.95)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(kx, ky, Math.max(2, r - 4), 0, Math.PI * 2); ctx.fill();
+  const px = kx + Math.cos(ang) * (r - 5), py = ky + Math.sin(ang) * (r - 5);
+  ctx.strokeStyle = 'rgba(240,245,255,0.8)';
+  ctx.lineWidth = Math.max(1, r * 0.16);
+  ctx.beginPath(); ctx.moveTo(kx, ky); ctx.lineTo(px, py); ctx.stroke();
+  ctx.restore();
+}
+
 export const PanelMasterSlider = {
+
+  // Shared mixer geometry (render + hit-test use this so they never disagree).
+  // Horizontal → channels in a row, master on the RIGHT.
+  // Vertical   → channels in a column, master at the BOTTOM.
+  _mixerLayout(panel, x, y, w, h) {
+    const chans = panel._mixChannels();
+    const chR = 9, mR = 14, gap = 6, pad = 8;
+    const channels = [];
+    let master;
+    if (panel._minVertical) {
+      const cx = x + w / 2;
+      let cy = y + 20 + chR;
+      for (const ch of chans) { channels.push({ cx, cy, r: chR, ch }); cy += chR * 2 + gap; }
+      master = { cx, cy: y + h - pad - mR, r: mR };
+    } else {
+      const cy = y + Math.max(24, h * 0.5);
+      let cx = x + pad + chR;
+      for (const ch of chans) { channels.push({ cx, cy, r: chR, ch }); cx += chR * 2 + gap; }
+      master = { cx: x + w - pad - mR, cy: y + h / 2, r: mR };
+    }
+    return { channels, master, chR, mR };
+  },
 
   // ── render ───────────────────────────────────────────────────────────────
   render(ctx, panel, x, y, panelW, panelH, minimized) {
     const s = DEBUG_STATE.style;
+
+    if (minimized && panel.isMixer && panel.isMixer()) {
+      // ── MIXER ─────────────────────────────────────────────────────────────
+      const L      = this._mixerLayout(panel, x, y, panelW, panelH);
+      const isVert = panel._minVertical;
+
+      // Title
+      ctx.fillStyle = 'rgba(240,245,255,0.35)';
+      ctx.font      = `7px ${s.font}`;
+      ctx.textAlign = isVert ? 'center' : 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(panel.title, isVert ? x + panelW / 2 : x + 6, y + 4);
+
+      // Channel knobs
+      for (const c of L.channels) {
+        const val  = c.ch.ref.get() ?? 0;
+        const frac = (val - c.ch.min) / (c.ch.max - c.ch.min);
+        _drawMixKnob(ctx, c.cx, c.cy, c.r, frac, false);
+        ctx.fillStyle = 'rgba(240,245,255,0.4)';
+        ctx.font      = `6px ${s.font}`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText((c.ch.label || '').slice(0, 4), c.cx, c.cy + c.r + 1);
+      }
+
+      // Master knob (accent) — drives the ratio of all channels
+      const mv    = panel.panelMasterValue ?? 1.0;
+      _drawMixKnob(ctx, L.master.cx, L.master.cy, L.master.r, Math.min(1, mv / 2), true);
+      ctx.fillStyle = 'rgba(255,210,130,0.85)';
+      ctx.font      = `bold 7px ${s.font}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(`${mv.toFixed(2)}x`, L.master.cx, L.master.cy + L.master.r + 2);
+
+      // Minimize / pin / orient icons (top-right, same as the single-knob view)
+      const btnSize = 12;
+      const btnX    = x + panelW - btnSize - 2;
+      const btnY    = y + 2;
+      // Orientation toggle glyph (top-left)
+      ctx.fillStyle = 'rgba(130,210,255,0.7)';
+      ctx.font = `9px ${s.font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(isVert ? '⇔' : '⇕', x + 9, y + 9);
+      // Pin (debug only)
+      if (window._DebugRouter?.masterEnabled) {
+        ctx.fillStyle = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.35)';
+        ctx.font = `8px ${s.font}`;
+        ctx.fillText('📌', btnX - btnSize - 2 + btnSize / 2, btnY + btnSize / 2);
+      }
+      // Expand ▲
+      ctx.fillStyle = 'rgba(130,210,255,0.25)';
+      ctx.beginPath(); ctx.roundRect(btnX, btnY, btnSize, btnSize, 2); ctx.fill();
+      ctx.fillStyle = 'rgba(240,245,255,0.7)';
+      ctx.font = `8px ${s.font}`;
+      ctx.fillText('▲', btnX + btnSize / 2, btnY + btnSize / 2);
+      return;
+    }
 
     if (minimized) {
       // ── KNOB VALUE SOURCE ───────────────────────────────────────────────
@@ -291,6 +393,34 @@ export const PanelMasterSlider = {
   },
 
   hitTest(panel, x, y, panelX, panelY, panelW, panelH, minimized) {
+    if (minimized && panel.isMixer && panel.isMixer()) {
+      const btnSize = 12;
+      const btnX    = panelX + panelW - btnSize - 2;
+      const btnY    = panelY + 2;
+      const pinBtnX = btnX - btnSize - 2;
+      if (window._DebugRouter?.masterEnabled &&
+          x >= pinBtnX && x <= pinBtnX + btnSize && y >= btnY && y <= btnY + btnSize) {
+        return { type: 'pin' };
+      }
+      if (x >= btnX && x <= btnX + btnSize && y >= btnY && y <= btnY + btnSize) {
+        return { type: 'minimize' };
+      }
+      if (x >= panelX && x <= panelX + 18 && y >= panelY && y <= panelY + 18) {
+        return { type: 'orientToggle' };
+      }
+      const L = this._mixerLayout(panel, panelX, panelY, panelW, panelH);
+      // Master → ratio knob over all channels
+      if (Math.hypot(x - L.master.cx, y - L.master.cy) <= L.master.r + 4) {
+        return { type: 'knob', ratio: true, kx: L.master.cx, ky: L.master.cy };
+      }
+      // Channel knobs — individual drag lands in slice 2; for now they're
+      // visual, so a tap on one just no-ops (doesn't grab the panel).
+      for (const c of L.channels) {
+        if (Math.hypot(x - c.cx, y - c.cy) <= c.r + 3) return { type: 'mixChannel' };
+      }
+      return null;
+    }
+
     if (minimized) {
       const btnSize = 12;
       const btnX    = panelX + panelW - btnSize - 2;

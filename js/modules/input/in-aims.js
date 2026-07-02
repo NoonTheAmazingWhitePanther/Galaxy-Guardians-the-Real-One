@@ -153,6 +153,11 @@ function _registerAll() {
     btn?.classList.toggle('active', InAims.enabled);
   }}});
 
+  // Debug satellites — 3 rays right/below the debug button.
+  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => DebugRouter.closeAllDock()      }});
+  _safeReg('dbg-reset',    { depth: 2, on: { tap: () => DebugRouter.resetAllToProfile() }});
+  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => DebugRouter.arrangeToggle()     }});
+
   // ── Depth 1: Debug panels ────────────────────────────────────────────
   _registerDebugPanels();
 
@@ -197,12 +202,19 @@ function _registerAll() {
 
 function _registerDebugPanels() {
   for (const panel of DebugRouter.panels) {
-    if (!panel.visible) continue;
     const id = `debug-panel-${panel.id}`;
-    Aims.unregister(id);
+    Aims.unregister(id);                 // always clear the old region first
+    if (!panel.visible) continue;        // hidden panels leave no phantom bounds
+    // Use the panel's ACTUAL drawn size — not a hardcoded box — so minimized
+    // panels don't leave a giant phantom hit area and expanded ones aren't clipped.
+    let w = 180, h = 60;
+    try {
+      const L = panel.computeLayout(panel.getData?.() ?? {});
+      if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
+    } catch (_) {}
     Aims.register({
       id, depth: 1,
-      bounds: { x: panel.x, y: panel.y, w: 180, h: 250 },
+      bounds: { x: panel.x, y: panel.y, w, h },
       passthrough: false,
       on: {
         pointerdown: ({ aim }) => {

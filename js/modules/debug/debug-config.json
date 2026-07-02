@@ -637,20 +637,6 @@
         },
         {
           "type": "divider",
-          "text": "— trails —"
-        },
-        {
-          "type": "display",
-          "text": "trail depth",
-          "value": "Accumulator.trailDepth"
-        },
-        {
-          "type": "display",
-          "text": "fade alpha",
-          "value": "Accumulator.fadeAlpha"
-        },
-        {
-          "type": "divider",
           "text": "— config —"
         },
         {
@@ -848,7 +834,7 @@
           "governor": {
             "mode": "add",
             "min": 0,
-            "max": 480,
+            "max": 1000,
             "step": 10
           }
         },
@@ -928,6 +914,153 @@
       ],
       "minimized": true,
       "maxHeight": 280,
+      "background": null
+    },
+    {
+      "id": "trails",
+      "title": "TRAILS",
+      "position": {
+        "x": 159,
+        "y": 240
+      },
+      "refreshRate": 200,
+      "summaryVariable": "TrailGov.debugInfo.count",
+      "summaryLabel": "Trail length",
+      "lines": [
+        {
+          "type": "header",
+          "text": "TRAILS",
+          "value": "TrailGov.debugInfo.count",
+          "suffix": "TrailGov.label",
+          "color": "accent",
+          "bold": true
+        },
+        {
+          "type": "divider",
+          "text": "— length —"
+        },
+        {
+          "type": "buttons",
+          "text": "Max Trails",
+          "variable": "ManualOverrides.trailMax.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 1000, "step": 1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Density",
+          "variable": "ManualOverrides.trailDensity.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 8, "max": 1000, "step": 8 }
+        },
+        {
+          "type": "buttons",
+          "text": "Skip",
+          "variable": "ManualOverrides.trailSkip.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 1, "max": 16, "step": 1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Speed Scale",
+          "variable": "ManualOverrides.trailSpeedScale.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 4, "step": 0.1 }
+        },
+        {
+          "type": "divider",
+          "text": "— look —"
+        },
+        {
+          "type": "buttons",
+          "text": "Alpha",
+          "variable": "ManualOverrides.trailAlpha.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0.02, "max": 1, "step": 0.02 }
+        },
+        {
+          "type": "buttons",
+          "text": "Shrink Tail",
+          "variable": "ManualOverrides.trailShrink.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 1, "step": 0.05 }
+        },
+        {
+          "type": "buttons",
+          "text": "Bloom",
+          "variable": "ManualOverrides.trailBloom.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 1, "step": 0.05 }
+        },
+        {
+          "type": "buttons",
+          "text": "Enabled",
+          "variable": "ManualOverrides.trailEnabled.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 1, "step": 1 }
+        },
+        {
+          "type": "divider",
+          "text": "— buffer —"
+        },
+        {
+          "type": "buttons",
+          "text": "Downscale",
+          "variable": "ManualOverrides.trailDownscale.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Glow Depth",
+          "variable": "ManualOverrides.trailGlowDepth.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 2, "max": 16, "step": 1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Glow Fade",
+          "variable": "ManualOverrides.trailGlowFade.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0.04, "max": 0.95, "step": 0.02 }
+        },
+        {
+          "type": "divider",
+          "text": "— live —"
+        },
+        {
+          "type": "display",
+          "text": "count",
+          "value": "TrailGov.debugInfo.count"
+        },
+        {
+          "type": "display",
+          "text": "density",
+          "value": "TrailGov.debugInfo.density"
+        },
+        {
+          "type": "display",
+          "text": "skip",
+          "value": "TrailGov.debugInfo.skip"
+        },
+        {
+          "type": "display",
+          "text": "speed scale",
+          "value": "TrailGov.debugInfo.speedScale"
+        },
+        {
+          "type": "display",
+          "text": "buffer",
+          "value": "Accumulator.debugInfo.bufferDims"
+        },
+        {
+          "type": "display",
+          "text": "downscale",
+          "value": "Accumulator.debugInfo.downscale"
+        }
+      ],
+      "minimized": true,
+      "maxHeight": 320,
       "background": null
     },
     {

@@ -23,11 +23,21 @@ import { AsteroidsModule } from '../modules/entities/asteroids.js';
 import { QueOps } from './que-ops.js';
 import { PhysicsCounter } from '../modules/debug/physics-counter.js';
 import { MsProbe } from './ms-probe.js';
-import { PhysicsGov } from '../modules/debug/governor.js';
+import { PhysicsGov, CacheGov } from '../modules/debug/governor.js';
 
 // Hard ceiling regardless of panel target — a safety rail against runaway
-// memory use on a low-end device, independent of whatever the user dials in.
-const HARD_CAP = 480;
+// memory use, independent of whatever the user dials in. Raised to 1000 for
+// higher-end targets; the AUTO controller (CacheGov) still ranges 1..1000
+// on its own, so this only bites a manual over-dial.
+const HARD_CAP = 1000;
+
+// Fail-safe ceiling for the tick counters. playhead/frontier are otherwise
+// monotonic and grow forever over a long session; hits/misses too. When the
+// playhead crosses this we rebase everything back to 0 (buffer thrown away —
+// it's rebuildable and cheap; live state is never touched). Keeps every
+// number on the CACHE panel bounded. NOT a correctness mechanism, just a
+// known, deliberate reset — bufferedAhead stays 0 right after a wrap.
+const WRAP_MAX = 100000;
 
 function cloneBodies(bodies) {
   const out = new Array(bodies.length);
@@ -78,11 +88,35 @@ export const FutureCache = {
     return this._frontierTick - this._playheadTick;
   },
 
+  // Planet-gate. Nothing is cached, played back, or counted until at least
+  // one body exists. On an empty field the shadow sim would cache empty-world
+  // ticks, and the first plant would get wiped the instant playNext() does
+  // state.bodies = cached.bodies (stale empty snapshot). Gating on this makes
+  // that whole failure class impossible: no bodies → no future to clobber.
+  get active() {
+    return state.bodies.length > 0;
+  },
+
+  // ── Rebase fail-safe ────────────────────────────────────────────────────
+  // Once the playhead crosses WRAP_MAX, drop the (rebuildable) buffer and zero
+  // every counter. Live state.bodies/loose/asteroids are deliberately NOT
+  // touched — the sim carries on seamlessly; only the bookkeeping resets.
+  _wrapGuard() {
+    if (this._playheadTick < WRAP_MAX) return;
+    this._buffer.clear();
+    this._playheadTick = 0;
+    this._frontierTick = 0;
+    this._hits   = 0;
+    this._misses = 0;
+  },
+
   // Peek — true if the next tick is already cached, without consuming it.
   // Lets the caller snapshot pre-tick state (for StateCache's interpolation
   // buffer) BEFORE playNext() swaps state.bodies/loose to the cached result.
+  // Also gated on active(): on an empty field the buffer is always empty, but
+  // this makes the intent explicit and never plays back into a bodiless field.
   get hasNext() {
-    return this._buffer.has(this._playheadTick + 1);
+    return this.active && this._buffer.has(this._playheadTick + 1);
   },
 
   get hitRateLabel() {
@@ -129,6 +163,7 @@ export const FutureCache = {
     this._buffer.delete(nextTick);
     this._playheadTick = nextTick;
     this._hits++;
+    this._wrapGuard();
     return true;
   },
 
@@ -137,10 +172,14 @@ export const FutureCache = {
   // if caching hadn't started yet (frontier === old playhead), bump it up
   // to match; there's nothing cached to lose.
   recordLiveTick() {
+    // No planets yet — don't count frames. Playhead only starts moving once
+    // there's actually something being simulated.
+    if (!this.active) return;
     this._playheadTick++;
     if (this._frontierTick < this._playheadTick) {
       this._frontierTick = this._playheadTick;
     }
+    this._wrapGuard();
   },
 
   // ── Cache-ahead (the ghost simulation) ──────────────────────────────────
@@ -227,6 +266,9 @@ export const FutureCache = {
   // computing ticks until it runs out of either time or room, whichever
   // comes first, every frame.
   topUp(msBudget, targetAhead) {
+    // No planets yet — nothing to cache, and caching an empty world is exactly
+    // what wipes the first plant. Do nothing until a body exists.
+    if (!this.active) return 0;
     const cap = Math.min(HARD_CAP, targetAhead);
     const start = performance.now();
     let stepsDone = 0;
@@ -234,6 +276,11 @@ export const FutureCache = {
       this._shadowTick();
       stepsDone++;
     }
+    // Fill-pressure signal for the AUTO controller: if we couldn't reach the
+    // cap, we ran out of time this frame (overloaded) — else we kept up with
+    // room to spare. CacheGov uses this to walk its AUTO target between 1 and
+    // 1000 all by itself. (No-op when CacheGov is in MANUAL mode.)
+    CacheGov.reportFill(this.bufferedAhead < cap);
     return stepsDone;
   },
 
