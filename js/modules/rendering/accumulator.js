@@ -35,9 +35,12 @@ export const Accumulator = {
   // Compute the downscaled buffer dimensions for the current power, never
   // letting either axis drop below 64px (matches "…all the way to 64x64").
   _computeDims() {
-    const d = Math.pow(2, this._dpow);
-    this._bw = Math.max(64, Math.round(this._w / d));
-    this._bh = Math.max(64, Math.round(this._h / d));
+    // Buffers are ALWAYS full device resolution. The prime (newest) render must
+    // never be downsized — that's a locked decision. The downscale power now
+    // drives the per-trail RESOLUTION RAMP applied to older layers at composite
+    // time (see beginFrame), not the buffer size.
+    this._bw = this._w;
+    this._bh = this._h;
   },
 
   init(w, h) {
@@ -49,6 +52,7 @@ export const Accumulator = {
       this._bg(buf.ctx);
       this._bufs.push(buf);
     }
+    this._scratch = _make(this._bw, this._bh);   // reused for ramp downsampling
     this._head  = 0;
     this._count = 0;
     this._ready = true;
@@ -62,6 +66,7 @@ export const Accumulator = {
       buf.canvas.width = this._bw; buf.canvas.height = this._bh;
       this._bg(buf.ctx);
     }
+    if (this._scratch) { this._scratch.canvas.width = this._bw; this._scratch.canvas.height = this._bh; }
     this._count = 0;
   },
 
@@ -98,6 +103,15 @@ export const Accumulator = {
     const tpf    = Math.max(1, ticksThisFrame);
     const window = Math.max(1, Math.min(avail, Math.round(this.trailDepth / tpf)));
 
+    // Per-trail resolution ramp. The prime render (the head, drawn this frame)
+    // is ALWAYS full res. Older composited layers step DOWN in resolution from
+    // just-below-full toward the tail floor, so trail N is coarser than trail
+    // N-1. floorFrac is the last-tail buffer size, set by the downscale power
+    // (0 = flat/no ramp, 1 = /2 tail, 2 = /4 tail, …). Achieved by downsampling
+    // a layer into the scratch then upsampling it back — a cheap resolution cut.
+    const floorFrac = 1 / Math.pow(2, this._dpow);
+    const sctx = this._scratch?.ctx;
+
     for (let step = window; step >= 1; step--) {
       const bufIdx = (this._head - step + n) % n;
       const age    = 1 - (step / (window + 1));   // 0=oldest shown, →1 newest
@@ -105,15 +119,30 @@ export const Accumulator = {
       if (alpha < 0.005) continue;
       ctx.globalAlpha              = alpha;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(this._bufs[bufIdx].canvas, 0, 0);
+
+      // Resolution for this trail layer: 1.0 at the newest older-layer, ramping
+      // linearly to floorFrac at the oldest. (step 1 → ~full, step window → floor)
+      const res = this._dpow > 0 && sctx
+        ? Math.max(floorFrac, 1 - (step / window) * (1 - floorFrac))
+        : 1;
+
+      if (res >= 0.999 || !sctx) {
+        ctx.drawImage(this._bufs[bufIdx].canvas, 0, 0);          // full res
+      } else {
+        const sw = Math.max(8, Math.round(this._bw * res));
+        const sh = Math.max(8, Math.round(this._bh * res));
+        sctx.setTransform(1, 0, 0, 1, 0, 0);
+        sctx.clearRect(0, 0, this._bw, this._bh);
+        sctx.drawImage(this._bufs[bufIdx].canvas, 0, 0, this._bw, this._bh, 0, 0, sw, sh); // down
+        ctx.drawImage(this._scratch.canvas, 0, 0, sw, sh, 0, 0, this._bw, this._bh);        // up
+      }
     }
 
     ctx.globalAlpha              = 1;
     ctx.globalCompositeOperation = 'source-over';
-    // Base transform: the renderer authors the scene in screen pixels, so scale
-    // it down into the (possibly smaller) buffer. flip() scales back up. All the
-    // renderer's own save/translate/scale for the camera composes on top of this.
-    ctx.setTransform(this._bw / this._w, 0, 0, this._bh / this._h, 0, 0);
+    // Prime render is authored at full device resolution (buffers are full-res),
+    // so the base transform is identity — the newest trail is never downsized.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Renderer draws fresh scene here
   },
 
@@ -155,7 +184,8 @@ export const Accumulator = {
       fadeAlpha:  this.fadeAlpha,
       flipCount:  this._count,
       layers:     Math.min(this._count, this.trailDepth - 1),
-      downscale:  `1/${Math.pow(2, this._dpow)}`,
+      rampFloor:  `1/${Math.pow(2, this._dpow)}`,   // last-tail resolution
+      primeRes:   'full',                            // newest render — locked full res
       bufferDims: `${this._bw}×${this._bh}`,
       clearEvery: '∞',
       nextClear:  '∞',

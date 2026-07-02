@@ -1005,7 +1005,7 @@
         },
         {
           "type": "buttons",
-          "text": "Downscale",
+          "text": "Res Ramp",
           "variable": "ManualOverrides.trailDownscale.value",
           "buttons": ["+", "=", "−"],
           "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
@@ -1050,13 +1050,13 @@
         },
         {
           "type": "display",
-          "text": "buffer",
-          "value": "Accumulator.debugInfo.bufferDims"
+          "text": "prime",
+          "value": "Accumulator.debugInfo.primeRes"
         },
         {
           "type": "display",
-          "text": "downscale",
-          "value": "Accumulator.debugInfo.downscale"
+          "text": "ramp floor",
+          "value": "Accumulator.debugInfo.rampFloor"
         }
       ],
       "minimized": true,

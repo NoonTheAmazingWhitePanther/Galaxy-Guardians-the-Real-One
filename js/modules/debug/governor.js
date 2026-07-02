@@ -196,6 +196,19 @@ export const TrailGov = {
   get glowDepth()  { return Math.max(2, Math.min(16, Math.round(ManualOverrides.get('trailGlowDepth', 8)))); },
   get glowFade()   { return Math.max(0.04, Math.min(0.95, ManualOverrides.get('trailGlowFade', 0.55))); },
 
+  // ── Per-trail resolution ramp (LOCKED) ──────────────────────────────────
+  // The first/prime trail is ALWAYS full device resolution — never downsized.
+  // Each older trail steps down from the one above it, ramping toward the tail
+  // floor (set by `downscale`: 0 = flat/full, 1 = /2 tail, 2 = /4 tail, …).
+  // resFraction(i, N): trail i of N (i=0 is the newest/prime). Matches the
+  // spec — i=0 → 1.0, then 1 − i/(N+1): for N=19 that's 1, 19/20, 18/20, …
+  firstFullRes: true,   // locked decision; the head render is never downscaled
+  resFraction(i, N) {
+    if (i <= 0 || N <= 1) return 1.0;                 // prime trail: full res
+    const floor = 1 / Math.pow(2, this.downscale);    // last-tail buffer size
+    return Math.max(floor, 1 - i / (N + 1));
+  },
+
   // Effective # of past positions to stamp this frame. Constant vs speed when
   // speedScale is 0; grows with the speed multiplier as speedScale rises.
   effectiveCount(physSpeed = 1) {
