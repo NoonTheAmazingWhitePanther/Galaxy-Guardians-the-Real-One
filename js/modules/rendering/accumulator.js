@@ -31,6 +31,7 @@ export const Accumulator = {
   _w: 0, _h: 0,
   _dpow: 0,         // buffer downscale power (0 = full res, 1 = /2, 2 = /4, …)
   _bw: 0, _bh: 0,   // actual buffer dims (screen dims >> downscale, floored at 64)
+  _dpr: 1,          // device pixel ratio (set once from main.js resize) — readout only
 
   // Compute the downscaled buffer dimensions for the current power, never
   // letting either axis drop below 64px (matches "…all the way to 64x64").
@@ -178,6 +179,39 @@ export const Accumulator = {
   },
   get downscalePow() { return this._dpow; },
 
+  // Device pixel ratio — recorded once per resize from main.js. Buffers are sized
+  // in CSS px (_bw×_bh); the device canvas is _dpr× larger. Readout only; never
+  // changes buffer allocation. Kept here so the Screen-Res panel can show the
+  // true device resolution alongside the CSS-res the ring actually stores.
+  setDpr(v) { this._dpr = Math.max(0.1, Number(v) || 1); },
+  get dpr() { return this._dpr; },
+
+  // Bytes held by the whole ring right now: trailDepth stage buffers + 1 scratch,
+  // RGBA at the real (CSS) buffer dims. This is the true allocated cost — the
+  // "full-res ring buffers cost more RAM" note in TODO.md, measured live.
+  get _ringBytes() {
+    const perBuf = this._bw * this._bh * 4;
+    return perBuf * (this.trailDepth + 1);   // +1 scratch
+  },
+
+  // The ACTUAL per-layer resolution the composite loop uses this ramp setting,
+  // sampled across a full window (newest older-layer → oldest). Truthful to
+  // beginFrame's inline curve: res(step) = max(floor, 1 − (step/W)(1 − floor)).
+  // Flat when the ramp power is 0. Capped to 8 samples for a phone-width panel.
+  resLadder() {
+    if (this._dpow <= 0) return 'flat · full res';
+    const floor = 1 / Math.pow(2, this._dpow);
+    const W = Math.max(1, this.trailDepth);
+    const N = Math.min(8, W);
+    const out = [];
+    for (let k = 1; k <= N; k++) {
+      const step = Math.round((k / N) * W);
+      const res  = Math.max(floor, 1 - (step / W) * (1 - floor));
+      out.push(res.toFixed(2).replace(/^0/, ''));
+    }
+    return out.join(' ');
+  },
+
   get debugInfo() {
     return {
       trailDepth: this.trailDepth,
@@ -185,8 +219,16 @@ export const Accumulator = {
       flipCount:  this._count,
       layers:     Math.min(this._count, this.trailDepth - 1),
       rampFloor:  `1/${Math.pow(2, this._dpow)}`,   // last-tail resolution
-      primeRes:   'full',                            // newest render — locked full res
+      primeRes:   'full · LOCKED',                   // newest render — locked full res
       bufferDims: `${this._bw}×${this._bh}`,
+      // ── Screen-Res panel readouts (additive, no behaviour change) ──────────
+      cssRes:     `${this._bw}×${this._bh}`,                                  // what the ring stores
+      deviceRes:  `${Math.round(this._bw * this._dpr)}×${Math.round(this._bh * this._dpr)}`, // real device px
+      dpr:        this._dpr.toFixed(2),
+      ringLayers: `${this.trailDepth}+1`,            // stage buffers + scratch
+      bufKB:      `${Math.round(this._bw * this._bh * 4 / 1024)} KB`,
+      ringMB:     `${(this._ringBytes / 1048576).toFixed(1)} MB`,
+      resLadder:  this.resLadder(),
       clearEvery: '∞',
       nextClear:  '∞',
       inRamp:     false,

@@ -27,7 +27,7 @@ const PROFILES = {
   BALANCE: {
     physicsSubsteps:         6,
     physicsTimeScale:        1.0,
-    renderFrameSkip:         4,
+    renderFrameSkip:         0,
     queOpsBudget:            128,
     queOpsDelay:             0.2,
     queOpsDeferredThreshold: 50,

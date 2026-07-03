@@ -16,11 +16,16 @@ import { FpsCounter } from './fps-counter.js';
 import { MsProbe } from '../../core/ms-probe.js';
 import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
+import { Dormancy } from '../../core/dormancy.js';
 import { GovernorProfiles } from './governor-profiles.js';
+import { TrailProfiles } from './trail-profiles.js';
+import { GuiGovernor } from './gui-governor.js';
 
 export const DebugRouter = {
   panels: [],
-  masterEnabled: true,
+  masterEnabled: false,         // debug starts OFF — tap 〰️ to open (into console mode)
+  _consoleMode: false,          // when true the Live Text Debug console owns the UI
+  _preConsoleVisible: null,     // panel visibility snapshot, restored on exit
   _canvas: null,
   _config: null,
   _initialized: false,
@@ -44,10 +49,13 @@ export const DebugRouter = {
     GovernorRegistry.register('MsProbe',          MsProbe);
     GovernorRegistry.register('StateCache',       StateCache);
     GovernorRegistry.register('FutureCache',      FutureCache);
+    GovernorRegistry.register('Dormancy',         Dormancy);
+    GovernorRegistry.register('GuiGovernor',      GuiGovernor);
     GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
+    window._TrailProfiles = TrailProfiles;
     window._ManualOverrides = ManualOverrides;
 
     try {
@@ -116,6 +124,7 @@ export const DebugRouter = {
 
   drawAll(ctx) {
     if (!this.masterEnabled || !this._initialized) return;
+    if (this._consoleMode) return;   // Live Text Debug console draws its own DOM overlay instead
 
     // Data already updated by updateData() — just draw
     for (const panel of this.panels) {
@@ -130,6 +139,29 @@ export const DebugRouter = {
     this.masterEnabled = !this.masterEnabled;
     // Force all panels to redraw — pin button visibility changes with debug state
     for (const panel of this.panels) panel._chromeDirty = true;
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}
+  },
+
+  // Enter/exit Live Text Debug console mode. Hiding panels also drops their
+  // AIMS hit regions (the hit-map is built from visible panels), so taps fall
+  // through to the sim behind the glass. Visibility is snapshotted so the exact
+  // prior mix is restored on exit.
+  setConsoleMode(on) {
+    on = !!on;
+    if (on === this._consoleMode) return;
+    this._consoleMode = on;
+    if (on) {
+      this._preConsoleVisible = this.panels.map(p => ({ id: p.id, v: p.visible }));
+      for (const p of this.panels) { p.visible = false; p._chromeDirty = true; }
+    } else {
+      const snap = this._preConsoleVisible;
+      for (const p of this.panels) {
+        const rec = snap?.find(s => s.id === p.id);
+        p.visible = rec ? rec.v : true;
+        p._chromeDirty = true;
+      }
+      this._preConsoleVisible = null;
+    }
     try { window._InAims?.syncDebugPanels(); } catch (_) {}
   },
 

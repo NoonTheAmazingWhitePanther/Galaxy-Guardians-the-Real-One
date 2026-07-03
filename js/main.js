@@ -6,6 +6,7 @@ import { CONFIG, setTheme } from './config/config-index.js';
 import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { FutureCache } from './core/future-cache.js';
+import { Dormancy } from './core/dormancy.js';
 import { InputModule, InputState, InAims } from './modules/input/input.module.js';
 import { Aims } from './core/aims.js';
 import { CameraModule } from './modules/camera/camera.module.js';
@@ -17,6 +18,8 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
+import { ConsoleView } from './modules/debug/console-view.js';
+import { GuiGovernor } from './modules/debug/gui-governor.js';
 import { TuningLayer } from './modules/tuning/tuning-layer.js';
 import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
@@ -58,6 +61,7 @@ function resize() {
   CameraModule.width = window.innerWidth;
   CameraModule.height = window.innerHeight;
   Accumulator.resize(CameraModule.width, CameraModule.height);
+  Accumulator.setDpr(dpr);   // readout only — lets the Screen-Res panel show true device px
   if (typeof InAims !== 'undefined') InAims.onResize();
 }
 window.addEventListener("resize", resize);
@@ -74,6 +78,7 @@ export function init() {
 
   CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
   DebugRouter.init(canvas);
+  ConsoleView.init(DebugRouter);   // Live Text Debug — DOM glass console (rides the 〰️ toggle)
 
   if (EffectsModule.init) EffectsModule.init(CameraModule.width, CameraModule.height);
   Accumulator.init(CameraModule.width, CameraModule.height);
@@ -109,6 +114,7 @@ export function init() {
       e.stopPropagation();
       DebugRouter.toggleAll();
       debugBtn.classList.toggle('active', DebugRouter.masterEnabled);
+      ConsoleView.sync();
       renderBenchInfo();
       syncBenchVisibility();
     }, { passive: false });
@@ -319,14 +325,18 @@ function mainLoop(t) {
 
   let didPhysicsTick = false;
 
-  if (!state.paused && state.physSpeed > 0) {
+  // GUI Governor: 0 rate = held (skip all physics work → no ticks, no cache
+  // top-up, no snapshots, no dormancy), <1 = slow-motion. See gui-governor.js.
+  const guiRate = GuiGovernor.simRate;
+
+  if (!state.paused && state.physSpeed > 0 && guiRate > 0) {
     // Bank real elapsed time, scaled by the speed multiplier. Clamp the frame
     // delta first so a long stall (tab switch, GC hitch) can't inject a huge
     // backlog — only pathological frames are affected; normal frames bank their
     // exact real time. physSpeed scales the banking RATE, so simulation speed is
     // a function of real wall-clock time only, never of frame rate.
     const bankedDt = Math.min(realDt, 0.1);
-    physicsAccumulator += bankedDt * state.physSpeed;
+    physicsAccumulator += bankedDt * state.physSpeed * guiRate;
     if (window.Sim) window.Sim.physicsAccumulator = physicsAccumulator;
 
     // Physics tick-skip governor — Bresenham-style, same math as RenderGov.
@@ -400,6 +410,7 @@ function mainLoop(t) {
       if (CacheGov.enabled && !isPreCalculating) {
         FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead);
       }
+      Dormancy.tick();   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
     }
   }
 
@@ -414,8 +425,10 @@ function mainLoop(t) {
   // Data update — every rAF, unconditionally, before any drawing
   DebugRouter.updateData();
 
-  // Debug panels — inside shouldRender per your architecture rule
-  if (RenderGov.shouldRender()) {
+  // Debug panels — inside shouldRender per your architecture rule.
+  // GuiGovernor.shouldRenderCanvas() throttles the whole CANVAS block in HALT
+  // so the DOM console + input keep the frame; it's a no-op in every other mode.
+  if (RenderGov.shouldRender() && GuiGovernor.shouldRenderCanvas()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
     MsProbe.call('render.drawAll', () => DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
@@ -426,6 +439,7 @@ function mainLoop(t) {
         InputState.mouseX,
         InputState.mouseY
       );
+      Dormancy.drawWitness(drawCtx);   // locked-delta cold-body tween witness (world space)
     }, ticksSinceRender));
 
     // Ticks up to this draw are now represented on screen — start a fresh count.

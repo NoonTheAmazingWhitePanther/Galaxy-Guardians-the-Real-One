@@ -73,6 +73,11 @@ export const MasterSliderRenderer = {
     mainCtx.beginPath();
     mainCtx.roundRect(bounds.x, bounds.y, bounds.w, bounds.h, 4);
     mainCtx.fill();
+    // Golden border — same amber as the tuner / pinned panels, so the master
+    // reads as "one of the tuners" it governs.
+    mainCtx.strokeStyle = 'rgba(255,200,80,0.9)';
+    mainCtx.lineWidth = 1.5;
+    mainCtx.stroke();
     
     // Track fill
     const thumbY = bounds.y + bounds.h - (value / 2.0) * bounds.h;
@@ -87,8 +92,8 @@ export const MasterSliderRenderer = {
     mainCtx.beginPath();
     mainCtx.roundRect(bounds.x + 2, thumbY - THUMB_H / 2, bounds.w - 4, THUMB_H, 3);
     mainCtx.fill();
-    mainCtx.strokeStyle = this._dragging ? 'rgba(130,210,255,0.8)' : 'rgba(255,255,255,0.3)';
-    mainCtx.lineWidth = 1;
+    mainCtx.strokeStyle = this._dragging ? 'rgba(255,220,120,1)' : 'rgba(255,200,80,0.9)';
+    mainCtx.lineWidth = 1.5;
     mainCtx.stroke();
     
     // Value label

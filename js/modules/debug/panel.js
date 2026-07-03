@@ -86,7 +86,7 @@ export class Panel {
         const baseVar = isBaseSelector ? resolveVariable(line.variable) : null;
         const selectedIdx = isBaseSelector
           ? line.buttons.findIndex(b => Number(b.label) === baseVar?.get())
-          : this._getActiveProfileIdx(line.buttons);
+          : this._getActiveProfileIdx(line);
 
         this._controls.push({
           type:             ControlType.WIDE_BUTTON,
@@ -186,11 +186,19 @@ export class Panel {
     return v !== undefined && v !== null ? String(v) : null;
   }
 
-  _getActiveProfileIdx(buttons) {
-    const GP = window._GovernorProfiles;
+  // Which profiles object a profileButtons row drives. profileTarget:"trails"
+  // → the Dreamy Trails presets; default (unset) → the governor profiles.
+  _profilesFor(config) {
+    return (config && config.profileTarget === 'trails')
+      ? window._TrailProfiles
+      : window._GovernorProfiles;
+  }
+
+  _getActiveProfileIdx(line) {
+    const GP = this._profilesFor(line);
     if (!GP) return -1;
     const active = GP.activeProfile;
-    return buttons.findIndex(b => b.profile === active);
+    return line.buttons.findIndex(b => b.profile === active);
   }
 
   toggleSection(key) {
@@ -749,7 +757,7 @@ export class Panel {
       } else if (ctrl.isProfileButtons) {
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn) {
-          const GP = window._GovernorProfiles;
+          const GP = this._profilesFor(ctrl.config);
           if (GP) {
             if (btn.profile === null) GP.resetAll();
             else GP.applyProfile(btn.profile);

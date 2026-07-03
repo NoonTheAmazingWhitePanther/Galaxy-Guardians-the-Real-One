@@ -109,6 +109,7 @@ export const ManualOverrides = {
   cacheEnabled:             { isManual: false, value: 1 },
   cacheTargetAhead:         { isManual: false, value: 100 },  // "amount of future steps to cache"
   cacheMsBudget:            { isManual: false, value: 2.0 },  // spare ms/frame spent caching ahead
+  cacheDirtySubsteps:       { isManual: false, value: 0 },    // ghost-sim substeps for the FUTURE cache; 0 = exact (same as live). >0 = dirty/cheaper future.
 
   // Trails (position-history stamp trail + phosphor glow ring)
   trailEnabled:             { isManual: false, value: 1 },
@@ -122,6 +123,18 @@ export const ManualOverrides = {
   trailDownscale:           { isManual: false, value: 0 },    // trail/glow buffer downscale power (0=full, 1=/2, …→64px)
   trailGlowDepth:           { isManual: false, value: 8 },    // phosphor ring depth (persistence/soft tail)
   trailGlowFade:            { isManual: false, value: 0.55 }, // phosphor fade strength
+
+  // Dormancy classifier (Stage 1) — live tuning of "how hot"
+  dormancyMargin:           { isManual: false, value: 60 },   // wake LEAD in px: wake when centres within (r_i+r_j)+lead. Additive, NOT ×size — a huge body must not create a huge keep-out zone.
+  dormancySunPad:           { isManual: false, value: 60 },   // extra px beyond the Sun's burn radius
+  dormancyHorizon:          { isManual: false, value: 120 },  // ticks scanned ahead (cap, independent of cache depth)
+  dormancyTween:            { isManual: false, value: 0 },    // 0/1 — witness the locked cold-body tween overlay
+  dormancyTweenLock:        { isManual: false, value: 8 },    // frames per keyframe span (LOCKED Δ; higher = slower, smoother glide)
+  dormancyRadiusK:          { isManual: false, value: 1.0 },   // ×declared body.radius for the wake extent (central offset + declared radius; 1.0 = as-built, no sprawl)
+
+  // GUI Governor — starve the sim to reserve the frame for the interface
+  guiGovMode:               { isManual: false, value: 0 },     // 0 OFF · 1 SLOW · 2 PAUSE · 3 HALT
+  guiGovSlowFactor:         { isManual: false, value: 0.15 },  // sim-time rate in SLOW mode
 
   // set() — marks as manual and updates value. Used by Governor buttons.
   set(key, value) {

@@ -820,6 +820,82 @@
         },
         {
           "type": "divider",
+          "text": "— dormancy (measure) —"
+        },
+        {
+          "type": "display",
+          "text": "cold",
+          "value": "Dormancy.debugInfo.cold"
+        },
+        {
+          "type": "display",
+          "text": "cold %",
+          "value": "Dormancy.debugInfo.coldPct"
+        },
+        {
+          "type": "display",
+          "text": "horizon",
+          "value": "Dormancy.debugInfo.horizon"
+        },
+        {
+          "type": "display",
+          "text": "margin",
+          "value": "Dormancy.debugInfo.margin"
+        },
+        {
+          "type": "display",
+          "text": "scan",
+          "value": "Dormancy.debugInfo.scanMs"
+        },
+        {
+          "type": "display",
+          "text": "status",
+          "value": "Dormancy.debugInfo.status"
+        },
+        {
+          "type": "buttons",
+          "text": "Wake Lead",
+          "variable": "ManualOverrides.dormancyMargin.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 400, "step": 10 }
+        },
+        {
+          "type": "buttons",
+          "text": "Radius ×",
+          "variable": "ManualOverrides.dormancyRadiusK.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0.5, "max": 3, "step": 0.1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Sun Pad",
+          "variable": "ManualOverrides.dormancySunPad.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 400, "step": 20 }
+        },
+        {
+          "type": "buttons",
+          "text": "Scan Horizon",
+          "variable": "ManualOverrides.dormancyHorizon.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 8, "max": 1000, "step": 8 }
+        },
+        {
+          "type": "buttons",
+          "text": "Tween Witness",
+          "variable": "ManualOverrides.dormancyTween.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 1, "step": 1 }
+        },
+        {
+          "type": "buttons",
+          "text": "Tween Lock",
+          "variable": "ManualOverrides.dormancyTweenLock.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 2, "max": 60, "step": 1 }
+        },
+        {
+          "type": "divider",
           "text": "— controls —"
         },
         {
@@ -853,6 +929,13 @@
             "max": 10,
             "step": 0.5
           }
+        },
+        {
+          "type": "buttons",
+          "text": "Cache Dirt",
+          "variable": "ManualOverrides.cacheDirtySubsteps.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
         },
         {
           "type": "buttons",
@@ -934,6 +1017,21 @@
           "suffix": "TrailGov.label",
           "color": "accent",
           "bold": true
+        },
+        {
+          "type": "divider",
+          "text": "— dreamy trails —"
+        },
+        {
+          "type": "profileButtons",
+          "profileTarget": "trails",
+          "buttons": [
+            { "label": "Long",   "profile": "LONG" },
+            { "label": "Norm",   "profile": "NORMAL" },
+            { "label": "Short",  "profile": "SHORT" },
+            { "label": "Ease",   "profile": "EASE" },
+            { "label": "AUTO",   "profile": null }
+          ]
         },
         {
           "type": "divider",
@@ -1206,6 +1304,175 @@
         "max": 3,
         "label": "x",
         "integer": false
+      }
+    },
+    {
+      "id": "screenRes",
+      "title": "SCREEN RES",
+      "position": {
+        "x": 159,
+        "y": 320
+      },
+      "refreshRate": 400,
+      "minimized": true,
+      "summaryVariable": "Accumulator.debugInfo.deviceRes",
+      "summaryLabel": "Device px",
+      "lines": [
+        {
+          "type": "header",
+          "text": "SCREEN RES",
+          "value": "Accumulator.debugInfo.deviceRes",
+          "suffix": "Accumulator.debugInfo.rampFloor",
+          "color": "accent",
+          "bold": true
+        },
+        {
+          "type": "divider",
+          "text": "— resolution —"
+        },
+        {
+          "type": "display",
+          "text": "device px",
+          "value": "Accumulator.debugInfo.deviceRes"
+        },
+        {
+          "type": "display",
+          "text": "css / buffer px",
+          "value": "Accumulator.debugInfo.cssRes"
+        },
+        {
+          "type": "display",
+          "text": "dpr",
+          "value": "Accumulator.debugInfo.dpr"
+        },
+        {
+          "type": "display",
+          "text": "prime",
+          "value": "Accumulator.debugInfo.primeRes"
+        },
+        {
+          "type": "divider",
+          "text": "— per-trail res ramp —"
+        },
+        {
+          "type": "display",
+          "text": "ramp floor",
+          "value": "Accumulator.debugInfo.rampFloor"
+        },
+        {
+          "type": "display",
+          "text": "ladder",
+          "value": "Accumulator.debugInfo.resLadder"
+        },
+        {
+          "type": "buttons",
+          "text": "Res Ramp",
+          "variable": "ManualOverrides.trailDownscale.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
+        },
+        {
+          "type": "divider",
+          "text": "— memory (ring buffers) —"
+        },
+        {
+          "type": "display",
+          "text": "layers",
+          "value": "Accumulator.debugInfo.ringLayers"
+        },
+        {
+          "type": "display",
+          "text": "each",
+          "value": "Accumulator.debugInfo.bufKB"
+        },
+        {
+          "type": "display",
+          "text": "ring total",
+          "value": "Accumulator.debugInfo.ringMB"
+        },
+        {
+          "type": "buttons",
+          "text": "Glow Depth",
+          "variable": "ManualOverrides.trailGlowDepth.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 2, "max": 16, "step": 1 }
+        }
+      ],
+      "minimizedKnob": {
+        "variable": "ManualOverrides.trailDownscale.value",
+        "min": 0,
+        "max": 8,
+        "step": 1,
+        "label": "",
+        "integer": true
+      },
+      "summaryExtra": "Accumulator.debugInfo.rampFloor",
+      "maxHeight": 320,
+      "background": null
+    },
+    {
+      "id": "guiGov",
+      "title": "GUI GOV",
+      "position": { "x": 16, "y": 380 },
+      "refreshRate": 200,
+      "minimized": true,
+      "summaryVariable": "GuiGovernor.debugInfo.mode",
+      "summaryLabel": "GUI Gov",
+      "lines": [
+        {
+          "type": "header",
+          "text": "GUI GOV",
+          "value": "GuiGovernor.debugInfo.mode",
+          "suffix": "GuiGovernor.debugInfo.gui",
+          "color": "accent",
+          "bold": true
+        },
+        {
+          "type": "divider",
+          "text": "— reserve power for the GUI —"
+        },
+        {
+          "type": "buttons",
+          "text": "Mode",
+          "variable": "ManualOverrides.guiGovMode.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0, "max": 3, "step": 1 }
+        },
+        {
+          "type": "display",
+          "text": "mode",
+          "value": "GuiGovernor.debugInfo.mode"
+        },
+        {
+          "type": "display",
+          "text": "sim",
+          "value": "GuiGovernor.debugInfo.sim"
+        },
+        {
+          "type": "display",
+          "text": "gui",
+          "value": "GuiGovernor.debugInfo.gui"
+        },
+        {
+          "type": "display",
+          "text": "work",
+          "value": "GuiGovernor.debugInfo.work"
+        },
+        {
+          "type": "buttons",
+          "text": "Slow Factor",
+          "variable": "ManualOverrides.guiGovSlowFactor.value",
+          "buttons": ["+", "=", "−"],
+          "governor": { "mode": "add", "min": 0.02, "max": 1, "step": 0.05 }
+        }
+      ],
+      "minimizedKnob": {
+        "variable": "ManualOverrides.guiGovMode.value",
+        "min": 0,
+        "max": 3,
+        "step": 1,
+        "label": "",
+        "integer": true
       }
     }
   ]

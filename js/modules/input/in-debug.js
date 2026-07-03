@@ -148,7 +148,13 @@ export const InDebug = {
     const y = e.clientY;
 
     // ── 1. Check global master slider first ───────────────────────────
-    if (MasterSliderRenderer.handlePointerDown(x, y)) {
+    // The master only makes sense when it has multiple tuners to scale
+    // together, and it's only DRAWN when debug is on (and not in console mode).
+    // Gate the hit-test to match, so it's never touchable while invisible:
+    // active ⟺ (debug on OR ≥2 sticky/tuner panels), and never in console mode.
+    const masterActive = !DebugRouter._consoleMode &&
+      (DebugRouter.masterEnabled || TuningLayer.count >= 2);
+    if (masterActive && MasterSliderRenderer.handlePointerDown(x, y)) {
       this._globalMasterDragging = true;
       this.pointerId = e.pointerId;
       try {

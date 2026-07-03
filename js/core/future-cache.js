@@ -23,7 +23,8 @@ import { AsteroidsModule } from '../modules/entities/asteroids.js';
 import { QueOps } from './que-ops.js';
 import { PhysicsCounter } from '../modules/debug/physics-counter.js';
 import { MsProbe } from './ms-probe.js';
-import { PhysicsGov, CacheGov } from '../modules/debug/governor.js';
+import { PhysicsGov, CacheGov, ManualOverrides } from '../modules/debug/governor.js';
+import { config } from './config.js';
 
 // Hard ceiling regardless of panel target — a safety rail against runaway
 // memory use, independent of whatever the user dials in. Raised to 1000 for
@@ -86,6 +87,17 @@ export const FutureCache = {
 
   get bufferedAhead() {
     return this._frontierTick - this._playheadTick;
+  },
+
+  // ── Read-only window accessors (for the dormancy classifier) ─────────────
+  // The un-consumed future currently sitting in the buffer is exactly ticks
+  // (playhead, frontier]. peekAt() hands back a cached snapshot WITHOUT
+  // consuming it — the classifier only ever reads cx/cy, never mutates.
+  get bufferedRange() {
+    return { from: this._playheadTick + 1, to: this._frontierTick };
+  },
+  peekAt(tick) {
+    return this._buffer.get(tick) || null;
   },
 
   // Planet-gate. Nothing is cached, played back, or counted until at least
@@ -226,11 +238,23 @@ export const FutureCache = {
     const savedCounters = { ...PhysicsCounter.stats }; // don't let ghost work pollute live debug counters
 
     const step = PhysicsGov.step;
+    // ── Dirty-future resolution ──────────────────────────────────────────
+    // Optionally run the ghost sim at FEWER substeps than live. 0 = exact:
+    // the cached future is byte-for-byte what live would produce, so playback
+    // stays perfect. >0 forces that substep count for the pre-compute only —
+    // cheaper to cache, at the cost of the future (and thus played-back state)
+    // becoming an approximation. That's the "_dirty" premise: drop the future's
+    // resolution and it still responds about the same. Saved/restored around
+    // this one synchronous call so live ticks are never affected.
+    const dirt = ManualOverrides.get('cacheDirtySubsteps', 0);
+    const savedSubsteps = config.SUBSTEPS;
+    if (dirt > 0) config.SUBSTEPS = Math.max(1, Math.round(dirt));
     MsProbe.call('physics.cacheTick', () => {
       tickBodies(step);
       tickLoose(step);
       AsteroidsModule.tick(step);
     });
+    config.SUBSTEPS = savedSubsteps;
 
     PhysicsCounter.stats = savedCounters;
     QueOps.endGhostCapture();
