@@ -1,132 +1,233 @@
-🌌 Galaxy Guardians: The Real One
+<div align="center">
 
-Fun first. Education later. Explosions always.
+# 🌌 Galaxy Guardians: The Real One
 
-Galaxy Guardians is an experimental Vanilla HTML5 physics sandbox and game engine focused on making science, creativity, and chaos enjoyable.
+### *Every webpage is a universe. Every universe has invaders. Invaders are fun to shoot at.*
 
-Spawn planets. Break planets. Build systems. Test ideas. Learn naturally while having fun.
+**A browser-based soft-body physics engine, hand-built on a \$100 phone.**
 
----
+`HTML5` · `Vanilla JavaScript` · `ES6 Modules` · `Canvas 2D` · `No WASM` · `No Web Workers` · `79 modules and counting`
 
-🚀 What Is It?
+> *Fun first. Education later. Explosions always.*
 
-Galaxy Guardians is a collection of physics, rendering, and gameplay experiments that evolve into reusable engine systems.
-
-Every feature is built to answer a simple question:
-
-«Is it fun?»
-
-If the answer is yes, we keep building.
+</div>
 
 ---
 
-✨ Features
+## 🏴‍☠️ The Short Version
 
-- Real-time physics simulation
-- Planetary collisions
-- Asteroids and gravity systems
-- Modular rendering architecture
-- Configurable game profiles
-- Camera controls and zoom
-- Sandbox experimentation
-- HTML5 Canvas rendering
+Spawn planets. Break planets. Fling them at a sun. Watch soft-body blobs wobble, collide, tear apart into loose particles, and leave phosphor trails across the void — **on an entry-level Android phone.**
+
+Then open the debug console and *tune the universe live* while it runs.
+
+This isn't a demo that only works on a gaming rig. It's an engine that earns its frame rate by being **clever instead of expensive** — and the cleverness is the whole point.
 
 ---
 
-📱 Built on a Low-End Phone
+## 📱 The \$100 Phone Manifesto
 
-Galaxy Guardians is developed primarily on a POCO C71 (4 GB RAM / 64 GB Storage) powered by a UNISOC T7250 processor.
+Galaxy Guardians is developed primarily on a **POCO C71** — 4 GB RAM, 64 GB storage, a UNISOC T7250, and a screen that costs less than a nice dinner. Coded on the device itself in **Acode**, over a mobile connection, with a **Claude Pro (Basic)** subscription as the coding partner.
 
-This is intentional.
+**This is not an apology. This is the design spec.**
 
-If the engine behaves correctly on an entry-level phone, it has a better chance of behaving correctly everywhere else.
+```
+  The target is not powerful hardware.
+  The target is good engineering.
+```
 
-The target is not powerful hardware.
+### 🎯 The North-Star Target
 
-The target is good engineering.
+> **Thousands of active, alive, dynamic physical objects — all at once, on a low-end phone.**
 
----
+Not a thousand static sprites. Not a thousand things asleep in a pool. Thousands of bodies that are *awake* — integrating, colliding, feeling gravity, tearing apart — every one of them a full soft-body citizen of the simulation. On a UNISOC T7250. That is the number the whole architecture is built to chase.
 
-🎯 Design Goals
+Hit that on the C71 and it *flies* on anything newer. So the constraint became the compass: every system in here has to justify its milliseconds. A phone that can't brute-force the problem forces you to *out-think* it — and out-thinking it is where all the interesting architecture came from. The See-it / Cache-it / Predict-it stack below is not decoration; it's the machinery that makes the target reachable.
 
-- Pure HTML5
-- Pure JavaScript
-- No WASM required
-- No Web Workers required
-- Mobile-first development
-- Low-memory friendly
-- Future e-paper compatibility
-- Maximum accessibility
-
-The goal is to make simulations that remain understandable even when thousands of objects are interacting.
+> The engine now scales **upward** too: multiple LOD (level-of-detail) tiers mean the same code that survives on the C71 can spread its wings on higher-end devices. Built at the bottom, aimed at the whole ladder.
 
 ---
 
-💥 Stress Tests
+## 🪄 The Layer Above — *See It · Cache It · Predict It*
 
-Galaxy Guardians is regularly pushed beyond normal gameplay limits.
+Most engines do one thing per frame: **compute the next moment, draw it, throw it away.** Galaxy Guardians runs three layers stacked on top of each other, and each one buys back time the phone doesn't have.
 
-Examples:
+### 👁️ 1. See It — the render layer
 
-- Thousands active physical objects
-- Massive collision chains
-- Planet destruction events
-- Particle storms
-- Large gravitational systems
+A **ring-buffer trail accumulator** (`accumulator.js`) keeps N offscreen canvases rotating like a filmstrip. Each frame the oldest becomes the new stage; newer layers composite over it with a power-curve fade. Old motion dies by *natural overwrite* — no clears, no pops, no stamps.
 
-A simulation should remain logical even during complete chaos.
+> *"MEMORY: fixed at init. N canvases, never grows. STAMPS: impossible past trailDepth frames. POPS: impossible — no hard clears anywhere."* — straight from the source header.
 
----
+The newest trail (the **prime**) is **locked to full device resolution**; older tails ramp down a resolution ladder, so the trail you're actually looking at is always crisp while the fading history gets cheaper the further back it goes.
 
-🛡 First Planned Game
+### 🎞️ 2. Cache It — the FutureCache
 
-Galaxy Guardians: Tower Defense
+Here's the trick that makes the whole thing possible. **`FutureCache` treats physics like a video buffer.**
 
-Protect the galaxy.
+Using spare frame-time budget, it computes physics ticks **ahead** of the live playhead, stores them, and lets the live loop *play them back* instead of recomputing:
 
-Build defenses.
+> *"A played cached tick is NOT an approximation — it's byte-for-byte the same result live computation would have produced, including the visual side effects it triggers (collision flashes, ring spawns). Those are captured at cache time and replayed at the exact moment the tick is shown — not fired early during the silent pre-compute."*
 
-Stop cosmic threats.
+Cache ahead, play, keep caching while playing — the frontier never falls behind or overlaps itself. A time-budget governor (`CacheGov`) decides how far to look ahead (1 → **1000** ticks), and any event that would break determinism — spawning a planet, changing gravity, clearing the field — calls `invalidate()` and the buffer rebuilds. **Free, exact physics, amortised across quiet frames.**
 
-Try not to accidentally destroy the planets you're protecting.
+### 🔮 3. Predict It — the Dormancy classifier
 
----
+If we already hold a real, fully-coupled future for every body… that future is a **free oracle.**
 
-🗺 Roadmap
+`dormancy.js` scans the cached window and asks a single question per body: *"Is anything about to happen to you?"* A close approach to another body, a brush past the sun — anything the body can strongly feel. Bodies with a predicted event get tagged **hot**; bodies just coasting untouched get tagged **cold**, with a `wakeTick` telling us exactly when to wake them up (with margin to spare).
 
-Current
+> A cold body replaying its cached path isn't fake physics — it's **real, already-computed, fully-coupled physics** that we simply don't need to recompute. The only error is a mis-predicted event, so we wake *before* the event, never after.
 
-- Physics systems
-- Rendering systems
-- Engine architecture
-- Sandbox experimentation
+Stage 1 (measure-only) is validated. Stage 2 — letting cold bodies actually *skip integration* and coast — is armed and waiting on real on-device cold-percentage numbers before it flips the switch. **Honest engineering: measure, then act.**
 
-Next
-
-- Tower Defense gameplay
-- Content creation tools
-- More physics experiments
-- More explosions
-
-Future
-
-- Multiplayer
-- Modding support
-- Educational scenarios
-- Community-created content
+```
+   See it  ───▶  the trails you watch     (render layer, always crisp at the head)
+   Cache it ───▶  the future you buffer    (exact physics, computed in spare time)
+   Predict it ──▶  the work you skip        (cold bodies coast on their own oracle)
+```
 
 ---
 
-🤝 Contributing
+## 🎛️ Viewed by Our Tuners & Debugs
 
-Ideas, bug reports, experiments, and improvements are welcome.
+Every number in the engine is a **knob**, and every knob is live.
 
-Galaxy Guardians grows one experiment at a time.
+### 🧊 The Live Text Debug Console
+A single **frosted-glass DOM overlay** (`console-view.js`) — real `backdrop-filter` blur, a native input line with a real mobile keyboard, native scrolling — listing every tunable attribute with `+ = −` buttons and a pressure bar. It boots **on by default**, so the engine opens straight into its own control room. Nothing is reinvented: every row wraps the same `Governor` the visual panels use, so AUTO/MANUAL state, live ranges, and dynamic maxes all stay in perfect sync.
+
+### ⚙️ The Governors — Bresenham for time
+Physics, Render, Input, Cache, and Trails each get a **governor** that decides how often to run using Bresenham-style tick-skipping — the same integer line-drawing math, applied to *time* instead of pixels. Dial the pressure and the system gracefully sheds or adds work. There's even a **GUI Governor** that lets you *starve the simulation on purpose* (SLOW / PAUSE / HALT) so the frame budget goes to the interface when you're tuning — because sometimes you want the controls to feel perfect and the physics to just… wait.
+
+### 📊 Benchmark — "BEST PREFERENCES" & the 1000 Law
+An iterative coordinate-ascent benchmark sweeps the knobs on *your* device, scores the result 0–1000 (richness × smoothness), and saves the winning profile. The goal is simple and absolute: **chase the 1000.**
+
+### 🔬 MsProbe
+A profiler wired straight into the physics / queue-ops / render hot paths, so every millisecond has a name and nothing hides.
+
+| Layer | Module | What it buys you |
+|---|---|---|
+| 👁️ See | `accumulator.js`, `trails.js`, `renderer.js` | Crisp head trail, cheap history, zero pops |
+| 🎞️ Cache | `future-cache.js`, `que-ops.js` | Exact physics computed in spare time |
+| 🔮 Predict | `dormancy.js` | Skip work on bodies that are just coasting |
+| 🎛️ Tune | `console-view.js`, `governor.js`, `gui-governor.js` | Change any number, live, on a phone |
+| 📊 Prove | `benchmark.js`, `ms-probe.js`, `fps-counter.js` | Measure before you believe |
 
 ---
 
-Final Thought
+## 🧬 Under The Hood
 
-Most engines are built to make games.
+**Soft bodies, not rigid dots.** Every planet is a blob of particles held together by springs (`makeBody(cx, cy, radius, palette)`). Gravity pulls toward the center of mass; collisions resolve at the particle level; push hard enough and the springs snap — the planet *tears*, shedding loose particles into the field.
 
-Galaxy Guardians is built to make experiments fun.
+**A fixed-timestep heartbeat.** The main loop integrates at a rock-steady `1/60s`. An accumulator banks real wall-clock time and never discards it except on true overload — so motion is a function of *time*, never of frame rate. Speed it up to **12×** and it runs 12 honest ticks back-to-back per frame; it never cheats by taking bigger steps.
+
+**Config as data, themes as folders.** A configuration router (`config-index.js`) with a bulletproof safe-fallback, feeding three swappable themes — **`base` · `origin` · `seasonal-winter`** — each split cleanly into `physics / render / overlay / game / audio`. Reskin the universe by swapping a folder.
+
+**79 ES-modules, ~300–600 lines each.** No build step. No framework. No bundler. Open `index.html` and it *is* the engine — every module a plain `import`, every system inspectable.
+
+```
+js/
+├── core/        state · config · math · registry · loader
+│                future-cache · dormancy · aims · que-ops · ms-probe · governors
+├── modules/
+│   ├── physics/     tick · softbody · collisions · creation
+│   ├── rendering/   accumulator · renderer · bodies · particles · sun · trails · effects
+│   ├── entities/    planet · asteroids
+│   ├── input/       aims · camera · keyboard · planet · ui   (pixel-perfect input map)
+│   ├── debug/       console-view · governors · benchmark · panels · profiles
+│   ├── camera/ · tuning/ · ui/ · monetization/
+│   └── ...
+└── config/      base/ · origin/ · seasonal-winter/   (each: physics·render·overlay·game·audio)
+```
+
+---
+
+## 🎓 The Learning Curve *is* The Feature
+
+Galaxy Guardians is a physics classroom disguised as a toy. Play with it and you *feel* concepts most people only read about:
+
+- **Symplectic integration & fixed timesteps** — why the accumulator matters, and what happens when you break it.
+- **Broad-phase / narrow-phase collision** — watch AABB-over-trajectory catch approaches before they happen.
+- **Amortised computation** — the FutureCache is a live lesson in "compute it once, use it many times."
+- **Determinism** — one `invalidate()` away from understanding why reproducible physics is hard and precious.
+- **Level-of-detail & the performance ladder** — see the exact moment cleverness beats brute force.
+
+Every knob you turn is a hypothesis. Every benchmark is an experiment. **You learn naturally, because you're having too much fun to notice you're studying.**
+
+---
+
+## 🚀 Quick Start
+
+```bash
+git clone https://github.com/NoonTheAmazingWhitePanther/Galaxy-Guardians-the-Real-One.git
+cd Galaxy-Guardians-the-Real-One
+# serve it (ES modules need http://, not file://)
+python3 -m http.server 8080
+# open http://localhost:8080
+```
+
+**Controls**
+
+```
+HOLD · CHARGE      RELEASE · SPAWN      SCROLL · ZOOM
+RIGHT-DRAG · PAN   F · FIT              SPACE · PAUSE
+〰️ · DEBUG          ✒️ · AIMS INPUT       ▲▼ · SPEED (1×–12×)
+```
+
+Open the 〰️ debug console and start bending the numbers. Nothing you do is permanent — the whole thing is a sandbox.
+
+---
+
+## 🗺️ Roadmap
+
+**✅ Done & validated**
+- Full-fidelity FutureCache with ghost-sim swap trick, time-budget governor, invalidation hooks
+- Ring-buffer trail accumulator with resolution ramp + full-res prime lock
+- Dormancy classifier Stage 1 (measure-only) + locked-alpha tween witness
+- Live glass debug console, per-system Bresenham governors, GUI Governor, BEST PREFERENCES benchmark
+- Screen Resolution panel, Dreamy Trails presets, MsProbe profiling
+
+**🔜 Next**
+- **Dormancy Stage 2** — promote cold bodies from *drawn* coasting to *actual* integration-skipping, staggered wake-storms via QueOps, velocity-aware wake to close the strided-sampling gap
+- Runtime tier-switching: auto-apply the benchmarked LOD level by live body count
+- 🛡️ **Galaxy Guardians: Tower Defense** — the first real game. Protect the galaxy. Try not to destroy the planets you're defending.
+
+**🌠 The Dream — *The Invaders Layer***
+> **Render the website you see *under* the layers of Galaxy Guardians.**
+> Every webpage becomes a universe. And universes always have invaders. Turn any wall of any feed into a starfield you can shoot across while you scroll your favorite Facebook wall. The page keeps working underneath; the guardians play on top. *An overlay engine for the whole web.* 🏴‍☠️👾
+
+**🌌 Someday**
+- Multiplayer · modding support · educational scenarios · community-created universes
+
+---
+
+## 🤝 Contributing
+
+Ideas, bug reports, wild experiments, and "what if we…" all welcome. Galaxy Guardians grows **one experiment at a time**, and the only entry requirement is a single question:
+
+> **«Is it fun?»**
+>
+> If yes, we keep building.
+
+---
+
+## 🐾 Credits
+
+Built by **Noon — The Panther Pirate** (`NoonTheAmazingWhitePanther`): visionary, architect, and captain of the ship. A ~25-year journey from tweened trails and normalized angular math in **Pascal on DOS** to soft-body universes in the browser.
+
+Code expression by **Claude (Anthropic)** — the Basic Pro subscription that helped turn a \$100 phone, an internet connection, and a very stubborn imagination into a physics engine. Every line `node --check`-clean, JSON-validated, and config-audited before it ever touched the repo.
+
+*Proof that the marvelous doesn't require the expensive — just relentless cleverness and a refusal to accept that the phone can't do it.*
+
+---
+
+## 📜 License
+
+**GNU General Public License v3.0** — free as in freedom. Copy it, run it, study it, change it, share it. Just keep it open.
+
+---
+
+<div align="center">
+
+*Most engines are built to make games.*
+**Galaxy Guardians is built to make experiments fun.** 🌌💥
+
+</div>

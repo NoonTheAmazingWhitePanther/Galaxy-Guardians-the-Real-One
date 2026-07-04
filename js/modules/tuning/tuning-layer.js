@@ -13,6 +13,7 @@
  *   TuningLayer.remove(panel) — called by panel.unpin()
  */
 import { DebugRenderer } from '../rendering/debug-renderer.js';
+import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 
 export const TuningLayer = {
   _panels: [],
@@ -40,6 +41,12 @@ export const TuningLayer = {
     for (const panel of this._panels) {
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
+
+    // Debug is OFF here. The global master slider is allowed in this tuning
+    // surface too, but only when >=2 panels are pinned — render() self-gates on
+    // MasterSliderRenderer.isActive(), which returns true for exactly that case
+    // and nulls its own hit-box otherwise. Visible ⟺ touchable, still one rule.
+    MasterSliderRenderer.render(ctx, this._panels);
   },
 
   get count() {

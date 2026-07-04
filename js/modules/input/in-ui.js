@@ -9,6 +9,14 @@ import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { TrailsModule } from '../rendering/trails.js';
 import { InputState } from './input.module.js';
+import { DEBUG_STATE } from '../debug/debug-state.js';
+import { ManualOverrides } from '../debug/governor.js';
+
+// Panel-zoom (debug + panel mode): the zoom bar scales the debug panels instead
+// of the camera. Master slider is measured off DOM buttons, so it is NEVER
+// affected — it keeps its size forever. Bounds keep panels readable + tappable.
+const PANEL_SCALE_MIN = 0.45;
+const PANEL_SCALE_MAX = 1.60;
 
 export const InUI = {
   uiEl: null,
@@ -52,15 +60,22 @@ export const InUI = {
     const zmIn = document.getElementById('zm-in');
     const zmOut = document.getElementById('zm-out');
     const zmFit = document.getElementById('zm-fit');
-    if (zmIn) zmIn.addEventListener('pointerdown', (e) => { e.preventDefault(); CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom * 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); });
-    if (zmOut) zmOut.addEventListener('pointerdown', (e) => { e.preventDefault(); CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom / 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); });
-    if (zmFit) zmFit.addEventListener('pointerdown', (e) => { e.preventDefault(); CameraModule.frameBodies(); });
+    if (zmIn) zmIn.addEventListener('pointerdown', (e) => { e.preventDefault();
+      if (this._panelZoomMode()) { this._panelZoomBy(1.10); return; }
+      CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom * 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); });
+    if (zmOut) zmOut.addEventListener('pointerdown', (e) => { e.preventDefault();
+      if (this._panelZoomMode()) { this._panelZoomBy(1/1.10); return; }
+      CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom / 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); });
+    if (zmFit) zmFit.addEventListener('pointerdown', (e) => { e.preventDefault();
+      if (this._panelZoomMode()) { this._panelZoomSet(1.0); return; }   // FIT → panels back to 100%
+      CameraModule.frameBodies(); });
 
     if (zmTrack) {
-      zmTrack.addEventListener('pointerdown', (e) => { 
-        InputState.zmDrag = true; 
-        this._zmTrackPos(e.clientY); 
-        e.preventDefault(); 
+      zmTrack.addEventListener('pointerdown', (e) => {
+        if (this._panelZoomMode()) { this._panelZoomTrack(e.clientY); e.preventDefault(); return; }
+        InputState.zmDrag = true;
+        this._zmTrackPos(e.clientY);
+        e.preventDefault();
       });
     }
 
@@ -92,6 +107,38 @@ export const InUI = {
     const logMin = Math.log(CameraModule.cam.minZoom);
     const logMax = Math.log(CameraModule.cam.maxZoom);
     CameraModule.cam.targetZoom = Math.exp(logMin + frac * (logMax - logMin));
+  },
+
+  // ── Panel-zoom (debug + panel mode) ───────────────────────────────────────
+  // The zoom bar scales the debug PANELS via DEBUG_STATE.scale (all panel
+  // geometry — render AND hit-test — reads it). The master vertical slider is
+  // measured off DOM buttons, so it is untouched: fixed size, forever.
+  _panelZoomMode: function() {
+    const R = window._DebugRouter;
+    return !!(R && R.masterEnabled && !R._consoleMode);
+  },
+  _applyPanelScale: function(v) {
+    const s = clamp(v, PANEL_SCALE_MIN, PANEL_SCALE_MAX);
+    // Route through the shared overall-ratio knob so the zoom bar and the PANEL
+    // SETTINGS "Overall" row stay in lockstep. PanelStyle.apply() copies this to
+    // DEBUG_STATE.scale every frame; we also set it now so this frame reflects it.
+    if (ManualOverrides.psOverall) {
+      ManualOverrides.psOverall.value = s;
+      ManualOverrides.psOverall.isManual = true;
+    }
+    DEBUG_STATE.scale = s;
+    const R = window._DebugRouter;
+    if (R && R.panels) for (const p of R.panels) p._chromeDirty = true;
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}   // panels resized → refresh tap map
+  },
+  _panelZoomBy:    function(mult) { this._applyPanelScale((DEBUG_STATE.scale || 1) * mult); },
+  _panelZoomSet:   function(v)    { this._applyPanelScale(v); },
+  _panelZoomTrack: function(clientY) {
+    const t = document.getElementById('zm-track');
+    if (!t) return;
+    const rect = t.getBoundingClientRect();
+    const frac = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
+    this._applyPanelScale(PANEL_SCALE_MIN + frac * (PANEL_SCALE_MAX - PANEL_SCALE_MIN));
   },
 
   _updateSpeedUI: function() {

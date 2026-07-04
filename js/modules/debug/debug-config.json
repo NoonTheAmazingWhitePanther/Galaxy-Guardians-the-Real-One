@@ -856,43 +856,97 @@
           "type": "buttons",
           "text": "Wake Lead",
           "variable": "ManualOverrides.dormancyMargin.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 400, "step": 10 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 400,
+            "step": 10
+          }
         },
         {
           "type": "buttons",
           "text": "Radius ×",
           "variable": "ManualOverrides.dormancyRadiusK.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0.5, "max": 3, "step": 0.1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.5,
+            "max": 3,
+            "step": 0.1
+          }
         },
         {
           "type": "buttons",
           "text": "Sun Pad",
           "variable": "ManualOverrides.dormancySunPad.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 400, "step": 20 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 400,
+            "step": 20
+          }
         },
         {
           "type": "buttons",
           "text": "Scan Horizon",
           "variable": "ManualOverrides.dormancyHorizon.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 8, "max": 1000, "step": 8 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 8,
+            "max": 1000,
+            "step": 8
+          }
         },
         {
           "type": "buttons",
           "text": "Tween Witness",
           "variable": "ManualOverrides.dormancyTween.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 1, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
           "text": "Tween Lock",
           "variable": "ManualOverrides.dormancyTweenLock.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 2, "max": 60, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 2,
+            "max": 60,
+            "step": 1
+          }
         },
         {
           "type": "divider",
@@ -934,8 +988,17 @@
           "type": "buttons",
           "text": "Cache Dirt",
           "variable": "ManualOverrides.cacheDirtySubsteps.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 8,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
@@ -1026,11 +1089,26 @@
           "type": "profileButtons",
           "profileTarget": "trails",
           "buttons": [
-            { "label": "Long",   "profile": "LONG" },
-            { "label": "Norm",   "profile": "NORMAL" },
-            { "label": "Short",  "profile": "SHORT" },
-            { "label": "Ease",   "profile": "EASE" },
-            { "label": "AUTO",   "profile": null }
+            {
+              "label": "Long",
+              "profile": "LONG"
+            },
+            {
+              "label": "Norm",
+              "profile": "NORMAL"
+            },
+            {
+              "label": "Short",
+              "profile": "SHORT"
+            },
+            {
+              "label": "Ease",
+              "profile": "EASE"
+            },
+            {
+              "label": "AUTO",
+              "profile": null
+            }
           ]
         },
         {
@@ -1041,29 +1119,65 @@
           "type": "buttons",
           "text": "Max Trails",
           "variable": "ManualOverrides.trailMax.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 1000, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1000,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
           "text": "Density",
           "variable": "ManualOverrides.trailDensity.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 8, "max": 1000, "step": 8 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 8,
+            "max": 1000,
+            "step": 8
+          }
         },
         {
           "type": "buttons",
           "text": "Skip",
           "variable": "ManualOverrides.trailSkip.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 1, "max": 16, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 1,
+            "max": 16,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
           "text": "Speed Scale",
           "variable": "ManualOverrides.trailSpeedScale.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 4, "step": 0.1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 4,
+            "step": 0.1
+          }
         },
         {
           "type": "divider",
@@ -1073,29 +1187,65 @@
           "type": "buttons",
           "text": "Alpha",
           "variable": "ManualOverrides.trailAlpha.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0.02, "max": 1, "step": 0.02 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.02,
+            "max": 1,
+            "step": 0.02
+          }
         },
         {
           "type": "buttons",
           "text": "Shrink Tail",
           "variable": "ManualOverrides.trailShrink.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 1, "step": 0.05 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1,
+            "step": 0.05
+          }
         },
         {
           "type": "buttons",
           "text": "Bloom",
           "variable": "ManualOverrides.trailBloom.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 1, "step": 0.05 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1,
+            "step": 0.05
+          }
         },
         {
           "type": "buttons",
           "text": "Enabled",
           "variable": "ManualOverrides.trailEnabled.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 1, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1,
+            "step": 1
+          }
         },
         {
           "type": "divider",
@@ -1105,22 +1255,49 @@
           "type": "buttons",
           "text": "Res Ramp",
           "variable": "ManualOverrides.trailDownscale.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 8,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
           "text": "Glow Depth",
           "variable": "ManualOverrides.trailGlowDepth.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 2, "max": 16, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 2,
+            "max": 16,
+            "step": 1
+          }
         },
         {
           "type": "buttons",
           "text": "Glow Fade",
           "variable": "ManualOverrides.trailGlowFade.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0.04, "max": 0.95, "step": 0.02 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.04,
+            "max": 0.95,
+            "step": 0.02
+          }
         },
         {
           "type": "divider",
@@ -1368,8 +1545,17 @@
           "type": "buttons",
           "text": "Res Ramp",
           "variable": "ManualOverrides.trailDownscale.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 8, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 8,
+            "step": 1
+          }
         },
         {
           "type": "divider",
@@ -1394,8 +1580,17 @@
           "type": "buttons",
           "text": "Glow Depth",
           "variable": "ManualOverrides.trailGlowDepth.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 2, "max": 16, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 2,
+            "max": 16,
+            "step": 1
+          }
         }
       ],
       "minimizedKnob": {
@@ -1413,7 +1608,10 @@
     {
       "id": "guiGov",
       "title": "GUI GOV",
-      "position": { "x": 16, "y": 380 },
+      "position": {
+        "x": 16,
+        "y": 380
+      },
       "refreshRate": 200,
       "minimized": true,
       "summaryVariable": "GuiGovernor.debugInfo.mode",
@@ -1435,8 +1633,17 @@
           "type": "buttons",
           "text": "Mode",
           "variable": "ManualOverrides.guiGovMode.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0, "max": 3, "step": 1 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 3,
+            "step": 1
+          }
         },
         {
           "type": "display",
@@ -1462,8 +1669,17 @@
           "type": "buttons",
           "text": "Slow Factor",
           "variable": "ManualOverrides.guiGovSlowFactor.value",
-          "buttons": ["+", "=", "−"],
-          "governor": { "mode": "add", "min": 0.02, "max": 1, "step": 0.05 }
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.02,
+            "max": 1,
+            "step": 0.05
+          }
         }
       ],
       "minimizedKnob": {
@@ -1473,6 +1689,237 @@
         "step": 1,
         "label": "",
         "integer": true
+      }
+    },
+    {
+      "id": "panelGrid",
+      "title": "PANEL GRID",
+      "position": {
+        "x": 16,
+        "y": 520
+      },
+      "refreshRate": 250,
+      "minimized": true,
+      "summaryVariable": "ManualOverrides.panelGridSize.value",
+      "summaryLabel": "grid",
+      "lines": [
+        {
+          "type": "header",
+          "text": "PANEL GRID",
+          "value": "ManualOverrides.panelGridSize.value",
+          "color": "accent",
+          "bold": true,
+          "valueSuffix": " px"
+        },
+        {
+          "type": "divider",
+          "text": "— 0 = free-form · >0 = snap —"
+        },
+        {
+          "type": "buttons",
+          "text": "Grid Size",
+          "variable": "ManualOverrides.panelGridSize.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 200,
+            "step": 2
+          }
+        }
+      ],
+      "minimizedKnob": {
+        "variable": "ManualOverrides.panelGridSize.value",
+        "min": 0,
+        "max": 200,
+        "step": 2,
+        "label": "",
+        "integer": true
+      }
+    },
+    {
+      "id": "panelSettings",
+      "title": "PANEL SETTINGS",
+      "position": {
+        "x": 16,
+        "y": 600
+      },
+      "refreshRate": 250,
+      "minimized": true,
+      "summaryVariable": "ManualOverrides.psOverall.value",
+      "summaryLabel": "style",
+      "lines": [
+        {
+          "type": "header",
+          "text": "PANEL SETTINGS",
+          "value": "ManualOverrides.psOverall.value",
+          "valueSuffix": "x",
+          "color": "accent",
+          "bold": true
+        },
+        {
+          "type": "divider",
+          "text": "— overall ratio —"
+        },
+        {
+          "type": "buttons",
+          "text": "Overall",
+          "variable": "ManualOverrides.psOverall.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.45,
+            "max": 1.8,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Keep Ratio",
+          "variable": "ManualOverrides.psLock.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0,
+            "max": 1,
+            "step": 1
+          }
+        },
+        {
+          "type": "divider",
+          "text": "— unlock to distort each —"
+        },
+        {
+          "type": "buttons",
+          "text": "Font",
+          "variable": "ManualOverrides.psFont.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Pad",
+          "variable": "ManualOverrides.psPad.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Line",
+          "variable": "ManualOverrides.psLine.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Label W",
+          "variable": "ManualOverrides.psLabelW.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Value W",
+          "variable": "ManualOverrides.psValW.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Radius",
+          "variable": "ManualOverrides.psRadius.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        },
+        {
+          "type": "buttons",
+          "text": "Knob",
+          "variable": "ManualOverrides.psKnob.value",
+          "buttons": [
+            "+",
+            "=",
+            "−"
+          ],
+          "governor": {
+            "mode": "add",
+            "min": 0.25,
+            "max": 2.0,
+            "step": 0.05
+          }
+        }
+      ],
+      "minimizedKnob": {
+        "variable": "ManualOverrides.psOverall.value",
+        "min": 0.45,
+        "max": 1.8,
+        "step": 0.05,
+        "label": ""
       }
     }
   ]

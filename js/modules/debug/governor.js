@@ -136,20 +136,64 @@ export const ManualOverrides = {
   guiGovMode:               { isManual: false, value: 0 },     // 0 OFF · 1 SLOW · 2 PAUSE · 3 HALT
   guiGovSlowFactor:         { isManual: false, value: 0.15 },  // sim-time rate in SLOW mode
 
+  // Panel arrange grid — dot-grid pitch for snapping dragged debug panels.
+  // 0 = FREE-FORM (no grid: drop where released, only pushed apart to keep a
+  // 2px min gap along the drag trajectory). >0 = SNAP: released panels glide to
+  // the nearest dot of a pitch-px dot grid. Default 48px. Tunable in PANEL GRID.
+  panelGridSize:            { isManual: false, value: 48 },
+
+  // PANEL SETTINGS — live restyle of every panel (all panels inherit these).
+  // psOverall drives DEBUG_STATE.scale (the overall ratio, shared with the zoom
+  // bar). psLock is the "keep ratio" tick (1 = uniform scale, per-item knobs
+  // ignored; 0 = distort each item freely). The rest are SCALE multipliers
+  // (1.00 = 100% of the base pixel value), applied on top of the overall ratio.
+  psOverall:                { isManual: false, value: 1.00 },  // overall ratio (→ DEBUG_STATE.scale)
+  psLock:                   { isManual: false, value: 1 },     // 1 = keep ratio · 0 = free
+  psFont:                   { isManual: false, value: 1.00 },  // text size
+  psPad:                    { isManual: false, value: 1.00 },  // inner padding
+  psLine:                   { isManual: false, value: 1.00 },  // line height
+  psLabelW:                 { isManual: false, value: 1.00 },  // label column width
+  psValW:                   { isManual: false, value: 1.00 },  // value column width
+  psRadius:                 { isManual: false, value: 1.00 },  // corner radius
+  psKnob:                   { isManual: false, value: 1.00 },  // knob size (+ its touch box)
+
+  // ── UNDO (Ctrl+Z) ─────────────────────────────────────────────────────────
+  // Every knob edit flows through set()/reset(), so recording the prior state
+  // here captures the full history with one hook. Bulk operations (profile
+  // apply / reset) set _suppressUndo so they land as nothing to step back into.
+  _undoStack: [],
+  _undoCap: 300,
+  _suppressUndo: false,
+  _recordUndo(key) {
+    if (this._suppressUndo) return;
+    const e = this[key];
+    if (!e || typeof e !== 'object') return;
+    this._undoStack.push({ key, value: e.value, isManual: e.isManual });
+    if (this._undoStack.length > this._undoCap) this._undoStack.shift();
+  },
+  undo() {
+    const last = this._undoStack.pop();
+    if (!last) return false;
+    const e = this[last.key];
+    if (e && typeof e === 'object') { e.value = last.value; e.isManual = last.isManual; }
+    return true;
+  },
+  clearUndo() { this._undoStack.length = 0; },
+
   // set() — marks as manual and updates value. Used by Governor buttons.
   set(key, value) {
     if (this[key] !== undefined) {
+      this._recordUndo(key);
       this[key].isManual = true;
       this[key].value    = value;
-      console.log(`[Gov] MANUAL → ${key}=${value}`);
     }
   },
 
   // reset() — back to AUTO. Called when user presses '=' button.
   reset(key) {
     if (this[key] !== undefined) {
+      this._recordUndo(key);
       this[key].isManual = false;
-      console.log(`[Gov] AUTO → ${key}`);
     }
   },
 

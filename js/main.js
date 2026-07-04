@@ -153,9 +153,28 @@ export function init() {
       setTimeout(() => b.classList.remove('active'), 120);
     }, { passive: false });
   };
-  satWire('dbg-closeall', () => DebugRouter.closeAllDock());
-  satWire('dbg-reset',    () => DebugRouter.resetAllToProfile());
-  satWire('dbg-arrange',  () => DebugRouter.arrangeToggle());
+  // Tap vs long-press: tapFn on quick release, holdFn if held past `ms`.
+  const satWireHold = (id, tapFn, holdFn, ms = 600) => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    let timer = null, held = false;
+    const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      held = false; b.classList.add('active');
+      timer = setTimeout(() => { held = true; b.classList.remove('active'); holdFn(); }, ms);
+    }, { passive: false });
+    b.addEventListener('pointerup', (e) => {
+      e.preventDefault(); clear(); b.classList.remove('active');
+      if (!held) tapFn();
+      held = false;
+    }, { passive: false });
+    b.addEventListener('pointerleave', () => { clear(); held = false; b.classList.remove('active'); });
+    b.addEventListener('pointercancel', () => { clear(); held = false; b.classList.remove('active'); });
+  };
+  satWire('dbg-closeall', () => DebugRouter.arrangeTetris());                              // ⊟ → Tetris arrange
+  satWireHold('dbg-reset', () => DebugRouter.undo(), () => DebugRouter.resetAllToProfile()); // ⟳ → undo / hold: reset
+  satWire('dbg-arrange',  () => DebugRouter.toggleGridSnap());                            // ⊞ → Free Roam ⇄ Grid
 
   const aimsBtn = document.getElementById('aims-btn');
   if (aimsBtn) {

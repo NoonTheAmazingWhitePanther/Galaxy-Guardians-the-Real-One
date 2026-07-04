@@ -45,7 +45,10 @@ const BTN_H = 18;
 const BTN_GAP = 3;
 const SLIDER_H = 12;
 const SLIDER_THUMB_R = 6;
-const KNOB_R = 14;
+// Knob radius is live-tunable via PANEL SETTINGS (style.knobR). Reading it as a
+// function means the DRAWN knob and its TOUCH RECTANGLE (getBounds below) always
+// use the same value — resize one, the hit area follows automatically.
+const knobR = () => (DEBUG_STATE.style.knobR || 14);
 const DROPDOWN_H = 20;
 const DROPDOWN_ITEM_H = 18;
 const CHECKBOX_SIZE = 16;
@@ -319,8 +322,8 @@ export const KnobControl = {
     const { min, max } = control;
     const value = state.value ?? min;
     const frac = (max - min) !== 0 ? (value - min) / (max - min) : 0;
-    const cx = x + KNOB_R;
-    const cy = y + KNOB_R;
+    const cx = x + knobR();
+    const cy = y + knobR();
 
     ctx.fillStyle = state.dragging
       ? 'rgba(130, 210, 255, 0.3)'
@@ -328,7 +331,7 @@ export const KnobControl = {
         ? 'rgba(255,255,255,0.15)'
         : 'rgba(255,255,255,0.08)';
     ctx.beginPath();
-    ctx.arc(cx, cy, KNOB_R, 0, Math.PI * 2);
+    ctx.arc(cx, cy, knobR(), 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = state.dragging
@@ -338,7 +341,7 @@ export const KnobControl = {
     ctx.stroke();
 
     const angle = -Math.PI / 2 + frac * Math.PI * 1.5;
-    const indicatorLen = KNOB_R * 0.7;
+    const indicatorLen = knobR() * 0.7;
     const ix = cx + Math.cos(angle) * indicatorLen;
     const iy = cy + Math.sin(angle) * indicatorLen;
 
@@ -357,21 +360,21 @@ export const KnobControl = {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const displayVal = Number.isInteger(value) ? value : value.toFixed(2);
-    ctx.fillText(String(displayVal), cx, cy + KNOB_R + 2);
+    ctx.fillText(String(displayVal), cx, cy + knobR() + 2);
   },
 
   hitTest(control, x, y, bounds) {
-    const { x: bx, y: by } = bounds;    const cx = bx + KNOB_R;
-    const cy = by + KNOB_R;
+    const { x: bx, y: by } = bounds;    const cx = bx + knobR();
+    const cy = by + knobR();
     const dist = Math.hypot(x - cx, y - cy);
-    if (dist <= KNOB_R + 2) {
+    if (dist <= knobR() + 2) {
       return { hit: true };
     }
     return null;
   },
 
   getBounds(control, x, y) {
-    return { x, y, w: KNOB_R * 2, h: KNOB_R * 2 + 16 };
+    return { x, y, w: knobR() * 2, h: knobR() * 2 + 16 };
   }
 };
 

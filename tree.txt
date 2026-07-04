@@ -1,74 +1,108 @@
-.:
-Archive
-LICENSE
-README.md
-giteasycommands.readme.txt
-index.html
-js
-styles.css
-tree.txt
+Galaxy Guardians: The Real One — file tree
+(generated fresh from the repo — js/ is the engine)
 
-./Archive:
-gg 1.zip
-indexOriginal.html
-script.js
-scriptoriginal.js
-styles.css
+Galaxy-Guardians-the-Real-One/
+├── index.html
+├── styles.css
+├── README.md
+├── TODO.md
+├── LICENSE
+├── tree.txt
+└── js/
+    ├── config/
+    │   ├── base/
+    │   │   ├── config-audio.js
+    │   │   ├── config-game.js
+    │   │   ├── config-overlay.js
+    │   │   ├── config-physics.js
+    │   │   └── config-render.js
+    │   ├── origin/
+    │   │   ├── config-audio.js
+    │   │   ├── config-game.js
+    │   │   ├── config-overlay.js
+    │   │   ├── config-physics.js
+    │   │   └── config-render.js
+    │   ├── seasonal-winter/
+    │   │   ├── config-audio.js
+    │   │   ├── config-game.js
+    │   │   ├── config-overlay.js
+    │   │   ├── config-physics.js
+    │   │   └── config-render.js
+    │   └── config-index.js
+    ├── core/
+    │   ├── aims.js
+    │   ├── config-loader.js
+    │   ├── config.js
+    │   ├── dormancy.js
+    │   ├── future-cache.js
+    │   ├── loader.js
+    │   ├── math.js
+    │   ├── ms-probe.js
+    │   ├── physics-governor.js
+    │   ├── que-ops.js
+    │   ├── registry.js
+    │   ├── render-governor.js
+    │   ├── state-cache.js
+    │   ├── state.js
+    │   └── texture-atlas.js
+    ├── modules/
+    │   ├── camera/
+    │   │   └── camera.module.js
+    │   ├── debug/
+    │   │   ├── benchmark.js
+    │   │   ├── console-view.js
+    │   │   ├── controls.js
+    │   │   ├── debug-config.json
+    │   │   ├── debug-router.js
+    │   │   ├── debug-state.js
+    │   │   ├── debug-style.js
+    │   │   ├── draw-call-counter.js
+    │   │   ├── fps-counter.js
+    │   │   ├── governor-profiles.js
+    │   │   ├── governor.js
+    │   │   ├── gui-governor.js
+    │   │   ├── master-governor.js
+    │   │   ├── master-slider-renderer.js
+    │   │   ├── panel-master.js
+    │   │   ├── panel.js
+    │   │   ├── physics-counter.js
+    │   │   └── trail-profiles.js
+    │   ├── entities/
+    │   │   ├── asteroids.js
+    │   │   └── planet.js
+    │   ├── input/
+    │   │   ├── in-aims.js
+    │   │   ├── in-camera.js
+    │   │   ├── in-config-menu.js
+    │   │   ├── in-debug.js
+    │   │   ├── in-keyboard.js
+    │   │   ├── in-planet.js
+    │   │   ├── in-ui.js
+    │   │   └── input.module.js
+    │   ├── monetization/
+    │   │   └── ads.js
+    │   ├── physics/
+    │   │   ├── collisions.js
+    │   │   ├── creation.js
+    │   │   ├── softbody.js
+    │   │   └── tick.js
+    │   ├── rendering/
+    │   │   ├── accumulator.js
+    │   │   ├── bodies.js
+    │   │   ├── debug-renderer.js
+    │   │   ├── effects.js
+    │   │   ├── particle-management.js
+    │   │   ├── particles.js
+    │   │   ├── renderer.js
+    │   │   ├── sun.js
+    │   │   ├── trails.js
+    │   │   └── tween-renderer.js
+    │   ├── tuning/
+    │   │   └── tuning-layer.js
+    │   └── ui/
+    │       ├── config-menu.js
+    │       ├── instructions.js
+    │       └── overlays.js
+    └── main.js
 
-./js:
-core
-main.js
-modules
-
-./js/core:
-1.a
-config-loader.js
-config.js
-loader.js
-math.js
-registry.js
-state-cache.js
-state.js
-texture-atlas.js
-
-./js/modules:
-camera
-entities
-input
-monetization
-physics
-rendering
-ui
-
-./js/modules/camera:
-camera.module.js
-
-./js/modules/entities:
-asteroids.js
-planet.js
-
-./js/modules/input:
-input.module.js
-
-./js/modules/monetization:
-ads.js
-
-./js/modules/physics:
-collisions.js
-creation.js
-softbody.js
-tick.js
-
-./js/modules/rendering:
-bodies.js
-effects.js
-particle-management.js
-particles.js
-sun.js
-trails.js
-tween-renderer.js
-
-./js/modules/ui:
-config-menu.js
-instructions.js
-overlays.js
+Modules: 79 .js  +  1 .json  (single-source debug config)

@@ -3,6 +3,7 @@
  * FIXED: Added _cachedData. Safe value resolution.
  */
 import { DEBUG_STATE } from './debug-state.js';
+import { PanelStyle } from './panel-style.js';
 import { GovernorRegistry, resolveVariable, Governor } from './governor.js';
 import { ControlRenderer, ControlType } from './controls.js';
 
@@ -552,11 +553,12 @@ export class Panel {
       const val = variable.get();
       return val ?? ''; // ✅ FIX: Never return undefined
     }
-    if (data && pathOrValue in data) return data[pathOrValue] ?? '';
+    if (data && typeof data === 'object' && pathOrValue in data) return data[pathOrValue] ?? '';
     return pathOrValue;
   }
 
   computeLayout(data) {
+    PanelStyle.apply();   // fold the user's PANEL SETTINGS scales into the style
     const s = DEBUG_STATE.style;
     const sc = DEBUG_STATE.scale;
 

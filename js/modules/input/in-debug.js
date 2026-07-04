@@ -33,6 +33,7 @@ import { DebugRouter } from '../debug/debug-router.js';
 import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
+import { PanelArrange } from '../debug/panel-arrange.js';
 import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 
 export const InDebug = {
@@ -53,6 +54,10 @@ export const InDebug = {
   startPanelX: 0,
   startPanelY: 0,
   _dragStarted: false,
+  _grabX: 0,          // pointer offset inside the panel at grab (arrange anchor)
+  _grabY: 0,
+  _prevMoveX: 0,      // last pointer pos — for per-move trajectory deltas
+  _prevMoveY: 0,
 
   // ── Master slider state ───────────────────────────────────────────────
   _globalMasterDragging: false,
@@ -148,12 +153,10 @@ export const InDebug = {
     const y = e.clientY;
 
     // ── 1. Check global master slider first ───────────────────────────
-    // The master only makes sense when it has multiple tuners to scale
-    // together, and it's only DRAWN when debug is on (and not in console mode).
-    // Gate the hit-test to match, so it's never touchable while invisible:
-    // active ⟺ (debug on OR ≥2 sticky/tuner panels), and never in console mode.
-    const masterActive = !DebugRouter._consoleMode &&
-      (DebugRouter.masterEnabled || TuningLayer.count >= 2);
+    // Touch is gated on the SAME predicate the renderer draws from
+    // (MasterSliderRenderer.isActive): debug ON + panel mode + >=2 pinned.
+    // Visible ⟺ touchable, always — no ghost, no dead pixel.
+    const masterActive = MasterSliderRenderer.isActive();
     if (masterActive && MasterSliderRenderer.handlePointerDown(x, y)) {
       this._globalMasterDragging = true;
       this.pointerId = e.pointerId;
@@ -352,6 +355,15 @@ export const InDebug = {
           this.startY = y;
           this.startPanelX = panel.x;
           this.startPanelY = panel.y;
+          // Arrange: the grab point becomes the panel's anchor. Record the
+          // offset inside the panel, cancel any in-flight glide on it, and start
+          // a fresh trajectory sample buffer for the free-form eject direction.
+          this._grabX = x - panel.x;
+          this._grabY = y - panel.y;
+          this._prevMoveX = x;
+          this._prevMoveY = y;
+          PanelArrange.cancel(panel);
+          PanelArrange.clearTraj();
           try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -497,6 +509,11 @@ export const InDebug = {
       if (this._dragStarted) {
         this.activePanel.x = this.startPanelX + dx;
         this.activePanel.y = this.startPanelY + dy;
+        // Feed the incremental move into the trajectory buffer (last 5 averaged)
+        // so a free-form drop can eject along the direction the drag came from.
+        PanelArrange.sample(x - this._prevMoveX, y - this._prevMoveY);
+        this._prevMoveX = x;
+        this._prevMoveY = y;
         e.preventDefault();
         return true;
       }
@@ -554,7 +571,15 @@ export const InDebug = {
 
     // ── Stop panel drag ───────────────────────────────────────────────
     if (this.isDragging) {
+      const dropped = this.activePanel;
+      const didMove = this._dragStarted;
       this._releaseAll();
+
+      // Settle: grid-snap or free-form min-spacing eject, then an eased glide.
+      // Only when an actual drag happened — a tap must never nudge a panel.
+      if (dropped && didMove) {
+        PanelArrange.settle(dropped, this._activePanels(), { x: this._grabX, y: this._grabY });
+      }
 
       // Rebuild the AIMS hit-map with the panel's new position (the real,
       // working call — the old onDebugToggle() was a dead no-op).

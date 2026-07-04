@@ -139,6 +139,9 @@ export const DebugRouter = {
     this.masterEnabled = !this.masterEnabled;
     // Force all panels to redraw — pin button visibility changes with debug state
     for (const panel of this.panels) panel._chromeDirty = true;
+    // NOTE: do NOT clear the master hit-box here. Debug-off with >=2 pinned is a
+    // VALID active state (the tuning surface) — MasterSliderRenderer.isActive()
+    // and the tuning-layer render path handle visibility/touch consistently.
     try { window._InAims?.syncDebugPanels(); } catch (_) {}
   },
 
@@ -153,6 +156,9 @@ export const DebugRouter = {
     if (on) {
       this._preConsoleVisible = this.panels.map(p => ({ id: p.id, v: p.visible }));
       for (const p of this.panels) { p.visible = false; p._chromeDirty = true; }
+      // Console owns the UI now — the canvas master slider is illegal here.
+      // Null its hit-box immediately (render won't run in console mode to do it).
+      try { window._MasterSlider._bounds = null; } catch (_) {}
     } else {
       const snap = this._preConsoleVisible;
       for (const p of this.panels) {
@@ -228,12 +234,98 @@ export const DebugRouter = {
   // BUTTON 2 — "Reset all": every ManualOverrides value → the selected startup
   // profile (or engine defaults as fallback if no profile is active).
   // Variables only — panels are NOT touched or re-arranged.
+  // Tap the ⟳ button → step back one knob change. Long-press → resetAllToProfile.
+  undo() {
+    const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    if (now - (this._lastUndo || 0) < 150) return;   // swallow DOM+AIMS double-fire
+    this._lastUndo = now;
+    if (ManualOverrides.undo()) {
+      for (const panel of this.panels) panel._chromeDirty = true;
+    }
+  },
+
   resetAllToProfile() {
-    ManualOverrides.resetAllVariables();          // everything → AUTO first
-    const p = GovernorProfiles.activeProfile;      // the selected startup profile
-    if (p) GovernorProfiles.applyProfile(p);       // re-apply it cleanly
-    // else: no profile selected → leave at AUTO (defaults fallback)
+    const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    if (now - (this._lastReset || 0) < 200) return;
+    this._lastReset = now;
+    ManualOverrides._suppressUndo = true;            // a bulk reset is not undo history
+    try {
+      ManualOverrides.resetAllVariables();           // everything → AUTO first
+      const p = GovernorProfiles.activeProfile;       // the loaded startup profile
+      if (p) GovernorProfiles.applyProfile(p);        // re-apply it cleanly
+      // else: no profile → leave at AUTO (the failsafe defaults)
+    } finally {
+      ManualOverrides._suppressUndo = false;
+      ManualOverrides.clearUndo();                    // full reset = clean slate
+    }
     for (const panel of this.panels) panel._chromeDirty = true;
+  },
+
+  // Free Roam ⇄ Snap to Grid (⊞ button). Toggles the dot-grid pitch between 0
+  // (free-form) and the last non-zero pitch (default 48). PANEL GRID still tunes
+  // the exact pitch; this is the quick on/off.
+  toggleGridSnap() {
+    const g = ManualOverrides.panelGridSize;
+    if (!g) return;
+    if (g.value > 0) { this._lastGrid = g.value; g.value = 0; }
+    else             { g.value = this._lastGrid || 48; }
+    g.isManual = true;
+  },
+
+  // Tetris arrange (⊟ button). Shuffles the visible panels and shelf-packs them
+  // into the region [LEFT+gap .. master-slider-gap] × [top-buttons .. bottom-bar],
+  // minimizing (horizontal/vertical) any panel that won't fit — different every
+  // press. Everything always lands inside the region.
+  arrangeTetris() {
+    const GAP  = 8;
+    const LEFT = 16;
+    const TOP  = 120;                                  // clear the top-left buttons
+    let RIGHT  = window.innerWidth - 70;               // fallback: dodge the right column
+    try { const mb = window._MasterSlider?._bounds; if (mb && mb.x) RIGHT = mb.x - GAP; } catch (_) {}
+    let BOTTOM = window.innerHeight - 16;
+    const ui = (typeof document !== 'undefined') ? document.getElementById('ui') : null;
+    if (ui) { const r = ui.getBoundingClientRect(); if (r.top > 0) BOTTOM = r.top - GAP; }
+
+    const panels = this.panels.filter(p => p.visible);
+    for (let i = panels.length - 1; i > 0; i--) {      // shuffle → different each time
+      const j = (Math.random() * (i + 1)) | 0;
+      [panels[i], panels[j]] = [panels[j], panels[i]];
+    }
+
+    const size = (p) => { const l = p.computeLayout(p._cachedData ?? {}); return { w: l.w, h: l.h }; };
+    const regionW = Math.max(60, RIGHT - LEFT);
+    const regionH = Math.max(60, BOTTOM - TOP);
+
+    let cx = LEFT, cy = TOP, shelfH = 0;
+    for (const p of panels) {
+      let { w, h } = size(p);
+
+      // Too big for the region in either axis → minimize it (Tetris compaction).
+      if (w > regionW || h > regionH) {
+        p.minimized = true; p._userMinW = null; p._userMinH = null;
+        p._minVertical = (Math.random() < 0.5);
+        p._chromeDirty = true;
+        ({ w, h } = size(p));
+      }
+
+      // Wrap to the next shelf if it won't fit on the current row.
+      if (cx + w > RIGHT && cx > LEFT) { cx = LEFT; cy += shelfH + GAP; shelfH = 0; }
+
+      // Ran past the bottom → minimize (horizontal = short rows) to reclaim room.
+      if (cy + h > BOTTOM) {
+        p.minimized = true; p._userMinW = null; p._userMinH = null;
+        p._minVertical = false;
+        p._chromeDirty = true;
+        ({ w, h } = size(p));
+        if (cx + w > RIGHT && cx > LEFT) { cx = LEFT; cy += shelfH + GAP; shelfH = 0; }
+      }
+
+      p.x = Math.min(cx, Math.max(LEFT, RIGHT - w));
+      p.y = Math.min(cy, Math.max(TOP,  BOTTOM - h));
+      cx += w + GAP;
+      shelfH = Math.max(shelfH, h);
+    }
+    this._rebuildAimsMap();
   },
 
   // BUTTON 3 — "Flip": minimize every panel and flip EACH ONE's own

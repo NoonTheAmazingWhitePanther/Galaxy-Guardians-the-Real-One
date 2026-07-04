@@ -28,6 +28,7 @@ export const DEBUG_STATE = {
     lineHeight: 15,
     labelW: 95,
     valW: 45,
+    knobR: 14,
     shadowBlur: 12,
     shadowOffsetY: 4,
     shadowColor: 'rgba(0, 0, 0, 0.4)'

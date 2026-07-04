@@ -20,6 +20,32 @@ export const MasterSliderRenderer = {
   _dragging: false,
   _dragStartY: 0,
 
+  // ── SINGLE SOURCE OF TRUTH ────────────────────────────────────────────────
+  // VISIBLE ⟺ TOUCHABLE. Both the renderer (this file) and the input layer
+  // (in-debug.js) ask this one function, so they can never disagree — no ghost
+  // (touchable-but-invisible) and no dead pixel (visible-but-untouchable).
+  //
+  //   Debug ON  + Console mode      → OFF   (console owns the UI)
+  //   Debug ON  + Panel  mode       → ON    (always — pins don't matter here)
+  //   Debug OFF + fewer than 2 pins → OFF
+  //   Debug OFF + 2 or more pinned  → ON    (masters the pinned panels)
+  //
+  // In Debug+Panel mode it drives the master knob of EVERY panel/segment.
+  isActive() {
+    const R = (typeof window !== 'undefined') ? window._DebugRouter : null;
+    if (!R) return false;
+    if (R.masterEnabled) {
+      // Debug is ON → panel mode shows it, console mode hides it. No pin gate.
+      return !R._consoleMode;
+    }
+    // Debug is OFF → only when at least two panels are pinned (the tuning
+    // surface where pinned panels persist on screen).
+    let pinned = 0;
+    const ps = R.panels || [];
+    for (let i = 0; i < ps.length; i++) if (ps[i].pinned) pinned++;
+    return pinned >= 2;
+  },
+
   computeBounds() {
     if (typeof document === 'undefined') return this._bounds;
 
@@ -57,10 +83,13 @@ export const MasterSliderRenderer = {
   },
   
   render(mainCtx, panels) {
-    if (!MasterGovernor._panels || MasterGovernor._panels.length === 0) return;
-    
+    // Not active ⇒ do not draw, and NULL the bounds so a stale box can never
+    // be hit-tested. This is the visibility half of the single-source rule;
+    // in-debug.js gates the touch half on the same isActive().
+    if (!this.isActive()) { this._bounds = null; return; }
+
     const bounds = this.computeBounds();
-    if (!bounds || bounds.h <= 0) return;
+    if (!bounds || bounds.h <= 0) { this._bounds = null; return; }
     
     const s = DEBUG_STATE.style;
     // ✅ FIX: NO dpr multiplication. Canvas transform handles it.
@@ -181,5 +210,10 @@ export const MasterSliderRenderer = {
     return this._dragging;
   }
 };
+
+// Exposed so DebugRouter can null the hit-box the instant we leave a state
+// where the slider is allowed (console-enter / debug-off), without importing
+// this module (avoids any cycle). Belt-and-suspenders with isActive().
+if (typeof window !== 'undefined') window._MasterSlider = MasterSliderRenderer;
 
 export default MasterSliderRenderer;

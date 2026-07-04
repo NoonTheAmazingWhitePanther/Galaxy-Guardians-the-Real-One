@@ -38,9 +38,13 @@ const CSS = `
   font-family:var(--ui-font,"Space Mono",monospace); }
 
 #gg-console{ position:fixed; z-index:24; display:none; flex-direction:column;
-  left:var(--safe,14px); top:calc(var(--safe,14px) + var(--pad-size,44px) + 10px);
-  width:min(420px, calc(100vw - var(--safe,14px)*2));
-  max-height:calc(100vh - var(--safe,14px)*2 - var(--pad-size,44px) - 10px);
+  left:var(--safe,16px);
+  /* Fallback only — _layout() overrides top/height live. This keeps the
+     console clear of the top-left debug buttons (safe + two 44px buttons +
+     a safe-gap) even in the first frame before JS measures. */
+  top:calc(var(--safe,16px)*2 + var(--pad-size,44px)*2);
+  width:min(420px, calc(100vw - var(--safe,16px)*2));
+  max-height:calc(100vh - var(--safe,16px)*4 - var(--pad-size,44px)*2);
   border-radius:16px; overflow:hidden;
   font-family:var(--ui-font,"Space Mono",ui-monospace,monospace);
   color:rgba(240,245,255,0.94);
@@ -121,7 +125,7 @@ export const ConsoleView = {
   _router: null,
   _root: null, _listEl: null, _modeBtn: null, _master: null,
   _rows: [],            // { key, gov, variable, el, valEl, barEl, manualKey }
-  _consoleMode: true,   // console mode is the DEFAULT — panels stay suppressed until you switch
+  _consoleMode: false,   // PANELS are the default on debug-on; the console stays hidden until you tap Console/Panel
   _timer: null,
 
   // Master: global ratio over every row. Range 0..2, unity 1.0 (matches
@@ -166,6 +170,9 @@ export const ConsoleView = {
     // stop taps inside the glass from reaching the canvas (pan/zoom/spawn)
     root.addEventListener('pointerdown', (e) => e.stopPropagation(), { passive: true });
 
+    // Re-fit whenever the viewport changes (rotation, keyboard, resize).
+    window.addEventListener('resize', () => this._layout());
+
     root.querySelectorAll('.master .mbtns b').forEach(b =>
       b.addEventListener('click', () => this._masterStepBy(+b.dataset.d)));
 
@@ -181,8 +188,52 @@ export const ConsoleView = {
         this._router.setConsoleMode?.(true);
         this._modeBtn.querySelector('.lbl').textContent = 'panel ▸ console';
       }
+      this._layout();
       this.sync();
     });
+  },
+
+  // ── Layout — fit between the debug buttons and the bottom bar ─────────────
+  // Three gaps, all equal to GAP (the screen's --safe rhythm), measured live
+  // so the console + its master always fit, at any screen size / rotation:
+  //   1. debug toggle button  →  console top      (never overlaps the buttons)
+  //   2. scrolling list       →  console master   (.master margin-top)
+  //   3. console master       →  bottom bar (#ui)  (never overlaps the bar)
+  _layout() {
+    const root = this._root;
+    if (!root) return;
+
+    const cs  = getComputedStyle(document.documentElement);
+    const GAP = parseFloat(cs.getPropertyValue('--safe')) || 16;
+
+    // TOP: clear the LOWEST of the top-left debug buttons (the 〰️ debug toggle
+    // and the ≣ console/panel mode button), by GAP. Falls back to the CSS
+    // stack height if those buttons aren't laid out yet.
+    let topY = GAP + 44 + 44;
+    let lowest = 0;
+    for (const el of [document.getElementById('debug-btn'), this._modeBtn]) {
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.height > 0 && r.bottom > lowest) lowest = r.bottom;
+    }
+    if (lowest > 0) topY = lowest + GAP;
+
+    // BOTTOM: keep GAP above the bottom bar (#ui). Measured live, so the bar's
+    // real height / wrapping / safe-area never lets it overlap the master.
+    let bottomLimit = window.innerHeight - GAP;
+    const ui = document.getElementById('ui');
+    if (ui) {
+      const r = ui.getBoundingClientRect();
+      if (r.top > 0) bottomLimit = r.top - GAP;
+    }
+
+    const h = Math.max(140, bottomLimit - topY);
+    root.style.top       = topY + 'px';
+    root.style.height    = h + 'px';
+    root.style.maxHeight = 'none';   // JS owns the height now; drop the CSS cap
+
+    // MIDDLE gap: same GAP between the scrolling list and the master box.
+    if (this._master && this._master.el) this._master.el.style.marginTop = GAP + 'px';
   },
 
   _waitForConfig(done) {
@@ -315,6 +366,7 @@ export const ConsoleView = {
     if (this._root) this._root.classList.toggle('show', showConsole);
 
     if (showConsole) {
+      this._layout();          // buttons + bar are visible now → fit to them
       this._refreshOnce();
       if (!this._timer) this._timer = setInterval(() => this._refreshOnce(), 150);
     } else if (this._timer) {
