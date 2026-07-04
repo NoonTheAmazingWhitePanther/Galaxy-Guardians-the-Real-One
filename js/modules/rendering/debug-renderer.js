@@ -125,8 +125,10 @@ export const DebugRenderer = {
     ctx.roundRect(0.5, 0.5, pw - 1, ph - 1, radius);
     ctx.stroke();
 
-    // Amber border for pinned panels
-    if (panel.pinned) {
+    // Amber "tuner" border — the golden rectangle. RULE: it appears ONLY outside
+    // debug (the tuning surface). Inside debug every panel uses the neutral
+    // border, so nothing panel-related is gold while debug is on.
+    if (panel.pinned && !(window._DebugRouter && window._DebugRouter.masterEnabled)) {
       ctx.strokeStyle = 'rgba(255,200,80,0.33)';
       ctx.lineWidth   = 2;
       ctx.beginPath();

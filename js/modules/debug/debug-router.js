@@ -137,6 +137,12 @@ export const DebugRouter = {
 
   toggleAll() {
     this.masterEnabled = !this.masterEnabled;
+    // Satellites live in the DOM and are gated by body.dbg-on (CSS display:none
+    // when off = no pointer events, no phantom taps). One toggle here covers
+    // every entry point (button / AIMS / keyboard).
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('dbg-on', this.masterEnabled);
+    }
     // Force all panels to redraw — pin button visibility changes with debug state
     for (const panel of this.panels) panel._chromeDirty = true;
     // NOTE: do NOT clear the master hit-box here. Debug-off with >=2 pinned is a

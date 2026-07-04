@@ -164,11 +164,22 @@ export const ManualOverrides = {
   _undoStack: [],
   _undoCap: 300,
   _suppressUndo: false,
+  _undoTs: 0,
   _recordUndo(key) {
     if (this._suppressUndo) return;
     const e = this[key];
     if (!e || typeof e !== 'object') return;
+    const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
+    const top = this._undoStack[this._undoStack.length - 1];
+    // Coalesce a continuous edit of the SAME key (a knob drag fires set() every
+    // frame; a held +/- button ramps) into ONE entry that keeps the value from
+    // before the burst began. Otherwise one undo would revert one micro-step.
+    if (top && top.key === key && (now - this._undoTs) < 600) {
+      this._undoTs = now;
+      return;
+    }
     this._undoStack.push({ key, value: e.value, isManual: e.isManual });
+    this._undoTs = now;
     if (this._undoStack.length > this._undoCap) this._undoStack.shift();
   },
   undo() {

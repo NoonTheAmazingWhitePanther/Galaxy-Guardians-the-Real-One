@@ -24,16 +24,17 @@
 import { resolveVariable, Governor, ManualOverrides } from './governor.js';
 
 const CSS = `
-#gg-console-mode{ position:fixed; z-index:31;
-  left:calc(var(--safe,14px) + var(--pad-size,44px) + 8px); top:var(--safe,14px);
-  width:var(--pad-size,44px); height:var(--pad-size,44px); border-radius:50%;
-  display:none; align-items:center; justify-content:center; font-size:21px;
-  background:rgba(8,8,18,0.82); border:1px solid rgba(255,255,255,0.18);
-  color:var(--ui-accent,rgba(130,210,255,0.9)); cursor:pointer;
+#gg-console-mode{ position:fixed; z-index:55;
+  left:calc(var(--safe,16px) + var(--pad-size,44px) * 1.827);
+  top:calc(var(--safe,16px) + var(--pad-size,44px) * 1.204);
+  width:calc(var(--pad-size,44px)/3); height:calc(var(--pad-size,44px)/3); border-radius:6px;
+  display:none; align-items:center; justify-content:center; font-size:9px; line-height:1;
+  background:var(--ui-bg,rgba(8,8,18,0.82)); border:1px solid var(--ui-border,rgba(255,255,255,0.18));
+  color:var(--ui-accent,rgba(130,210,255,0.9)); cursor:pointer; padding:0; margin:0;
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-  box-shadow:0 4px 12px rgba(0,0,0,0.45); transition:transform .1s, color .2s; user-select:none; }
+  box-shadow:0 3px 8px rgba(0,0,0,0.4); transition:transform .1s, color .2s; user-select:none; }
 #gg-console-mode:active{ transform:scale(0.92); }
-#gg-console-mode .lbl{ position:absolute; top:calc(var(--pad-size,44px) + 3px); left:0;
+#gg-console-mode .lbl{ display:none; position:absolute; top:calc(var(--pad-size,44px)/3 + 3px); left:0;
   font-size:8.5px; letter-spacing:.05em; color:rgba(255,255,255,0.5); white-space:nowrap;
   font-family:var(--ui-font,"Space Mono",monospace); }
 
@@ -109,7 +110,7 @@ const CSS = `
 #gg-console .master .mbtns b{ width:32px; height:56px; display:flex; align-items:center; justify-content:center;
   font-size:17px; font-weight:700; color:rgba(255,255,255,0.75); cursor:pointer; }
 #gg-console .master .mbtns b:active{ transform:scale(0.85); }
-#gg-console .master.warm{ border-color:#ffd77f; }
+#gg-console .master.warm{ border-color:rgba(255,255,255,0.16); }
 #gg-console .master.warm .fill{ background:rgba(255,215,127,0.18); }
 #gg-console .master.warm .mval{ color:#ffd77f; }
 #gg-console .master.over{ border-color:#ff7f7f; border-width:2px;

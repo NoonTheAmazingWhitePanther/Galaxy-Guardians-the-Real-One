@@ -519,6 +519,13 @@ export class Panel {
           const ctrl = this._controls.find(c => c.config === line);
           if (!ctrl) break;
           const value = ctrl.variable.get();
+          // Keep the dial/slider in sync with its variable when the user isn't
+          // actively dragging it, so external changes (undo, reset-to-profile,
+          // profile apply) move the control visibly — not just its number.
+          if (ctrl.state && !ctrl.state.dragging &&
+              (ctrl.type === ControlType.KNOB || ctrl.type === ControlType.SLIDER)) {
+            ctrl.state.value = value;
+          }
           let displayVal;
           if (ctrl.governor) {
             displayVal = ctrl.governor.label;

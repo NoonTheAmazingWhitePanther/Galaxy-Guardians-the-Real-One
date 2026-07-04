@@ -108,6 +108,7 @@ export function init() {
   };
   if (debugBtn) {
     if (DebugRouter.masterEnabled) debugBtn.classList.add('active');
+    document.body.classList.toggle('dbg-on', DebugRouter.masterEnabled);   // initial satellite visibility
     syncBenchVisibility();
     debugBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();

@@ -102,9 +102,11 @@ export const MasterSliderRenderer = {
     mainCtx.beginPath();
     mainCtx.roundRect(bounds.x, bounds.y, bounds.w, bounds.h, 4);
     mainCtx.fill();
-    // Golden border — same amber as the tuner / pinned panels, so the master
-    // reads as "one of the tuners" it governs.
-    mainCtx.strokeStyle = 'rgba(255,200,80,0.9)';
+    // Golden border RULE: gold ONLY outside debug (tuning surface). Inside debug
+    // (panel mode) the master uses a neutral border — no gold rectangle.
+    const goldenActive = !(window._DebugRouter && window._DebugRouter.masterEnabled);
+    const borderGold   = goldenActive ? 'rgba(255,200,80,0.9)' : 'rgba(255,255,255,0.25)';
+    mainCtx.strokeStyle = borderGold;
     mainCtx.lineWidth = 1.5;
     mainCtx.stroke();
     
@@ -121,7 +123,9 @@ export const MasterSliderRenderer = {
     mainCtx.beginPath();
     mainCtx.roundRect(bounds.x + 2, thumbY - THUMB_H / 2, bounds.w - 4, THUMB_H, 3);
     mainCtx.fill();
-    mainCtx.strokeStyle = this._dragging ? 'rgba(255,220,120,1)' : 'rgba(255,200,80,0.9)';
+    mainCtx.strokeStyle = this._dragging
+      ? (goldenActive ? 'rgba(255,220,120,1)' : 'rgba(255,255,255,0.9)')
+      : borderGold;
     mainCtx.lineWidth = 1.5;
     mainCtx.stroke();
     

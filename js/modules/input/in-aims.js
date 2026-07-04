@@ -153,11 +153,12 @@ function _registerAll() {
     btn?.classList.toggle('active', InAims.enabled);
   }}});
 
-  // Debug satellites — 3 rays right/below the debug button.
-  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => DebugRouter.arrangeTetris()   }});
-  _safeReg('dbg-reset',    { depth: 2, on: { tap: () => DebugRouter.undo(),
-                                             hold:() => DebugRouter.resetAllToProfile() }});
-  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => DebugRouter.toggleGridSnap()  }});
+  // Debug satellites — the sun-ray fan. Only live while debug is on; the guard
+  // stops the canvas hit-map from firing them when they're hidden.
+  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (DebugRouter.masterEnabled) DebugRouter.arrangeTetris(); } }});
+  _safeReg('dbg-reset',    { depth: 2, on: { tap:  () => { if (DebugRouter.masterEnabled) DebugRouter.undo(); },
+                                             hold: () => { if (DebugRouter.masterEnabled) DebugRouter.resetAllToProfile(); } }});
+  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => { if (DebugRouter.masterEnabled) DebugRouter.toggleGridSnap(); } }});
 
   // ── Depth 1: Debug panels ────────────────────────────────────────────
   _registerDebugPanels();
