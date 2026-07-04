@@ -15,6 +15,7 @@
 import { Aims }          from '../../core/aims.js';
 import { CameraModule }  from '../camera/camera.module.js';
 import { DebugRouter }   from '../debug/debug-router.js';
+import { DEBUG_STATE }   from '../debug/debug-state.js';
 import { clamp }         from '../../core/math.js';
 import { Accumulator }   from '../rendering/accumulator.js';
 import { FutureCache }   from '../../core/future-cache.js';
@@ -123,6 +124,10 @@ function _registerAll() {
         _InputState.panPadDir    = { x: 0, y: 0 };
       }
       el('pan-pad')?.classList.remove('active');
+      // If the pad was panning the debug view, land the tap-map exactly.
+      if (DebugRouter.masterEnabled && !DebugRouter._consoleMode) {
+        try { InAims.syncDebugPanels(); } catch (_) {}
+      }
     }
   }});
 
@@ -203,6 +208,14 @@ function _registerAll() {
 }
 
 function _registerDebugPanels() {
+  // Panels are blitted under translate(viewPan) → scale(viewZoom) — both in
+  // debug+panel mode AND in the pinned tuning layer (panels hold the locked
+  // view). The AIMS map lives in SCREEN space, so registered bounds are the
+  // panel-space rect × viewZoom + viewPan. Identity ONLY in console mode.
+  const on = !(DebugRouter.masterEnabled && DebugRouter._consoleMode);
+  const vz = on ? (DEBUG_STATE.viewZoom || 1) : 1;
+  const ox = on ? (DEBUG_STATE.viewPanX || 0) : 0;
+  const oy = on ? (DEBUG_STATE.viewPanY || 0) : 0;
   for (const panel of DebugRouter.panels) {
     const id = `debug-panel-${panel.id}`;
     Aims.unregister(id);                 // always clear the old region first
@@ -216,7 +229,7 @@ function _registerDebugPanels() {
     } catch (_) {}
     Aims.register({
       id, depth: 1,
-      bounds: { x: panel.x, y: panel.y, w, h },
+      bounds: { x: panel.x * vz + ox, y: panel.y * vz + oy, w: w * vz, h: h * vz },
       passthrough: false,
       on: {
         pointerdown: ({ aim }) => {

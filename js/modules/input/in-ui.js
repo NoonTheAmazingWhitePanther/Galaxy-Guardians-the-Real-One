@@ -10,13 +10,14 @@ import { FutureCache } from '../../core/future-cache.js';
 import { TrailsModule } from '../rendering/trails.js';
 import { InputState } from './input.module.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
-import { ManualOverrides } from '../debug/governor.js';
 
-// Panel-zoom (debug + panel mode): the zoom bar scales the debug panels instead
-// of the camera. Master slider is measured off DOM buttons, so it is NEVER
-// affected — it keeps its size forever. Bounds keep panels readable + tappable.
-const PANEL_SCALE_MIN = 0.45;
-const PANEL_SCALE_MAX = 1.60;
+// View-zoom (debug + panel mode): the zoom bar zooms OUT from the debug panel
+// layer (pure view transform, anchored top-left) instead of the camera. It
+// does NOT resize panels — sizing lives ONLY in PANEL SETTINGS. Master slider
+// is measured off DOM buttons, so it is NEVER affected — fixed size forever.
+// Max is 1.0: this is a zoom-out utility; FIT returns to 100%.
+const VIEW_ZOOM_MIN = 0.30;
+const VIEW_ZOOM_MAX = 1.00;
 
 export const InUI = {
   uiEl: null,
@@ -109,36 +110,33 @@ export const InUI = {
     CameraModule.cam.targetZoom = Math.exp(logMin + frac * (logMax - logMin));
   },
 
-  // ── Panel-zoom (debug + panel mode) ───────────────────────────────────────
-  // The zoom bar scales the debug PANELS via DEBUG_STATE.scale (all panel
-  // geometry — render AND hit-test — reads it). The master vertical slider is
-  // measured off DOM buttons, so it is untouched: fixed size, forever.
+  // ── View-zoom (debug + panel mode) ────────────────────────────────────────
+  // The zoom bar zooms the debug VIEW via DEBUG_STATE.viewZoom — a pure canvas
+  // transform at blit time. No panel resizing, no chrome rebuild, no restyle:
+  // panel layout and offscreen caches are untouched. Hit-testing (in-debug +
+  // AIMS bounds) maps through the same factor. The master vertical slider is
+  // measured off DOM buttons and drawn outside the transform: fixed, forever.
   _panelZoomMode: function() {
     const R = window._DebugRouter;
     return !!(R && R.masterEnabled && !R._consoleMode);
   },
-  _applyPanelScale: function(v) {
-    const s = clamp(v, PANEL_SCALE_MIN, PANEL_SCALE_MAX);
-    // Route through the shared overall-ratio knob so the zoom bar and the PANEL
-    // SETTINGS "Overall" row stay in lockstep. PanelStyle.apply() copies this to
-    // DEBUG_STATE.scale every frame; we also set it now so this frame reflects it.
-    if (ManualOverrides.psOverall) {
-      ManualOverrides.psOverall.value = s;
-      ManualOverrides.psOverall.isManual = true;
-    }
-    DEBUG_STATE.scale = s;
-    const R = window._DebugRouter;
-    if (R && R.panels) for (const p of R.panels) p._chromeDirty = true;
-    try { window._InAims?.syncDebugPanels(); } catch (_) {}   // panels resized → refresh tap map
+  _applyViewZoom: function(v) {
+    DEBUG_STATE.viewZoom = clamp(v, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}   // view scaled → refresh tap map
   },
-  _panelZoomBy:    function(mult) { this._applyPanelScale((DEBUG_STATE.scale || 1) * mult); },
-  _panelZoomSet:   function(v)    { this._applyPanelScale(v); },
+  _panelZoomBy:    function(mult) { this._applyViewZoom((DEBUG_STATE.viewZoom || 1) * mult); },
+  _panelZoomSet:   function(v)    {
+    // FIT → home: 100% zoom AND pan back to origin.
+    DEBUG_STATE.viewPanX = 0;
+    DEBUG_STATE.viewPanY = 0;
+    this._applyViewZoom(v);
+  },
   _panelZoomTrack: function(clientY) {
     const t = document.getElementById('zm-track');
     if (!t) return;
     const rect = t.getBoundingClientRect();
     const frac = clamp(1 - (clientY - rect.top) / rect.height, 0, 1);
-    this._applyPanelScale(PANEL_SCALE_MIN + frac * (PANEL_SCALE_MAX - PANEL_SCALE_MIN));
+    this._applyViewZoom(VIEW_ZOOM_MIN + frac * (VIEW_ZOOM_MAX - VIEW_ZOOM_MIN));
   },
 
   _updateSpeedUI: function() {
@@ -216,6 +214,8 @@ export const InUI = {
     InputState.panPadDir    = { x: 0, y: 0 };
     const panPad = document.getElementById('pan-pad');
     if (panPad) panPad.classList.remove('active', 'locked');
+    // If the pad was panning the debug view, land the AIMS tap-map exactly.
+    if (this._panelZoomMode()) { try { window._InAims?.syncDebugPanels(); } catch (_) {} }
     return true;
   },
 
@@ -278,6 +278,21 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!InputState.panPadActive) return;
     const PAN_ACCEL = 0.7, PAN_MAX = 3;
     InputState.panPadPower = Math.min(InputState.panPadPower + PAN_ACCEL, PAN_MAX);
+
+    // Debug + panel mode → the pan pad pans the DEBUG VIEW (the panel layer),
+    // not the camera. Direction matches the camera feel: push right = look
+    // right = content slides left. Screen-px speed, independent of cam zoom.
+    if (InUI._panelZoomMode()) {
+      DEBUG_STATE.viewPanX -= InputState.panPadDir.x * InputState.panPadPower;
+      DEBUG_STATE.viewPanY -= InputState.panPadDir.y * InputState.panPadPower;
+      // Panels moved on screen — refresh the AIMS tap-map, throttled while the
+      // pad is held (final exact sync happens on pad release).
+      if ((InUI._panSyncTick = (InUI._panSyncTick || 0) + 1) % 8 === 0) {
+        try { window._InAims?.syncDebugPanels(); } catch (_) {}
+      }
+      return;
+    }
+
     const speed = Math.min(InputState.panPadPower / CameraModule.cam.zoom, 100);
     CameraModule.cam.x += InputState.panPadDir.x * speed;
     CameraModule.cam.y += InputState.panPadDir.y * speed;

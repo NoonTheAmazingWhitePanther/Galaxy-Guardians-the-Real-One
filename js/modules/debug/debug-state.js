@@ -9,6 +9,24 @@ export const DEBUG_STATE = {
   // ── THE RATIO KEEPER ──
   scale: 1.0,
 
+  // ── VIEW ZOOM ──
+  // A pure canvas transform applied at draw time — zooms OUT from the panel
+  // layer so you can see the whole debug surface at once. Does NOT touch
+  // panel sizing (that's PANEL SETTINGS / scale above). 1.0 = 100%, clamped
+  // ≤ 1.0 (zoom-out utility only). Starts one zm-out step below 100%.
+  // EDITABLE only inside debug (panel mode); outside debug the zoom bar goes
+  // back to the camera and pinned tuning panels render LOCKED at this value.
+  // Console mode ignores it.
+  viewZoom: 1 / 1.10,
+
+  // ── VIEW PAN ──
+  // Screen-px translation of the panel layer, driven by the PAN PAD while
+  // debug+panel mode is active (outside debug the pad pans the camera and this
+  // is LOCKED, like viewZoom). Draw transform is
+  // translate(viewPanX, viewPanY) → scale(viewZoom). FIT resets both to home.
+  viewPanX: 0,
+  viewPanY: 0,
+
   // Device pixel ratio — set by main.js resize(), read by renderer + hit-test
   dpr: 1,
   setDpr(v) { this.dpr = v; },

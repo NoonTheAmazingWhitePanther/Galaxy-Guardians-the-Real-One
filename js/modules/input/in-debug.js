@@ -35,9 +35,26 @@ import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { PanelArrange } from '../debug/panel-arrange.js';
 import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
+import { DEBUG_STATE } from '../debug/debug-state.js';
 
 export const InDebug = {
   _canvas: null,
+
+  // Map screen coords → panel-space through the debug view transform
+  // (translate(viewPanX, viewPanY) → scale(viewZoom)). The transform applies
+  // in debug+panel mode AND to the pinned tuning layer (debug off) — panels
+  // hold the locked view. Identity ONLY in console mode. The global master
+  // slider (drawn unscaled, untranslated) always uses raw coords.
+  _toPanel(cx, cy) {
+    const R = DebugRouter;
+    if (R.masterEnabled && R._consoleMode) return { x: cx, y: cy };
+    const vz = DEBUG_STATE.viewZoom || 1;
+    return {
+      x: (cx - (DEBUG_STATE.viewPanX || 0)) / vz,
+      y: (cy - (DEBUG_STATE.viewPanY || 0)) / vz
+    };
+  },
+
   isDragging: false,
   _scrollingPanel:  null,
   _scrollStartY:    0,
@@ -149,15 +166,13 @@ export const InDebug = {
       return false;
     }
 
-    const x = e.clientX;
-    const y = e.clientY;
-
     // ── 1. Check global master slider first ───────────────────────────
     // Touch is gated on the SAME predicate the renderer draws from
     // (MasterSliderRenderer.isActive): debug ON + panel mode + >=2 pinned.
     // Visible ⟺ touchable, always — no ghost, no dead pixel.
+    // The global master is drawn OUTSIDE the view-zoom transform → RAW coords.
     const masterActive = MasterSliderRenderer.isActive();
-    if (masterActive && MasterSliderRenderer.handlePointerDown(x, y)) {
+    if (masterActive && MasterSliderRenderer.handlePointerDown(e.clientX, e.clientY)) {
       this._globalMasterDragging = true;
       this.pointerId = e.pointerId;
       try {
@@ -169,6 +184,11 @@ export const InDebug = {
     }
 
     // ── 2-4. Check panels ─────────────────────────────────────────────
+    // Panels are drawn under the view transform → map pointer to panel-space.
+    const pt = this._toPanel(e.clientX, e.clientY);
+    const x = pt.x;
+    const y = pt.y;
+
     for (const panel of this._activePanels()) {
       if (!panel.visible) continue;
 
@@ -407,8 +427,10 @@ export const InDebug = {
       }
     }
 
-    const x = e.clientX;
-    const y = e.clientY;
+    // Panel-space coords (global master below uses RAW — drawn unscaled).
+    const pt = this._toPanel(e.clientX, e.clientY);
+    const x = pt.x;
+    const y = pt.y;
 
     // ── Panel resize drag ─────────────────────────────────────────────
     if (this._resizingPanel) {
@@ -438,7 +460,7 @@ export const InDebug = {
 
     // ── Global master slider drag ─────────────────────────────────────
     if (this._globalMasterDragging) {
-      MasterSliderRenderer.handlePointerMove(x, y);
+      MasterSliderRenderer.handlePointerMove(e.clientX, e.clientY);
       e.preventDefault();
       return true;
     }
@@ -564,9 +586,10 @@ export const InDebug = {
 
     // ── Release control interactions ──────────────────────────────────
     if (this.activePanel && !this.isDragging) {
+      const pt = this._toPanel(e.clientX, e.clientY);
       const data = this.activePanel.getData();
       const layout = this.activePanel.computeLayout(data);
-      this.activePanel.handlePointerUp(e.clientX, e.clientY, layout);
+      this.activePanel.handlePointerUp(pt.x, pt.y, layout);
     }
 
     // ── Stop panel drag ───────────────────────────────────────────────

@@ -126,12 +126,25 @@ export const DebugRouter = {
     if (!this.masterEnabled || !this._initialized) return;
     if (this._consoleMode) return;   // Live Text Debug console draws its own DOM overlay instead
 
-    // Data already updated by updateData() — just draw
+    // Data already updated by updateData() — just draw.
+    // viewZoom is a pure view transform (zoom OUT from the panel layer,
+    // anchored top-left). Panel layout/chrome caches are untouched — only the
+    // blit is scaled. Hit-testing divides pointer coords by the same factor
+    // (in-debug.js + in-aims.js), so visible ⟺ touchable at every zoom.
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const px = DEBUG_STATE.viewPanX || 0;
+    const py = DEBUG_STATE.viewPanY || 0;
+    ctx.save();
+    if (px || py) ctx.translate(px, py);
+    if (vz !== 1) ctx.scale(vz, vz);
     for (const panel of this.panels) {
       if (!panel.visible) continue;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
+    ctx.restore();
 
+    // Global master slider stays OUTSIDE the transform — measured off DOM
+    // buttons, fixed size forever (locked rule). It never zooms, never scales.
     DebugRenderer.renderMasterSlider(ctx, this.panels);
   },
 
@@ -274,23 +287,39 @@ export const DebugRouter = {
     const g = ManualOverrides.panelGridSize;
     if (!g) return;
     if (g.value > 0) { this._lastGrid = g.value; g.value = 0; }
-    else             { g.value = this._lastGrid || 48; }
+    else             { g.value = this._lastGrid || 8; }
     g.isManual = true;
   },
 
-  // Tetris arrange (⊟ button). Shuffles the visible panels and shelf-packs them
-  // into the region [LEFT+gap .. master-slider-gap] × [top-buttons .. bottom-bar],
-  // minimizing (horizontal/vertical) any panel that won't fit — different every
-  // press. Everything always lands inside the region.
+  // Tetris arrange (▦ button). Shuffles the visible panels and shelf-packs them
+  // into the visible region converted through the debug view transform — so a
+  // zoomed-out view gives the packer MORE panel-space real estate to work with.
+  // Panels that won't fit are minimized (Tetris compaction); if a shelf still
+  // can't hold one, it overflows DOWNWARD past the bottom edge instead of being
+  // clamped back onto an already-placed panel (overflow is reachable with the
+  // pan pad). NOTHING ever overlaps: placement is pure shelf geometry — each
+  // panel starts after the previous one + GAP, each shelf below the tallest of
+  // the shelf above + GAP.
   arrangeTetris() {
     const GAP  = 8;
-    const LEFT = 16;
-    const TOP  = 120;                                  // clear the top-left buttons
-    let RIGHT  = window.innerWidth - 70;               // fallback: dodge the right column
-    try { const mb = window._MasterSlider?._bounds; if (mb && mb.x) RIGHT = mb.x - GAP; } catch (_) {}
-    let BOTTOM = window.innerHeight - 16;
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const ox = DEBUG_STATE.viewPanX || 0;
+    const oy = DEBUG_STATE.viewPanY || 0;
+    const toPanelX = (sx) => (sx - ox) / vz;
+    const toPanelY = (sy) => (sy - oy) / vz;
+
+    // Region in SCREEN space first (buttons, master slider, bottom bar are all
+    // screen-fixed), then converted to panel space through the view transform.
+    let sRight  = window.innerWidth - 70;              // fallback: dodge the right column
+    try { const mb = window._MasterSlider?._bounds; if (mb && mb.x) sRight = mb.x - GAP; } catch (_) {}
+    let sBottom = window.innerHeight - 16;
     const ui = (typeof document !== 'undefined') ? document.getElementById('ui') : null;
-    if (ui) { const r = ui.getBoundingClientRect(); if (r.top > 0) BOTTOM = r.top - GAP; }
+    if (ui) { const r = ui.getBoundingClientRect(); if (r.top > 0) sBottom = r.top - GAP; }
+
+    const LEFT   = toPanelX(16);
+    const TOP    = toPanelY(120);                      // clear the top-left buttons
+    const RIGHT  = toPanelX(sRight);
+    const BOTTOM = toPanelY(sBottom);
 
     const panels = this.panels.filter(p => p.visible);
     for (let i = panels.length - 1; i > 0; i--) {      // shuffle → different each time
@@ -300,14 +329,13 @@ export const DebugRouter = {
 
     const size = (p) => { const l = p.computeLayout(p._cachedData ?? {}); return { w: l.w, h: l.h }; };
     const regionW = Math.max(60, RIGHT - LEFT);
-    const regionH = Math.max(60, BOTTOM - TOP);
 
     let cx = LEFT, cy = TOP, shelfH = 0;
     for (const p of panels) {
       let { w, h } = size(p);
 
-      // Too big for the region in either axis → minimize it (Tetris compaction).
-      if (w > regionW || h > regionH) {
+      // Too wide for the region → minimize it (Tetris compaction).
+      if (w > regionW) {
         p.minimized = true; p._userMinW = null; p._userMinH = null;
         p._minVertical = (Math.random() < 0.5);
         p._chromeDirty = true;
@@ -317,8 +345,10 @@ export const DebugRouter = {
       // Wrap to the next shelf if it won't fit on the current row.
       if (cx + w > RIGHT && cx > LEFT) { cx = LEFT; cy += shelfH + GAP; shelfH = 0; }
 
-      // Ran past the bottom → minimize (horizontal = short rows) to reclaim room.
-      if (cy + h > BOTTOM) {
+      // Running past the bottom → minimize (horizontal = short rows) to reclaim
+      // room. If it STILL doesn't fit, it just overflows below — never clamped
+      // back onto placed panels.
+      if (cy + h > BOTTOM && !p.minimized) {
         p.minimized = true; p._userMinW = null; p._userMinH = null;
         p._minVertical = false;
         p._chromeDirty = true;
@@ -326,8 +356,8 @@ export const DebugRouter = {
         if (cx + w > RIGHT && cx > LEFT) { cx = LEFT; cy += shelfH + GAP; shelfH = 0; }
       }
 
-      p.x = Math.min(cx, Math.max(LEFT, RIGHT - w));
-      p.y = Math.min(cy, Math.max(TOP,  BOTTOM - h));
+      p.x = cx;
+      p.y = cy;
       cx += w + GAP;
       shelfH = Math.max(shelfH, h);
     }

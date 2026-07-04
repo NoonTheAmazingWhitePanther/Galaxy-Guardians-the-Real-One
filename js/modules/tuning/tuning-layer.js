@@ -14,6 +14,7 @@
  */
 import { DebugRenderer } from '../rendering/debug-renderer.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
+import { DEBUG_STATE } from '../debug/debug-state.js';
 
 export const TuningLayer = {
   _panels: [],
@@ -37,15 +38,26 @@ export const TuningLayer = {
     if (this._panels.length === 0) return;
     if (window._DebugRouter?.masterEnabled) return;
 
-    console.log('[TuningLayer] drawing', this._panels.length, 'panels');
+    // Pinned tuning panels HOLD the debug view transform (zoom + pan), locked:
+    // outside debug the zoom bar / pan pad drive the CAMERA, so this value can
+    // only be edited from inside debug. Same transform as DebugRouter.drawAll →
+    // a pinned panel keeps its exact on-screen place when debug toggles off.
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const px = DEBUG_STATE.viewPanX || 0;
+    const py = DEBUG_STATE.viewPanY || 0;
+    ctx.save();
+    if (px || py) ctx.translate(px, py);
+    if (vz !== 1) ctx.scale(vz, vz);
     for (const panel of this._panels) {
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
+    ctx.restore();
 
     // Debug is OFF here. The global master slider is allowed in this tuning
     // surface too, but only when >=2 panels are pinned — render() self-gates on
     // MasterSliderRenderer.isActive(), which returns true for exactly that case
     // and nulls its own hit-box otherwise. Visible ⟺ touchable, still one rule.
+    // Drawn OUTSIDE the transform — fixed size forever (locked rule).
     MasterSliderRenderer.render(ctx, this._panels);
   },
 

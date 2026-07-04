@@ -140,11 +140,12 @@ export const ManualOverrides = {
   // 0 = FREE-FORM (no grid: drop where released, only pushed apart to keep a
   // 2px min gap along the drag trajectory). >0 = SNAP: released panels glide to
   // the nearest dot of a pitch-px dot grid. Default 48px. Tunable in PANEL GRID.
-  panelGridSize:            { isManual: false, value: 48 },
+  panelGridSize:            { isManual: false, value: 8 },
 
   // PANEL SETTINGS — live restyle of every panel (all panels inherit these).
-  // psOverall drives DEBUG_STATE.scale (the overall ratio, shared with the zoom
-  // bar). psLock is the "keep ratio" tick (1 = uniform scale, per-item knobs
+  // psOverall drives DEBUG_STATE.scale (the overall ratio — the ONLY sizing
+  // surface; the zoom bar is a pure view transform via DEBUG_STATE.viewZoom
+  // and never resizes panels). psLock is the "keep ratio" tick (1 = uniform scale, per-item knobs
   // ignored; 0 = distort each item freely). The rest are SCALE multipliers
   // (1.00 = 100% of the base pixel value), applied on top of the overall ratio.
   psOverall:                { isManual: false, value: 1.00 },  // overall ratio (→ DEBUG_STATE.scale)

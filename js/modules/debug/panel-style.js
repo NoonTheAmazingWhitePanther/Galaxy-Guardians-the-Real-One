@@ -9,8 +9,9 @@
  *
  * Values are SCALES, not pixels (0.25–2.00, where 1.00 = 100% of the base):
  *
- *   psOverall  → DEBUG_STATE.scale   (the overall ratio — shared with the zoom
- *                bar in debug+panel mode, so the two always agree)
+ *   psOverall  → DEBUG_STATE.scale   (the overall ratio — the ONLY sizing
+ *                surface; the zoom bar is a separate pure VIEW transform via
+ *                DEBUG_STATE.viewZoom and never touches sizing)
  *   psLock     → the "keep ratio" tick. 1 = uniform: only the overall ratio
  *                scales, every panel keeps its proportions. 0 = free: the
  *                per-item multipliers below distort each dimension on its own.
