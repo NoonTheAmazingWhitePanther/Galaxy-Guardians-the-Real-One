@@ -36,6 +36,10 @@ export const interBodyCollisions = () => {
     const A = bodies[bi];
     for (let bj = bi + 1; bj < numBodies; bj++) {
       const B = bodies[bj];
+      // Planes of existence: bodies collide ONLY within their own plane. This
+      // is the very first pair check — cheaper than the distance math, and it
+      // partitions the O(N²) narrow-phase into PLANE_COUNT independent groups.
+      if ((A.plane | 0) !== (B.plane | 0)) continue;
       const cdx = A.cx - B.cx, cdy = A.cy - B.cy;
       const cd2 = cdx * cdx + cdy * cdy;
       const thresh = A.radius + B.radius + collisionR * 4;
@@ -143,6 +147,7 @@ export const looseVsPlanets = () => {
     const bodies = state.bodies;
     for (let bi = 0; bi < bodies.length; bi++) {
       const body = bodies[bi];
+      if ((lp.plane | 0) !== (body.plane | 0)) continue;   // self-plane only
       const bdx = body.cx - lp.x, bdy = body.cy - lp.y;
       const bd2 = bdx * bdx + bdy * bdy;
       const thresh = body.radius + looseHitR25;
@@ -200,6 +205,7 @@ export const looseVsPlanets = () => {
               x: lp.x, y: lp.y,
               vx: Math.cos(a) * s, vy: Math.sin(a) * s,
               mass: lp.mass * 0.08, pal: lp.pal,
+              plane: lp.plane | 0,
               heat: 0.9, life: 0.3, decay: 0.06,
               isBurnt: false, burnedAt: 0,
               meltRate: rndR(0.002, 0.006),

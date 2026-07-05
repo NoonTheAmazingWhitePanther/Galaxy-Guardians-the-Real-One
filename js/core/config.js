@@ -8,6 +8,10 @@
  */
 export const config = {
   GRAV_CONST: 120,
+  // Planes of existence — the metaverse. Bodies carry a `plane` index; collision
+  // and radius/proximity checking happen ONLY within the same plane (gravity to
+  // the Sun is shared by all). 4 parallel strings of physics by default.
+  PLANE_COUNT: 4,
   SPRING_K: 0.40,
   DAMPING: 1.0,
   SUBSTEPS: 8,

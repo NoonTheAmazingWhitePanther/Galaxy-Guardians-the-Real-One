@@ -186,13 +186,22 @@ body.dbg-on .dbg-sat { display: flex; }
 .dbg-sat:active { transform: scale(0.9); }
 .dbg-sat:hover  { background: rgba(30, 30, 50, 0.85); color: rgba(255,255,255,0.9); }
 
-/* Sun-ray fan — 4 mini buttons arcing down the RIGHT of the 〰️ debug button,
-   clearing the ✒️ AIMS button column below it. Radius 1.5×--pad-size from the
-   debug centre; verified non-overlapping (each other AND the AIMS button).
-   Top ray is the console-mode button (#gg-console-mode, in console-view). */
-#dbg-closeall { left: calc(var(--safe) + var(--pad-size) * 1.795); top: calc(var(--safe) + var(--pad-size) * 1.672); }
-#dbg-reset    { left: calc(var(--safe) + var(--pad-size) * 1.620); top: calc(var(--safe) + var(--pad-size) * 2.106); }
-#dbg-arrange  { left: calc(var(--safe) + var(--pad-size) * 1.317); top: calc(var(--safe) + var(--pad-size) * 2.465); }
+/* Sun-ray fan — 5 mini buttons arcing down the RIGHT of the 〰️ debug button.
+   Radius 1.05×--pad-size from the debug centre (pulled in close), angle steps
+   24° so the inter-button gaps stay touch-safe (~4.5px at 44px pad). Rays at
+   -8°/16°/40°/64°/88° from horizontal; verified non-overlapping (each other
+   AND the debug button; AIMS ✒️ lives top-right, out of reach). Top ray is
+   the console-mode button (#gg-console-mode, in console-view). */
+#dbg-closeall { left: calc(var(--safe) + var(--pad-size) * 1.343); top: calc(var(--safe) + var(--pad-size) * 1.623); }
+#dbg-reset    { left: calc(var(--safe) + var(--pad-size) * 1.138); top: calc(var(--safe) + var(--pad-size) * 2.008); }
+#dbg-arrange  { left: calc(var(--safe) + var(--pad-size) * 0.794); top: calc(var(--safe) + var(--pad-size) * 2.277); }
+#dbg-expand   { left: calc(var(--safe) + var(--pad-size) * 0.370); top: calc(var(--safe) + var(--pad-size) * 2.383); }
+
+/* Console mode: the 4 action satellites are PANEL-mode tools — hidden while
+   the Live Text console owns the screen. Only the console/panel ray
+   (#gg-console-mode — not a .dbg-sat) survives in both debug modes. Must sit
+   AFTER `body.dbg-on .dbg-sat` so it wins the cascade. */
+body.dbg-console .dbg-sat { display: none; }
 
 #aims-btn {
     position: fixed;

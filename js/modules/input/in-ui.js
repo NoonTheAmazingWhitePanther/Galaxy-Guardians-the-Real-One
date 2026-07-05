@@ -11,13 +11,15 @@ import { TrailsModule } from '../rendering/trails.js';
 import { InputState } from './input.module.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
 
-// View-zoom (debug + panel mode): the zoom bar zooms OUT from the debug panel
-// layer (pure view transform, anchored top-left) instead of the camera. It
-// does NOT resize panels — sizing lives ONLY in PANEL SETTINGS. Master slider
-// is measured off DOM buttons, so it is NEVER affected — fixed size forever.
-// Max is 1.0: this is a zoom-out utility; FIT returns to 100%.
-const VIEW_ZOOM_MIN = 0.30;
-const VIEW_ZOOM_MAX = 1.00;
+// View-zoom (debug + panel mode): the zoom bar zooms the debug panel layer
+// (pure view transform) instead of the camera. It does NOT resize panels —
+// sizing lives ONLY in PANEL SETTINGS. Master slider is measured off DOM
+// buttons, so it is NEVER affected — fixed size forever. Range allows real
+// zoom-out AND zoom-in; FIT frames the ENTIRE debug screen (bounding box of
+// every visible panel), zoom + pan together.
+const VIEW_ZOOM_MIN = 0.15;
+const VIEW_ZOOM_MAX = 2.50;
+const FIT_MARGIN    = 16;   // screen px kept around the framed panels
 
 export const InUI = {
   uiEl: null,
@@ -68,7 +70,7 @@ export const InUI = {
       if (this._panelZoomMode()) { this._panelZoomBy(1/1.10); return; }
       CameraModule.cam.targetZoom = clamp(CameraModule.cam.targetZoom / 1.3, CameraModule.cam.minZoom, CameraModule.cam.maxZoom); });
     if (zmFit) zmFit.addEventListener('pointerdown', (e) => { e.preventDefault();
-      if (this._panelZoomMode()) { this._panelZoomSet(1.0); return; }   // FIT → panels back to 100%
+      if (this._panelZoomMode()) { this._panelViewFit(); return; }   // FIT → frame ALL panels
       CameraModule.frameBodies(); });
 
     if (zmTrack) {
@@ -125,11 +127,35 @@ export const InUI = {
     try { window._InAims?.syncDebugPanels(); } catch (_) {}   // view scaled → refresh tap map
   },
   _panelZoomBy:    function(mult) { this._applyViewZoom((DEBUG_STATE.viewZoom || 1) * mult); },
-  _panelZoomSet:   function(v)    {
-    // FIT → home: 100% zoom AND pan back to origin.
-    DEBUG_STATE.viewPanX = 0;
-    DEBUG_STATE.viewPanY = 0;
-    this._applyViewZoom(v);
+  // FIT → frame the ENTIRE debug screen: bounding box of every visible panel,
+  // zoomed + panned to fit inside the viewport with a margin. No panels → home.
+  _panelViewFit:   function() {
+    const R = window._DebugRouter;
+    const panels = (R?.panels || []).filter(p => p.visible);
+    if (!panels.length) {
+      DEBUG_STATE.viewPanX = 0; DEBUG_STATE.viewPanY = 0;
+      this._applyViewZoom(1.0);
+      return;
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of panels) {
+      let w = p.w || 120, h = p.h || 56;
+      try {
+        const L = p.computeLayout(p._cachedData ?? {});
+        if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
+      } catch (_) {}
+      minX = Math.min(minX, p.x);      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + w);  maxY = Math.max(maxY, p.y + h);
+    }
+    const boxW = Math.max(1, maxX - minX);
+    const boxH = Math.max(1, maxY - minY);
+    const availW = Math.max(1, (window.innerWidth  || 1) - FIT_MARGIN * 2);
+    const availH = Math.max(1, (window.innerHeight || 1) - FIT_MARGIN * 2);
+    const vz = clamp(Math.min(availW / boxW, availH / boxH), VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
+    // Centre the box on screen: pan = screen-centre − box-centre×zoom.
+    DEBUG_STATE.viewPanX = (window.innerWidth  || 0) / 2 - (minX + boxW / 2) * vz;
+    DEBUG_STATE.viewPanY = (window.innerHeight || 0) / 2 - (minY + boxH / 2) * vz;
+    this._applyViewZoom(vz);
   },
   _panelZoomTrack: function(clientY) {
     const t = document.getElementById('zm-track');

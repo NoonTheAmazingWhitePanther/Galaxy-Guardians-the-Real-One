@@ -12,8 +12,9 @@ export const DEBUG_STATE = {
   // ── VIEW ZOOM ──
   // A pure canvas transform applied at draw time — zooms OUT from the panel
   // layer so you can see the whole debug surface at once. Does NOT touch
-  // panel sizing (that's PANEL SETTINGS / scale above). 1.0 = 100%, clamped
-  // ≤ 1.0 (zoom-out utility only). Starts one zm-out step below 100%.
+  // panel sizing (that's PANEL SETTINGS / scale above). 1.0 = 100%; range
+  // allows real zoom-out AND zoom-in (clamped in in-ui). Starts one zm-out
+  // step below 100%. FIT frames the whole debug screen (every visible panel).
   // EDITABLE only inside debug (panel mode); outside debug the zoom bar goes
   // back to the camera and pinned tuning panels render LOCKED at this value.
   // Console mode ignores it.
@@ -26,6 +27,12 @@ export const DEBUG_STATE = {
   // translate(viewPanX, viewPanY) → scale(viewZoom). FIT resets both to home.
   viewPanX: 0,
   viewPanY: 0,
+
+  // ── MARQUEE (know-it-all rectangle) ──
+  // Hold-press on empty space in debug+panel mode → selection rect. Written by
+  // in-debug, drawn by DebugRouter.drawAll inside the view transform (coords
+  // are PANEL-space). null when idle; {active, x0, y0, x1, y1} while dragging.
+  marquee: null,
 
   // Device pixel ratio — set by main.js resize(), read by renderer + hit-test
   dpr: 1,

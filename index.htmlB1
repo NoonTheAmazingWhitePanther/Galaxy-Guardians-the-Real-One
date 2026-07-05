@@ -51,7 +51,6 @@
 <div id="dbg-closeall" class="dbg-sat" title="Arrange panels — Tetris pack (randomized)" aria-label="Arrange panels" role="button">▦</div>
 <div id="dbg-reset"    class="dbg-sat" title="Undo last change (hold: reset to loaded profile)" aria-label="Undo" role="button">↶</div>
 <div id="dbg-arrange"  class="dbg-sat" title="Free Roam ⇄ Snap to Grid" aria-label="Free roam or snap to grid" role="button">⊞</div>
-<div id="dbg-expand"   class="dbg-sat" title="Open all panels to maximum size" aria-label="Expand all panels" role="button">⛶</div>
 
 <!-- AIMS TOGGLE (Below Debug Button) -->
 <div id="aims-btn" title="Toggle AIMS Input" aria-label="Toggle AIMS" role="button">✒️</div>

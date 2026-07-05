@@ -141,6 +141,22 @@ export const DebugRouter = {
       if (!panel.visible) continue;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
+
+    // Know-it-all marquee — drawn in panel-space (inside the transform) so it
+    // hugs exactly the panels it will catch, at any zoom/pan.
+    const mq = DEBUG_STATE.marquee;
+    if (mq?.active) {
+      const mx = Math.min(mq.x0, mq.x1), my = Math.min(mq.y0, mq.y1);
+      const mw = Math.abs(mq.x1 - mq.x0), mh = Math.abs(mq.y1 - mq.y0);
+      ctx.save();
+      ctx.fillStyle = 'rgba(130, 210, 255, 0.08)';
+      ctx.fillRect(mx, my, mw, mh);
+      ctx.strokeStyle = 'rgba(130, 210, 255, 0.85)';
+      ctx.lineWidth = 1.5 / vz;                 // constant screen thickness
+      ctx.setLineDash([6 / vz, 4 / vz]);
+      ctx.strokeRect(mx, my, mw, mh);
+      ctx.restore();
+    }
     ctx.restore();
 
     // Global master slider stays OUTSIDE the transform — measured off DOM
@@ -155,6 +171,10 @@ export const DebugRouter = {
     // every entry point (button / AIMS / keyboard).
     if (typeof document !== 'undefined') {
       document.body.classList.toggle('dbg-on', this.masterEnabled);
+      // Keep the console-mode gate in sync too: the 4 action satellites are
+      // panel-mode-only (body.dbg-console hides them; the console/panel ray
+      // #gg-console-mode is NOT a .dbg-sat and stays).
+      document.body.classList.toggle('dbg-console', this.masterEnabled && this._consoleMode);
     }
     // Force all panels to redraw — pin button visibility changes with debug state
     for (const panel of this.panels) panel._chromeDirty = true;
@@ -172,6 +192,12 @@ export const DebugRouter = {
     on = !!on;
     if (on === this._consoleMode) return;
     this._consoleMode = on;
+    // The 4 action satellites (arrange/undo/grid/expand) are PANEL-mode tools —
+    // hidden in console mode via body.dbg-console. Only the console/panel ray
+    // stays visible in both debug modes.
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('dbg-console', this.masterEnabled && on);
+    }
     if (on) {
       this._preConsoleVisible = this.panels.map(p => ({ id: p.id, v: p.visible }));
       for (const p of this.panels) { p.visible = false; p._chromeDirty = true; }
@@ -188,6 +214,56 @@ export const DebugRouter = {
       this._preConsoleVisible = null;
     }
     try { window._InAims?.syncDebugPanels(); } catch (_) {}
+  },
+
+  // Know-it-all rectangle: shelf-pack every visible panel the marquee caught
+  // into the drawn rect (top-left anchored, GAP apart, wrapping at the rect's
+  // right edge, overflowing DOWNWARD past its bottom if they don't all fit —
+  // same never-overlap shelf geometry as arrangeTetris). Coords: panel-space.
+  collectInto(rect) {
+    const GAP = 8;
+    const caught = this.panels.filter(p => {
+      if (!p.visible) return false;
+      let w = p.w || 120, h = p.h || 56;
+      try {
+        const L = p.computeLayout(p._cachedData ?? {});
+        if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
+      } catch (_) {}
+      return p.x < rect.x + rect.w && p.x + w > rect.x &&
+             p.y < rect.y + rect.h && p.y + h > rect.y;
+    });
+    if (!caught.length) return;
+
+    const right = rect.x + Math.max(60, rect.w);
+    let cx = rect.x, cy = rect.y, shelfH = 0;
+    for (const p of caught) {
+      let w = p.w || 120, h = p.h || 56;
+      try {
+        const L = p.computeLayout(p._cachedData ?? {});
+        if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
+      } catch (_) {}
+      if (cx + w > right && cx > rect.x) { cx = rect.x; cy += shelfH + GAP; shelfH = 0; }
+      p.x = cx;
+      p.y = cy;
+      cx += w + GAP;
+      shelfH = Math.max(shelfH, h);
+    }
+    this._rebuildAimsMap();
+  },
+
+  // ⛶ satellite: open every visible panel to its MAXIMUM size — un-minimize,
+  // clear any grip-shrunk user sizes (back to natural full layout), and open
+  // all collapsed sections. One press = everything fully expanded.
+  expandAll() {
+    for (const p of this.panels) {
+      if (!p.visible) continue;
+      p.minimized = false;
+      p._userW = null;    p._userH = null;
+      p._userMinW = null; p._userMinH = null;
+      p._collapsedSections?.clear?.();
+      p._chromeDirty = true;
+    }
+    this._rebuildAimsMap();
   },
 
   resetAll() {

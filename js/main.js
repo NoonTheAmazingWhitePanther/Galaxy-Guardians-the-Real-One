@@ -176,6 +176,7 @@ export function init() {
   satWire('dbg-closeall', () => DebugRouter.arrangeTetris());                              // ⊟ → Tetris arrange
   satWireHold('dbg-reset', () => DebugRouter.undo(), () => DebugRouter.resetAllToProfile()); // ⟳ → undo / hold: reset
   satWire('dbg-arrange',  () => DebugRouter.toggleGridSnap());                            // ⊞ → Free Roam ⇄ Grid
+  satWire('dbg-expand',   () => DebugRouter.expandAll());                                 // ⛶ → all panels to max size
 
   const aimsBtn = document.getElementById('aims-btn');
   if (aimsBtn) {

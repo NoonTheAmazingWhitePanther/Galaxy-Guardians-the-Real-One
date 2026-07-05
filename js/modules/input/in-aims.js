@@ -77,28 +77,35 @@ function _registerAll() {
   }});
 
   // ── Depth 2: Zoom bar ────────────────────────────────────────────────
+  // Debug + panel mode → the bar drives the DEBUG VIEW (same as the DOM path);
+  // otherwise the camera.
   _safeReg('zm-in', { depth: 2, on: { tap: () => {
+    if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomBy(1.10); return; }
     CameraModule.cam.targetZoom = clamp(
       CameraModule.cam.targetZoom * 1.3,
       CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
   }}});
 
   _safeReg('zm-out', { depth: 2, on: { tap: () => {
+    if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomBy(1 / 1.10); return; }
     CameraModule.cam.targetZoom = clamp(
       CameraModule.cam.targetZoom / 1.3,
       CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
   }}});
 
   _safeReg('zm-fit', { depth: 2, on: { tap: () => {
+    if (_InUI?._panelZoomMode?.()) { _InUI._panelViewFit(); return; }
     CameraModule.frameBodies();
   }}});
 
   _safeRegEl(el('zm-track'), { id: 'zm-track', depth: 2, on: {
     pointerdown: ({ aim }) => {
+      if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomTrack(aim.ey); return; }
       if (_InputState) _InputState.zmDrag = true;
       _InUI?._zmTrackPos?.(aim.ey);
     },
     pointermove: ({ aim }) => {
+      if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomTrack(aim.ey); return; }
       if (_InputState?.zmDrag) _InUI?._zmTrackPos?.(aim.ey);
     },
     pointerup: () => {
@@ -160,10 +167,14 @@ function _registerAll() {
 
   // Debug satellites — the sun-ray fan. Only live while debug is on; the guard
   // stops the canvas hit-map from firing them when they're hidden.
-  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (DebugRouter.masterEnabled) DebugRouter.arrangeTetris(); } }});
-  _safeReg('dbg-reset',    { depth: 2, on: { tap:  () => { if (DebugRouter.masterEnabled) DebugRouter.undo(); },
-                                             hold: () => { if (DebugRouter.masterEnabled) DebugRouter.resetAllToProfile(); } }});
-  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => { if (DebugRouter.masterEnabled) DebugRouter.toggleGridSnap(); } }});
+  // Action satellites are PANEL-mode-only (hidden via body.dbg-console in
+  // console mode) — the tap gate matches: visible ⟺ touchable, no phantom taps.
+  const _satOn = () => DebugRouter.masterEnabled && !DebugRouter._consoleMode;
+  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.arrangeTetris(); } }});
+  _safeReg('dbg-reset',    { depth: 2, on: { tap:  () => { if (_satOn()) DebugRouter.undo(); },
+                                             hold: () => { if (_satOn()) DebugRouter.resetAllToProfile(); } }});
+  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.toggleGridSnap(); } }});
+  _safeReg('dbg-expand',   { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.expandAll(); } }});
 
   // ── Depth 1: Debug panels ────────────────────────────────────────────
   _registerDebugPanels();

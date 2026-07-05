@@ -158,10 +158,16 @@ export const Dormancy = {
     }
 
     // ── Body-body close approach (broad-phase AABB → narrow min-distance) ──
+    // Same law as the live collision pass: radius/proximity checking is
+    // SELF-PLANE ONLY — cross-plane bodies can't collide, so they must never
+    // wake each other. Plane is stable across the window (spawn invalidates).
+    const planeOf = new Array(N);
+    for (let i = 0; i < N; i++) planeOf[i] = snaps[0].bodies[i]?.plane | 0;
     let pairTests = 0;
     for (let i = 0; i < N; i++) {
       const bi = box[i];
       for (let j = i + 1; j < N; j++) {
+        if (planeOf[i] !== planeOf[j]) continue;
         const bj = box[j];
         if (bi.maxX < bj.minX || bj.maxX < bi.minX || bi.maxY < bj.minY || bj.maxY < bi.minY) continue;
         pairTests++;

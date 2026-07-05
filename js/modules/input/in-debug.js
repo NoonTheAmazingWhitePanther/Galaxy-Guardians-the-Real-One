@@ -36,6 +36,15 @@ import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { PanelArrange } from '../debug/panel-arrange.js';
 import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
+import { InputState } from './input.module.js';
+
+// "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
+// debug+panel mode → a selection rectangle. On release, every panel it caught
+// is COLLECTED — shelf-packed together into the drawn rectangle. Quick taps
+// and early movement cancel it (empty-space presses are otherwise dead in
+// debug: planet planting is off, one-finger camera drag doesn't exist).
+const MARQUEE_HOLD_MS = 350;   // hold this long, still, to activate
+const MARQUEE_SLOP    = 8;     // screen px of movement allowed before activation
 
 export const InDebug = {
   _canvas: null,
@@ -402,7 +411,39 @@ export const InDebug = {
       }
     }
 
+    // ── 5. Empty space (debug + panel mode): arm the marquee ──────────
+    // Nothing was hit. Claim primary-button presses for the hold-to-select
+    // rectangle. Sticky pan lock keeps its meaning — never steal from it.
+    if (DebugRouter.masterEnabled && !DebugRouter._consoleMode &&
+        (e.button === 0 || e.button === undefined) && !InputState.panLocked) {
+      const pt = this._toPanel(e.clientX, e.clientY);
+      const m = {
+        armed: true, active: false,
+        scx: e.clientX, scy: e.clientY,         // screen anchor (slop check)
+        x0: pt.x, y0: pt.y, x1: pt.x, y1: pt.y, // panel-space rect
+        timer: null
+      };
+      m.timer = setTimeout(() => {
+        if (this._marquee !== m || !m.armed) return;
+        if (!DebugRouter.masterEnabled || DebugRouter._consoleMode) { this._marqueeClear(); return; }
+        m.active = true;
+        DEBUG_STATE.marquee = { active: true, x0: m.x0, y0: m.y0, x1: m.x1, y1: m.y1 };
+      }, MARQUEE_HOLD_MS);
+      this._marquee = m;
+      this.pointerId = e.pointerId;
+      try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+      e.preventDefault();
+      return true;
+    }
+
     return false;
+  },
+
+  _marqueeClear() {
+    const m = this._marquee;
+    if (m?.timer) { clearTimeout(m.timer); m.timer = null; }
+    this._marquee = null;
+    DEBUG_STATE.marquee = null;
   },
 
   /**
@@ -413,6 +454,26 @@ export const InDebug = {
    */
   handleMove(e) {
     if (e.pointerId !== this.pointerId) return false;
+
+    // ── Marquee (hold-to-select rectangle) ────────────────────────────
+    if (this._marquee) {
+      const m = this._marquee;
+      if (!m.active) {
+        // Moved before the hold fired → not a hold-press. Cancel; the gesture
+        // is dead (empty-space drags do nothing else in panel mode anyway).
+        if (Math.hypot(e.clientX - m.scx, e.clientY - m.scy) > MARQUEE_SLOP) {
+          this._marqueeClear();
+          this._releaseAll();
+          return false;
+        }
+        return true;               // still holding still — keep the claim
+      }
+      const pt = this._toPanel(e.clientX, e.clientY);
+      m.x1 = pt.x; m.y1 = pt.y;
+      DEBUG_STATE.marquee = { active: true, x0: m.x0, y0: m.y0, x1: m.x1, y1: m.y1 };
+      e.preventDefault();
+      return true;
+    }
 
     // If debug is off, only continue if there's an active tuning panel interaction
     if (!DebugRouter.masterEnabled) {
@@ -563,6 +624,23 @@ export const InDebug = {
    */
   handleUp(e) {
     if (e.pointerId !== this.pointerId) return false;
+
+    // ── Marquee release: COLLECT everything the rectangle caught ──────
+    if (this._marquee) {
+      const m = this._marquee;
+      m.armed = false;
+      const wasActive = m.active;
+      this._marqueeClear();
+      if (wasActive) {
+        const rect = {
+          x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1),
+          w: Math.abs(m.x1 - m.x0), h: Math.abs(m.y1 - m.y0)
+        };
+        if (rect.w > 4 && rect.h > 4) DebugRouter.collectInto(rect);
+      }
+      this._releaseAll();
+      return true;
+    }
 
     // ── Global master slider release ──────────────────────────────────
     if (this._globalMasterDragging) {

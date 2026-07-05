@@ -35,7 +35,7 @@ export const makeParticle = (x, y, mass, pal, isCore) => ({
 export const makeSpring = (a, b, restLen, stiff, breakAt) => ({
     a, b, restLen, stiff: stiff || config.SPRING_K,
     breakAt: breakAt || (restLen * config.BREAK_MULT), broken: false
-});export const makeBody = (cx, cy, radius, pal) => {
+});export const makeBody = (cx, cy, radius, pal, plane = 0) => {
     const particles = [], springs = [], grid = {};
     const spacing = config.PARTICLE_R * 1.82;
     const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
@@ -74,9 +74,10 @@ export const makeSpring = (a, b, restLen, stiff, breakAt) => ({
     let tm = 0;
     for (const p of particles) {
         p.mass = lerp(2.0, 0.6, hypot(p.x - cx, p.y - cy) / radius);
+        p.plane = plane | 0;      // particles inherit the body's plane (loose debris keeps it)
         tm += p.mass;
     }
-    return { id: nextId(), particles, springs, pal, cx, cy, mass: tm, radius, dead: false, gravMult: 1.0 };
+    return { id: nextId(), particles, springs, pal, cx, cy, mass: tm, radius, dead: false, gravMult: 1.0, plane: plane | 0 };
 };
 
 export const spawnRing = (body) => {
@@ -153,6 +154,7 @@ export const splitDeadParticles = (body) => {
                         state.loose.push({
                             id: nextId(), x: _p.x, y: _p.y, vx: _p.vx, vy: _p.vy,
                             mass: _p.mass, pal: _p.pal, heat: _p.heat, life: 1,
+                            plane: _p.plane | 0,
                             decay: rndR(0.004, 0.008), isBurnt: false, burnedAt: 0,
                             meltRate: rndR(0.003, 0.008), detachSpeed: rndR(8, 16),
                             birthTime: performance.now()

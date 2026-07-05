@@ -79,5 +79,15 @@ A dedicated panel to control render/trail resolution across the whole engine.
 - Rewarded "free daily benchmark" (no credentials); score + history already saved.
 - Leaderboards (score + history JSON is ready to submit).
 
+## Planet Panels (new)
+- **Planet Panel** — configuration surface for GENERATING new planets: size,
+  mass, velocity, spawn pattern, count. Debug-mode planting is currently off
+  ("tuning, not playing") — this panel becomes the sanctioned way to spawn
+  while tuning.
+- **Planet Statistics Panel** — tap-select a planet (or the sun) in the world
+  to open its live statistics: velocity, mass, trail count, hot/cold dormancy
+  tag, FutureCache close-approach data, plus global counts. Needs a
+  world-object select mode that coexists with the panel marquee.
+
 ## Effects (later)
 - Speed-triggered shooting particles with their own trails.
