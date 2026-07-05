@@ -17,6 +17,8 @@ import { Accumulator } from './modules/rendering/accumulator.js';
 import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
+import { PrefsStore } from './core/prefs-store.js';
+import { UpdateFeed } from './core/update-feed.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 import { ConsoleView } from './modules/debug/console-view.js';
 import { GuiGovernor } from './modules/debug/gui-governor.js';
@@ -177,6 +179,12 @@ export function init() {
   satWireHold('dbg-reset', () => DebugRouter.undo(), () => DebugRouter.resetAllToProfile()); // ⟳ → undo / hold: reset
   satWire('dbg-arrange',  () => DebugRouter.toggleGridSnap());                            // ⊞ → Free Roam ⇄ Grid
   satWire('dbg-expand',   () => DebugRouter.expandAll());                                 // ⛶ → all panels to max size
+
+  // User preferences — load the saved customizations now that the panels
+  // exist, then autosave every change in real time (GGPrefs.export() for the
+  // readable file copy).
+  PrefsStore.init();
+  UpdateFeed.push('UPDATE BAR ONLINE');
 
   const aimsBtn = document.getElementById('aims-btn');
   if (aimsBtn) {

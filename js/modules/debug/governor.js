@@ -157,6 +157,17 @@ export const ManualOverrides = {
   psValW:                   { isManual: false, value: 1.00 },  // value column width
   psRadius:                 { isManual: false, value: 1.00 },  // corner radius
   psKnob:                   { isManual: false, value: 1.00 },  // knob size (+ its touch box)
+  // Minimized-panel attributes — SEPARATE from the opened panel's, so both
+  // states can possess different looks (mixer channel/master knob size + font).
+  psMinKnob:                { isManual: false, value: 1.00 },  // minimized mixer knob size
+  psMinFont:                { isManual: false, value: 1.00 },  // minimized label font size
+
+  // ── PLANET BRUSH (the metaverse planting tool) ──
+  brushSizeMin:             { isManual: false, value: 24 },    // starting (smallest) radius
+  brushSizeMax:             { isManual: false, value: 60 },    // maximum radius
+  brushRandom:              { isManual: false, value: 1.0 },   // 0 = midpoint · 1 = full min..max spread
+  brushPlane:               { isManual: false, value: -1 },    // -1 = CPU picks (round-robin) · 0..3 fixed group
+  brushColor:               { isManual: false, value: -1 },    // -1 = Random · 0..5 named palette
 
   // ── UNDO (Ctrl+Z) ─────────────────────────────────────────────────────────
   // Every knob edit flows through set()/reset(), so recording the prior state

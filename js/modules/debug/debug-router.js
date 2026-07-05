@@ -142,19 +142,51 @@ export const DebugRouter = {
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
     }
 
-    // Know-it-all marquee — drawn in panel-space (inside the transform) so it
-    // hugs exactly the panels it will catch, at any zoom/pan.
-    const mq = DEBUG_STATE.marquee;
-    if (mq?.active) {
-      const mx = Math.min(mq.x0, mq.x1), my = Math.min(mq.y0, mq.y1);
-      const mw = Math.abs(mq.x1 - mq.x0), mh = Math.abs(mq.y1 - mq.y0);
+    // Marquee + selection share one look: the dashed cyan rectangle, with the
+    // dashes MARCHING like chasing LEDs (time-driven lineDashOffset — drawAll
+    // runs every rendered frame, so it animates for free). Constant screen
+    // thickness/dash length at any zoom.
+    const _ants = (x, y, w, h) => {
       ctx.save();
       ctx.fillStyle = 'rgba(130, 210, 255, 0.08)';
-      ctx.fillRect(mx, my, mw, mh);
+      ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = 'rgba(130, 210, 255, 0.85)';
-      ctx.lineWidth = 1.5 / vz;                 // constant screen thickness
+      ctx.lineWidth = 1.5 / vz;
       ctx.setLineDash([6 / vz, 4 / vz]);
-      ctx.strokeRect(mx, my, mw, mh);
+      ctx.lineDashOffset = -((performance.now() / 40) % 10) / vz;   // the LED chase
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+    };
+
+    // Live marquee while dragging — drawn in panel-space so it hugs exactly
+    // the panels it will catch, at any zoom/pan.
+    const mq = DEBUG_STATE.marquee;
+    if (mq?.active) {
+      _ants(Math.min(mq.x0, mq.x1), Math.min(mq.y0, mq.y1),
+            Math.abs(mq.x1 - mq.x0), Math.abs(mq.y1 - mq.y0));
+    }
+
+    // Persistent selection — ONE rectangle through all the panels it got,
+    // re-fitted live to their bounding box (lowest X → farthest, both axes).
+    const sb = this.selectionBBox();
+    if (sb) {
+      const PAD = 4;
+      _ants(sb.x - PAD, sb.y - PAD, sb.w + PAD * 2, sb.h + PAD * 2);
+      // The selection is a fully TRANSPARENT panel: the ant border is its
+      // chrome, and it carries group icons top-right — 📌 pin · ⛶ max ·
+      // ▼ min · ⤓ shrink — acting on every selected panel at once.
+      const icons = this._selectionIcons(sb);
+      ctx.save();
+      ctx.font = `${10 / vz}px ${DEBUG_STATE.style.font}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const ic of icons) {
+        ctx.fillStyle = 'rgba(20,24,36,0.85)';
+        ctx.beginPath();
+        ctx.roundRect(ic.x, ic.y, ic.s, ic.s, 3 / vz);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(130,210,255,0.9)';
+        ctx.fillText(ic.glyph, ic.x + ic.s / 2, ic.y + ic.s / 2);
+      }
       ctx.restore();
     }
     ctx.restore();
@@ -216,6 +248,153 @@ export const DebugRouter = {
     try { window._InAims?.syncDebugPanels(); } catch (_) {}
   },
 
+  // A panel's current on-screen rect in panel-space (actual drawn size).
+  _panelRect(p) {
+    let w = p.w || 120, h = p.h || 56;
+    try {
+      const L = p.computeLayout(p._cachedData ?? {});
+      if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
+    } catch (_) {}
+    return { x: p.x, y: p.y, w, h };
+  },
+
+  // Marquee release → the ids of every visible panel the rect touched.
+  // Returns null when nothing was caught (no selection).
+  selectInRect(rect) {
+    const ids = [];
+    for (const p of this.panels) {
+      if (!p.visible) continue;
+      const r = this._panelRect(p);
+      if (r.x < rect.x + rect.w && r.x + r.w > rect.x &&
+          r.y < rect.y + rect.h && r.y + r.h > rect.y) ids.push(p.id);
+    }
+    return ids.length ? { ids } : null;
+  },
+
+  // Group icons on the selection's transparent panel — panel-space rects,
+  // sized so they stay ~16 SCREEN px at any zoom. Order: 📌 ⛶ ▼ ⤓.
+  _selectionIcons(sb) {
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const s = 16 / vz, g = 4 / vz, PAD = 4;
+    const y = sb.y - PAD - s - g;
+    const right = sb.x + sb.w + PAD;
+    const glyphs = [
+      { glyph: '⤓', act: 'shrink' },
+      { glyph: '▼', act: 'min' },
+      { glyph: '⛶', act: 'max' },
+      { glyph: '📌', act: 'pin' },
+    ];
+    return glyphs.map((it, i) => ({ ...it, s, x: right - (i + 1) * (s + g), y }));
+  },
+
+  selectedPanels() {
+    const sel = DEBUG_STATE.selection;
+    if (!sel?.ids?.length) return [];
+    return this.panels.filter(p => p.visible && sel.ids.includes(p.id));
+  },
+
+  // Group action from a selection icon — applied to EVERY selected panel.
+  selectionAction(act) {
+    const list = this.selectedPanels();
+    if (!list.length) return;
+    for (const p of list) {
+      if (act === 'pin')    p.pinned = !p.pinned;
+      if (act === 'max')    { p.shrunk = false; this.maximizePanel(p); }
+      if (act === 'min')    { p.shrunk = false; p.minimized = true; }
+      if (act === 'shrink') p.shrunk = true;
+      p._chromeDirty = true;
+    }
+    if (act === 'shrink') this._dockShrunk();
+    this._rebuildAimsMap();
+    try { window.UpdateFeed?.push(`SELECTION ${act.toUpperCase()} × ${list.length}`); } catch (_) {}
+  },
+
+  // LIVE bounding box of the current selection: lowest X to farthest X+w,
+  // same for Y — recomputed from wherever the panels are NOW, so the
+  // rectangle keeps hugging them through drags, packs, and resizes.
+  selectionBBox() {
+    const sel = DEBUG_STATE.selection;
+    if (!sel?.ids?.length) return null;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, n = 0;
+    for (const p of this.panels) {
+      if (!p.visible || !sel.ids.includes(p.id)) continue;
+      const r = this._panelRect(p);
+      minX = Math.min(minX, r.x);       minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.w); maxY = Math.max(maxY, r.y + r.h);
+      n++;
+    }
+    if (!n) return null;
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  },
+
+  // ⤓ SHRINK TO BAR — the panel becomes a one-line title bar docked in a
+  // proportion of the screen just above the bottom bar, CASCADED left→right
+  // (wrapping upward into more rows). Dragging a bar OUT (up past the pull
+  // threshold, handled in in-debug) turns it minimized mid-drag; until it's
+  // grabbed out it stays shrunk and re-docks on release.
+  shrinkToBar(p) {
+    p.shrunk = true;
+    p._chromeDirty = true;
+    this._dockShrunk();
+    this._rebuildAimsMap();
+  },
+
+  _dockShrunk() {
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const ox = DEBUG_STATE.viewPanX || 0;
+    const oy = DEBUG_STATE.viewPanY || 0;
+    let sBottom = window.innerHeight - 12;
+    const ui = (typeof document !== 'undefined') ? document.getElementById('ui') : null;
+    if (ui) { const r = ui.getBoundingClientRect(); if (r.top > 0) sBottom = r.top - 6; }
+    const L = (8 - ox) / vz;
+    const R = ((window.innerWidth - 70) - ox) / vz;
+    const B = (sBottom - oy) / vz;
+    const GAP = 4;
+    let cx = L, row = 0, rowH = 0;
+    for (const p of this.panels) {
+      if (!p.visible || !p.shrunk) continue;
+      const Lay = p.computeLayout({});
+      if (cx + Lay.w > R && cx > L) { cx = L; row++; }
+      rowH = Math.max(rowH, Lay.h);
+      p.x = cx;
+      p.y = B - Lay.h - row * (rowH + GAP);
+      cx += Lay.w + GAP;
+    }
+  },
+
+  // ⛶ header icon: grow the panel as much as possible WITHOUT overlapping
+  // others — width first (nearest blocker to the right within the panel's
+  // y-range), then height (nearest blocker below within the new x-range),
+  // clamped to the visible view. Content overflow scrolls — that's wanted.
+  maximizePanel(p) {
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const ox = DEBUG_STATE.viewPanX || 0;
+    const oy = DEBUG_STATE.viewPanY || 0;
+    const M = 8, GAP = 2;
+    const R = this._panelRect(p);
+    let limR = ((window.innerWidth  || 0) - M - ox) / vz;
+    let limB = ((window.innerHeight || 0) - M - oy) / vz;
+
+    for (const o of this.panels) {                    // nearest blocker right
+      if (o === p || !o.visible) continue;
+      const r = this._panelRect(o);
+      if (r.y < R.y + R.h && r.y + r.h > R.y && r.x >= R.x + R.w) limR = Math.min(limR, r.x - GAP);
+    }
+    const newW = Math.max(60, limR - R.x);
+
+    for (const o of this.panels) {                    // nearest blocker below (vs new width)
+      if (o === p || !o.visible) continue;
+      const r = this._panelRect(o);
+      if (r.x < R.x + newW && r.x + r.w > R.x && r.y >= R.y + R.h) limB = Math.min(limB, r.y - GAP);
+    }
+    const newH = Math.max(60, limB - R.y);
+
+    if (p.minimized) { p._userMinW = newW; p._userMinH = newH; }
+    else             { p._userW    = newW; p._userH    = newH; }
+    p._chromeDirty = true;
+    this._rebuildAimsMap();
+  },
+
   // Know-it-all rectangle: shelf-pack every visible panel the marquee caught
   // into the drawn rect (top-left anchored, GAP apart, wrapping at the rect's
   // right edge, overflowing DOWNWARD past its bottom if they don't all fit —
@@ -258,6 +437,7 @@ export const DebugRouter = {
     for (const p of this.panels) {
       if (!p.visible) continue;
       p.minimized = false;
+      p.shrunk = false;
       p._userW = null;    p._userH = null;
       p._userMinW = null; p._userMinH = null;
       p._collapsedSections?.clear?.();
@@ -397,7 +577,7 @@ export const DebugRouter = {
     const RIGHT  = toPanelX(sRight);
     const BOTTOM = toPanelY(sBottom);
 
-    const panels = this.panels.filter(p => p.visible);
+    const panels = this.panels.filter(p => p.visible && !p.shrunk);   // docked bars stay docked
     for (let i = panels.length - 1; i > 0; i--) {      // shuffle → different each time
       const j = (Math.random() * (i + 1)) | 0;
       [panels[i], panels[j]] = [panels[j], panels[i]];

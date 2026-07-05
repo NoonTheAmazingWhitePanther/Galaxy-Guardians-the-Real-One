@@ -79,6 +79,41 @@ A dedicated panel to control render/trail resolution across the whole engine.
 - Rewarded "free daily benchmark" (no credentials); score + history already saved.
 - Leaderboards (score + history JSON is ready to submit).
 
+## Gravity Grid (new)
+- Precomputed GRID OF GRAVITY for the sun pull: bake the sun's gravitational
+  acceleration field into a coarse spatial grid once (it's static — the sun
+  doesn't move), then per-particle gravity becomes a grid lookup + bilinear
+  interp instead of per-substep sqrt/normalize for every particle. No more
+  "checking all the time". Needs: grid resolution vs accuracy sweep near the
+  sun (field changes fastest there — maybe log-radial cells), invalidation on
+  GRAV_CONST / sunGravMult knob changes, and a MsProbe A/B to prove the win.
+
+## Planes of Existence — follow-ups (shipped: 4 planes, brush round-robin)
+- Per-plane visual identity (tint / phase shimmer) so overlapping non-colliding
+  planets read as different planes, not as a bug.
+- Plane knob in debug-config (PLANE_COUNT is a config constant for now; 8–16
+  plane stress test on the C71).
+- Decide ring-dust plane policy (currently plane 0 — sun dust only touches
+  base-reality planets).
+
+## Selection Panel (SHIPPED as the transparent group panel)
+- Marquee selects; the LED box IS the panel — fully transparent, ant-border
+  chrome, group icons 📌 ⛶ ▼ ⤓ acting on all selected at once.
+- Still open: **Collect** icon (collectInto is built and waiting), group-drag
+  the whole selection as one, deselect gestures beyond tap-on-empty.
+
+## Update Bar (SHIPPED) — follow-ups
+- Route more systems into UpdateFeed.push (benchmark results, governor mode
+  flips, FutureCache invalidations).
+- True console "Hello Captain" line integration (currently the bar re-dresses
+  as a console line at the console's top).
+
+## The Mesh War (direction)
+- Auto (Device) preferences + Manual (User) preferences compete for the
+  user's ideal: device metrics now saved beside manual prefs; next, let
+  BEST PREFERENCES weigh both when proposing tunings. Cross-platform,
+  low-end (POCO C71) to high-end, one save file.
+
 ## Planet Panels (new)
 - **Planet Panel** — configuration surface for GENERATING new planets: size,
   mass, velocity, spawn pattern, count. Debug-mode planting is currently off

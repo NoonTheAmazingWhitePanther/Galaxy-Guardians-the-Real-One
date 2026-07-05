@@ -34,6 +34,13 @@ export const DEBUG_STATE = {
   // are PANEL-space). null when idle; {active, x0, y0, x1, y1} while dragging.
   marquee: null,
 
+  // ── SELECTION (the marquee's result) ──
+  // Panel ids caught by the last marquee. Persists after release: drawn as an
+  // animated (LED-marching) rectangle that re-fits LIVE to the bounding box of
+  // the selected panels — lowest X to farthest X+w, same for Y — no matter
+  // where the panels move. null / empty = no selection.
+  selection: null,
+
   // Device pixel ratio — set by main.js resize(), read by renderer + hit-test
   dpr: 1,
   setDpr(v) { this.dpr = v; },

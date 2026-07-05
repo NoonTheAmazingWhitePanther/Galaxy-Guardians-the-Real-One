@@ -63,25 +63,64 @@ function _drawMixKnob(ctx, kx, ky, r, frac, accent) {
 export const PanelMasterSlider = {
 
   // Shared mixer geometry (render + hit-test use this so they never disagree).
-  // Horizontal → channels in a row, master on the RIGHT.
-  // Vertical   → channels in a column, master at the BOTTOM.
+  // GRID reflow: channels wrap 3 per line — Horizontal → rows of 3 reading
+  // left→right, wrapping DOWN, master at the RIGHT; Vertical → columns of 3
+  // top→bottom, wrapping RIGHT ("3 3 3 = 9 knobs with vertical rows"), master
+  // at the BOTTOM. Knob radii + gaps come from PANEL SETTINGS' minimized
+  // attributes (psMinKnob via style.minChR/minMasterR) — not hardcoded.
+  MIX_COLS: 3,
   _mixerLayout(panel, x, y, w, h) {
+    const st = DEBUG_STATE.style;
     const chans = panel._mixChannels();
-    const chR = 9, mR = 14, gap = 6, pad = 8;
+    const cs  = panel.contentScale || 1;   // Equal-Scale applies to minimized too
+    const chR = (st.minChR || 9) * cs, mR = (st.minMasterR || 14) * cs, gap = 6 * cs, pad = 8;
+    const COLS = this.MIX_COLS;
+    const pitch = chR * 2 + gap;
     const channels = [];
     let master;
     if (panel._minVertical) {
-      const cx = x + w / 2;
-      let cy = y + 20 + chR;
-      for (const ch of chans) { channels.push({ cx, cy, r: chR, ch }); cy += chR * 2 + gap; }
-      master = { cx, cy: y + h - pad - mR, r: mR };
+      // Columns of 3: fill down, wrap right.
+      const x0 = x + pad + chR;
+      const y0 = y + 20 + chR;
+      for (let i = 0; i < chans.length; i++) {
+        const col = (i / COLS) | 0, row = i % COLS;
+        channels.push({ cx: x0 + col * pitch, cy: y0 + row * pitch, r: chR, ch: chans[i] });
+      }
+      master = { cx: x + w / 2, cy: y + h - pad - mR, r: mR };
     } else {
-      const cy = y + Math.max(24, h * 0.5);
-      let cx = x + pad + chR;
-      for (const ch of chans) { channels.push({ cx, cy, r: chR, ch }); cx += chR * 2 + gap; }
+      // Rows of 3: fill right, wrap down.
+      const x0 = x + pad + chR;
+      const y0 = y + 20 + chR;
+      for (let i = 0; i < chans.length; i++) {
+        const row = (i / COLS) | 0, col = i % COLS;
+        channels.push({ cx: x0 + col * pitch, cy: y0 + row * pitch, r: chR, ch: chans[i] });
+      }
       master = { cx: x + w - pad - mR, cy: y + h / 2, r: mR };
     }
     return { channels, master, chR, mR };
+  },
+
+  // Fluid reconstruction: each knob GLIDES to its grid slot instead of
+  // teleporting. Eased per rendered frame toward the layout target; hit-tests
+  // keep using the exact targets so touch never chases a moving knob.
+  _fluid(panel, L) {
+    const anim = panel._mixAnim || (panel._mixAnim = new Map());
+    const E = 0.28;
+    const out = [];
+    const seen = new Set();
+    for (const c of L.channels) {
+      const key = c.ch.key ?? c.ch.label ?? c.ch.variable ?? out.length;
+      seen.add(key);
+      let a = anim.get(key);
+      if (!a) { a = { x: c.cx, y: c.cy }; anim.set(key, a); }
+      a.x += (c.cx - a.x) * E;
+      a.y += (c.cy - a.y) * E;
+      if (Math.abs(c.cx - a.x) < 0.4) a.x = c.cx;
+      if (Math.abs(c.cy - a.y) < 0.4) a.y = c.cy;
+      out.push({ ...c, cx: a.x, cy: a.y });
+    }
+    for (const k of anim.keys()) if (!seen.has(k)) anim.delete(k);
+    return out;
   },
 
   // ── render ───────────────────────────────────────────────────────────────
@@ -92,21 +131,23 @@ export const PanelMasterSlider = {
       // ── MIXER ─────────────────────────────────────────────────────────────
       const L      = this._mixerLayout(panel, x, y, panelW, panelH);
       const isVert = panel._minVertical;
+      const mF     = s.minFontSize || 7;           // minimized font attribute
+      const drawn  = this._fluid(panel, L);        // knobs glide to their slots
 
       // Title
       ctx.fillStyle = 'rgba(240,245,255,0.35)';
-      ctx.font      = `7px ${s.font}`;
+      ctx.font      = `${mF}px ${s.font}`;
       ctx.textAlign = isVert ? 'center' : 'left';
       ctx.textBaseline = 'top';
       ctx.fillText(panel.title, isVert ? x + panelW / 2 : x + 6, y + 4);
 
-      // Channel knobs
-      for (const c of L.channels) {
+      // Channel knobs (fluid positions)
+      for (const c of drawn) {
         const val  = c.ch.ref.get() ?? 0;
         const frac = (val - c.ch.min) / (c.ch.max - c.ch.min);
         _drawMixKnob(ctx, c.cx, c.cy, c.r, frac, false);
         ctx.fillStyle = 'rgba(240,245,255,0.4)';
-        ctx.font      = `6px ${s.font}`;
+        ctx.font      = `${Math.max(5, mF - 1)}px ${s.font}`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'top';
         ctx.fillText((c.ch.label || '').slice(0, 4), c.cx, c.cy + c.r + 1);
       }
@@ -115,7 +156,7 @@ export const PanelMasterSlider = {
       const mv    = panel.panelMasterValue ?? 1.0;
       _drawMixKnob(ctx, L.master.cx, L.master.cy, L.master.r, Math.min(1, mv / 2), true);
       ctx.fillStyle = 'rgba(255,210,130,0.85)';
-      ctx.font      = `bold 7px ${s.font}`;
+      ctx.font      = `bold ${mF}px ${s.font}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       ctx.fillText(`${mv.toFixed(2)}x`, L.master.cx, L.master.cy + L.master.r + 2);
 

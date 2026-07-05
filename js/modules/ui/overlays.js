@@ -40,10 +40,12 @@ export const OverlaysModule = {
   },
 
   // ── Spawn Planet ──
-  spawnPlanet: (x, y, size, pcountEl, plane = 0) => {
+  spawnPlanet: (x, y, size, pcountEl, plane = 0, palIdx = -1) => {
     if (state.bodies.length >= CONFIG.physics.MAX_BODIES) return;
     const radius = clamp(size * 8, 16, 110);
-    const pal = PALS[Math.floor(Math.random() * PALS.length)];
+    const pal = (palIdx >= 0 && palIdx < PALS.length)
+      ? PALS[palIdx | 0]
+      : PALS[Math.floor(Math.random() * PALS.length)];   // -1 = Random (classic)
     const body = makeBody(x, y, radius, pal, plane | 0);
     const nP = body.particles.length;
     body.gravMult = sunGravMult;

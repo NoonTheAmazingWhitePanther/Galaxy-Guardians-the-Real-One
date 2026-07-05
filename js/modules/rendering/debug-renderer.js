@@ -52,11 +52,40 @@ export const DebugRenderer = {
     if (!panel.visible) return;
 
     const s          = DEBUG_STATE.style;
-    const sc         = DEBUG_STATE.scale;
+    const sc         = DEBUG_STATE.scale * (panel.contentScale || 1);   // per-panel content size
     const layout     = panel.computeLayout(data);
     const pw         = Math.floor(layout.w);
     const ph         = Math.floor(layout.h);
     const { minimized } = layout;
+
+    // ── SHRUNK: one-line title bar (panel style) — drawn live, no cache ──
+    if (layout.shrunk) {
+      const x = panel.x, y = panel.y;
+      ctx.save();
+      ctx.fillStyle = 'rgba(8,8,18,0.85)';
+      ctx.strokeStyle = panel.pinned ? 'rgba(255,200,80,0.55)' : 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x, y, pw, ph, 5);
+      ctx.fill(); ctx.stroke();
+      // Title + live value, one liner
+      ctx.font = `${Math.max(7, Math.round(ph * 0.45))}px ${s.font}`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(130,210,255,0.9)';
+      const title = (panel.title || panel.id).slice(0, 12);
+      ctx.fillText(title, x + 6, y + ph / 2);
+      ctx.fillStyle = 'rgba(240,245,255,0.75)';
+      let val = '';
+      try { val = String(panel.summaryValue ?? ''); } catch (_) {}
+      ctx.fillText(val.slice(0, 8), x + 6 + ctx.measureText(title).width + 8, y + ph / 2);
+      // 📌 at the right end
+      ctx.textAlign = 'center';
+      ctx.fillStyle = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.4)';
+      ctx.fillText('📌', x + pw - 10, y + ph / 2);
+      ctx.restore();
+      panel.w = pw; panel.h = ph;
+      return;
+    }
 
     // ── Chrome layer — cached offscreen (background, border, amber) ───────
     const chromeCanvas = panel._chromeCanvas;
@@ -78,6 +107,11 @@ export const DebugRenderer = {
     if (minimized) {
       // Minimized — PanelMasterSlider draws text/knob on main ctx
       PanelMasterSlider.render(ctx, panel, panel.x, panel.y, pw, ph, minimized);
+      // 🖌 edit brush — the minimized panel's OWN editor, bottom-left corner.
+      ctx.fillStyle = 'rgba(240,245,255,0.5)';
+      ctx.font = `9px ${s.font}`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText('🖌', panel.x + 3, panel.y + ph - 2);
       return;
     }
 
@@ -227,10 +261,28 @@ export const DebugRenderer = {
     }
 
     // ── Icons drawn LAST — always on top of all text ─────────────────────
+    // Left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
+    // Geometry mirrors panel.hitTest exactly — visible ⟺ touchable.
     const minBtnSize = 16;
-    const minBtnX    = pw - minBtnSize - 6;
+    const maxBtnX    = pw - minBtnSize - 6;
     const minBtnY    = 6;
-    const pinBtnX    = minBtnX - minBtnSize - 4;
+    const pinBtnX    = maxBtnX - minBtnSize - 4;
+    const minBtnX    = pinBtnX - minBtnSize - 4;
+    const shrBtnX    = minBtnX - minBtnSize - 4;
+    const edtBtnX    = shrBtnX - minBtnSize - 4;
+
+    const _iconBtn = (bx, glyph, color) => {
+      ctx.fillStyle = 'rgba(20,24,36,0.85)';
+      ctx.beginPath();
+      ctx.roundRect(bx, minBtnY, minBtnSize, minBtnSize, 3);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.font = `10px ${s.font}`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(glyph, bx + minBtnSize / 2, minBtnY + minBtnSize / 2);
+    };
+    _iconBtn(edtBtnX, '🖌', 'rgba(240,245,255,0.7)');   // edit this panel's items
+    _iconBtn(shrBtnX, '⤓',  'rgba(240,245,255,0.7)');   // shrink to bar
 
     // Pin button
     if (window._DebugRouter?.masterEnabled) {
@@ -241,7 +293,7 @@ export const DebugRenderer = {
       ctx.fillText('📌', pinBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
     }
 
-    // Minimize button — opaque bg so text doesn't bleed through
+    // Minimize button (left of the pin) — opaque bg so text doesn't bleed through
     ctx.fillStyle = 'rgba(20,24,36,0.85)';
     ctx.beginPath();
     ctx.roundRect(minBtnX, minBtnY, minBtnSize, minBtnSize, 3);
@@ -251,6 +303,17 @@ export const DebugRenderer = {
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('▼', minBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
+
+    // Maximize button (rightmost) — grow as far as the neighbours allow
+    ctx.fillStyle = 'rgba(20,24,36,0.85)';
+    ctx.beginPath();
+    ctx.roundRect(maxBtnX, minBtnY, minBtnSize, minBtnSize, 3);
+    ctx.fill();
+    ctx.fillStyle    = 'rgba(130,210,255,0.85)';
+    ctx.font         = `10px ${s.font}`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('⛶', maxBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
   },
 
   renderMasterSlider(ctx, panels) {

@@ -231,3 +231,28 @@ Code expression by **Claude (Anthropic)** — the Basic Pro subscription that he
 **Galaxy Guardians is built to make experiments fun.** 🌌💥
 
 </div>
+
+
+## The Debug Deck (latest wave)
+
+The tuning surface grew into a small operating system:
+
+- **View transform** — zoom (0.15–2.5×) and pan the whole panel layer; FIT
+  frames every visible panel. The world and the deck have separate cameras.
+- **The know-it-all rectangle** — hold empty space, draw, and the caught
+  panels become a living selection: a fully transparent panel whose chrome is
+  a marching-LED border, carrying group actions (📌 pin · ⛶ maximize ·
+  ▼ minimize · ⤓ shrink) for everything inside it.
+- **Shrink to bar** — a panel's lowest form: one line of title + live value +
+  pin, cascaded above the bottom bar. Pull it up and it wakes as a minimized
+  mixer mid-drag.
+- **Planet Brush** — hold-drag paints planets across four planes of existence
+  (self-plane collisions only: four parallel physics strings for free), with
+  its own panel for size range, randomness, group, and named colors.
+- **The Update Bar** — in-game one-line toasts beneath the FPS counter,
+  queued, self-measuring, scrolling only when they must.
+- **Preferences that survive anything** — every knob and panel state saved in
+  real time, duplicated to a temp copy, integrity-checked and range-validated
+  on load, announced Matrix-style. Kill the app; the deck remembers.
+- **The Mesh War** — Auto (device) and Manual (user) preferences saved side
+  by side, competing for the user's ideal from a $100 phone to a workstation.

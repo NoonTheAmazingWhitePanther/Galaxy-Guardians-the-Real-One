@@ -10,9 +10,14 @@
 import { CameraModule } from '../camera/camera.module.js';
 import { InputState } from './input.module.js';
 import { config } from '../../core/config.js';
+import { ManualOverrides } from '../debug/governor.js';
 
 const BRUSH_SPACING = 90;   // screen px of stroke between planted planets
 const BRUSH_SLOP    = 14;   // move this far before the hold becomes a brush
+const _ov = (k, d) => {
+  const v = ManualOverrides[k]?.value;
+  return Number.isFinite(v) ? v : d;
+};
 
 export const InPlanet = {
   cursorEl: null,
@@ -85,18 +90,33 @@ export const InPlanet = {
     return true; // CONSUMED
   },
 
-  // Brush planet: slider size, no charge, planted into the NEXT plane.
+  // Brush planet — governed by the PLANET BRUSH panel:
+  //   size   = between Start and Max, spread by the Random factor
+  //            (0 = always the midpoint, 1 = full min..max randomness)
+  //   plane  = fixed group knob, or -1 = the CPU selects (round-robin)
+  //   color  = named palette knob, or -1 = Random (the classic way)
   _plantBrush(sx, sy) {
+    const lo = Math.min(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
+    const hi = Math.max(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
+    const rf = Math.max(0, Math.min(1, _ov('brushRandom', 1)));
+    const t  = 0.5 + (Math.random() - 0.5) * rf;
+    const radius = Math.max(10, Math.min(110, Math.round(lo + (hi - lo) * t)));
+
     const planeCount = Math.max(1, config.PLANE_COUNT | 0);
-    const plane = this._plane;
-    this._plane = (this._plane + 1) % planeCount;
-    const sliderVal = parseFloat(this.slider.value);
-    const t = Math.min(sliderVal / 50, 1);
-    const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
-    const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+    const planeKnob  = Math.round(_ov('brushPlane', -1));
+    let plane;
+    if (planeKnob >= 0 && planeKnob < planeCount) {
+      plane = planeKnob;                                   // fixed group
+    } else {
+      plane = this._plane;                                 // CPU selects
+      this._plane = (this._plane + 1) % planeCount;
+    }
+
+    const palIdx = Math.round(_ov('brushColor', -1));
+
     const w = CameraModule.screenToWorld(sx, sy);
     import('../ui/overlays.js').then((module) => {
-      module.OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, this.pcountEl, plane);
+      module.OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, this.pcountEl, plane, palIdx);
     });
   },
 

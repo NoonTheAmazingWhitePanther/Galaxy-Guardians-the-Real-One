@@ -37,6 +37,7 @@ import { PanelArrange } from '../debug/panel-arrange.js';
 import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
 import { InputState } from './input.module.js';
+import { SatBlobs } from '../debug/sat-blobs.js';
 
 // "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
 // debug+panel mode → a selection rectangle. On release, every panel it caught
@@ -198,6 +199,20 @@ export const InDebug = {
     const x = pt.x;
     const y = pt.y;
 
+    // ── Selection panel icons (📌 ⛶ ▼ ⤓ on the transparent group panel) ──
+    if (DEBUG_STATE.selection && DebugRouter.masterEnabled && !DebugRouter._consoleMode) {
+      const sb = DebugRouter.selectionBBox();
+      if (sb) {
+        for (const ic of DebugRouter._selectionIcons(sb)) {
+          if (x >= ic.x && x <= ic.x + ic.s && y >= ic.y && y <= ic.y + ic.s) {
+            DebugRouter.selectionAction(ic.act);
+            e.preventDefault();
+            return true;
+          }
+        }
+      }
+    }
+
     for (const panel of this._activePanels()) {
       if (!panel.visible) continue;
 
@@ -341,6 +356,34 @@ export const InDebug = {
         return true;
       }
 
+      // ── Maximize button ─ grow to the nearest neighbours, never overlap ─
+      if (hit.type === 'maximize') {
+        DebugRouter.maximizePanel(panel);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
+
+      // ── 🖌 Edit — open this panel's edit blobs (opened AND minimized each
+      //    edit their own state: the actions act on the current form) ──────
+      if (hit.type === 'edit') {
+        const w = panel.w || 120, h = panel.h || 56;
+        panel._lastResize = panel._lastResize || { fromW: w, fromH: h, toW: w, toH: h };
+        this._openResizeBlobs(panel, w, h);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
+
+      // ── ⤓ Shrink to bar ──────────────────────────────────────────────
+      if (hit.type === 'shrink') {
+        DebugRouter.shrinkToBar(panel);
+        try { window.GGPrefs?.save?.(); } catch (_) {}
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
+
       // ── Section header tap — collapse/expand ─────────────────────────
       if (hit.type === 'sectionHeader') {
         panel.toggleSection(hit.key);
@@ -444,6 +487,46 @@ export const InDebug = {
     if (m?.timer) { clearTimeout(m.timer); m.timer = null; }
     this._marquee = null;
     DEBUG_STATE.marquee = null;
+  },
+
+  // The 3 post-resize blobs (via the reusable SatBlobs fan):
+  //   ⤢  Equal Scale — size the CONTENT to the new rectangle, not just the
+  //      box. Works identically for minimized panels (mixer knobs follow).
+  //   ∝  Keep Other Tuning Ratio (starts ON) — Equal Scale stays uniform
+  //      (geometric mean of the w/h change); OFF follows the width change.
+  //   ↺  Reset — content scale to 1 and the user size cleared.
+  _openResizeBlobs(p, w, h) {
+    const sync = () => { try { window._InAims?.syncDebugPanels(); } catch (_) {} };
+    SatBlobs.open(p, w, h, [
+      {
+        glyph: '⤢', title: 'Equal Scale content to the new size',
+        onTap: (panel) => {
+          const r = panel._lastResize;
+          if (!r) return;
+          const wr = r.toW / Math.max(1, r.fromW);
+          const hr = r.toH / Math.max(1, r.fromH);
+          const ratio = panel.keepTuningRatio ? Math.sqrt(wr * hr) : wr;
+          panel.contentScale = Math.min(2.5, Math.max(0.4, (panel.contentScale || 1) * ratio));
+          panel._chromeDirty = true;
+          sync();
+        }
+      },
+      {
+        glyph: '∝', title: 'Keep other tuning ratio / free',
+        toggle: () => p.keepTuningRatio,
+        onTap: (panel) => { panel.keepTuningRatio = !panel.keepTuningRatio; }
+      },
+      {
+        glyph: '↺', title: 'Reset size + content scale',
+        onTap: (panel) => {
+          panel.contentScale = 1;
+          if (panel.minimized) { panel._userMinW = null; panel._userMinH = null; }
+          else                 { panel._userW    = null; panel._userH    = null; }
+          panel._chromeDirty = true;
+          sync();
+        }
+      },
+    ]);
   },
 
   /**
@@ -592,6 +675,14 @@ export const InDebug = {
       if (this._dragStarted) {
         this.activePanel.x = this.startPanelX + dx;
         this.activePanel.y = this.startPanelY + dy;
+        // Shrunk bar pulled OUT (up past the threshold) → becomes MINIMIZED
+        // and the drag continues, waiting for release. Until it's grabbed out
+        // it is still considered shrunk.
+        if (this.activePanel.shrunk && dy < -30) {
+          this.activePanel.shrunk = false;
+          this.activePanel.minimized = true;
+          this.activePanel._chromeDirty = true;
+        }
         // Feed the incremental move into the trajectory buffer (last 5 averaged)
         // so a free-form drop can eject along the direction the drag came from.
         PanelArrange.sample(x - this._prevMoveX, y - this._prevMoveY);
@@ -625,7 +716,10 @@ export const InDebug = {
   handleUp(e) {
     if (e.pointerId !== this.pointerId) return false;
 
-    // ── Marquee release: COLLECT everything the rectangle caught ──────
+    // ── Marquee release: SELECT everything the rectangle caught ───────
+    // The rect persists as a live selection (drawn by DebugRouter as an
+    // animated bounding box of the caught panels). A quick tap or a tiny
+    // rect on empty space CLEARS the selection.
     if (this._marquee) {
       const m = this._marquee;
       m.armed = false;
@@ -636,7 +730,11 @@ export const InDebug = {
           x: Math.min(m.x0, m.x1), y: Math.min(m.y0, m.y1),
           w: Math.abs(m.x1 - m.x0), h: Math.abs(m.y1 - m.y0)
         };
-        if (rect.w > 4 && rect.h > 4) DebugRouter.collectInto(rect);
+        DEBUG_STATE.selection = (rect.w > 4 && rect.h > 4)
+          ? DebugRouter.selectInRect(rect)
+          : null;
+      } else {
+        DEBUG_STATE.selection = null;   // plain tap on empty space → deselect
       }
       this._releaseAll();
       return true;
@@ -670,6 +768,21 @@ export const InDebug = {
       this.activePanel.handlePointerUp(pt.x, pt.y, layout);
     }
 
+    // ── Resize release: open the sizing blobs ─────────────────────────
+    // The rectangle just changed — offer the 3 transient actions at the
+    // sizing corner: ⤢ Equal-Scale content, ∝ Keep-ratio toggle, ↺ Reset.
+    if (this._resizingPanel) {
+      const p = this._resizingPanel;
+      let L = null;
+      try { L = p.computeLayout(p.getData?.() ?? {}); } catch (_) {}
+      const w = L?.w ?? p.w ?? 120, h = L?.h ?? p.h ?? 56;
+      p._lastResize = { fromW: this._resizeStartW, fromH: this._resizeStartH, toW: w, toH: h };
+      this._releaseAll();
+      try { window._InAims?.syncDebugPanels(); } catch (_) {}
+      this._openResizeBlobs(p, w, h);
+      return true;
+    }
+
     // ── Stop panel drag ───────────────────────────────────────────────
     if (this.isDragging) {
       const dropped = this.activePanel;
@@ -679,8 +792,10 @@ export const InDebug = {
       // Settle: grid-snap or free-form min-spacing eject, then an eased glide.
       // Only when an actual drag happened — a tap must never nudge a panel.
       if (dropped && didMove) {
-        PanelArrange.settle(dropped, this._activePanels(), { x: this._grabX, y: this._grabY });
+        if (dropped.shrunk) DebugRouter._dockShrunk();   // never pulled out → back to the bar
+        else PanelArrange.settle(dropped, this._activePanels(), { x: this._grabX, y: this._grabY });
       }
+      try { window.GGPrefs?.save?.(); } catch (_) {}      // every operation saved, always
 
       // Rebuild the AIMS hit-map with the panel's new position (the real,
       // working call — the old onDebugToggle() was a dead no-op).

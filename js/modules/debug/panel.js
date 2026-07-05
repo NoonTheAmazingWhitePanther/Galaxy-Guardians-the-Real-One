@@ -31,6 +31,9 @@ export class Panel {
     this._userH             = null;
     this._userMinW          = null;
     this._userMinH          = null;
+    this.shrunk             = false;  // shrink-to-bar: one-line title bar docked above the bottom bar
+    this.contentScale       = 1;      // per-panel CONTENT size (fonts/knobs/rows), separate from the rectangle
+    this.keepTuningRatio    = true;   // Equal-Scale blob: keep tuning proportions (uniform) vs per-axis
     this._collapsedSections = new Set(
       (config.collapsedByDefault || [])
     );
@@ -565,9 +568,17 @@ export class Panel {
   }
 
   computeLayout(data) {
+    // SHRUNK: the lowest size — a one-line header bar in panel style.
+    if (this.shrunk) {
+      const sc = DEBUG_STATE.scale * (this.contentScale || 1);
+      const h = Math.max(18, Math.round(20 * sc));
+      const w = Math.max(110, Math.round(150 * sc));
+      this.w = w; this.h = h;
+      return { w, h, minimized: true, shrunk: true, lines: [], controls: [], scrollOffset: 0 };
+    }
     PanelStyle.apply();   // fold the user's PANEL SETTINGS scales into the style
     const s = DEBUG_STATE.style;
-    const sc = DEBUG_STATE.scale;
+    const sc = DEBUG_STATE.scale * (this.contentScale || 1);   // per-panel content size
 
     const MIN_W      = 52;
     const MIN_H      = 48;
@@ -577,19 +588,26 @@ export class Panel {
     const MIN_HORIZ_W = 88;
 
     if (this.minimized) {
-      // Mixer: size to fit one small knob per channel + the master knob.
-      // Horizontal → a row (master on the right); Vertical → a column (master
-      // at the bottom). Grows with channel count — "takes more space than usual".
+      // Mixer: size to fit the GRID — channels wrap 3 per line (3·3·3 = 9 knobs
+      // in three lines) with the master at the end. Radii come from the
+      // minimized attributes (PANEL SETTINGS → psMinKnob).
       if (this.isMixer()) {
-        const N   = this._mixChannels().length;
-        const chR = 9, mR = 14, gap = 6, pad = 8;
+        const N     = this._mixChannels().length;
+        const cs    = this.contentScale || 1;
+        const chR   = (s.minChR || 9) * cs, mR = (s.minMasterR || 14) * cs, gap = 6 * cs, pad = 8;
+        const COLS  = 3;
+        const pitch = chR * 2 + gap;
+        const lines = Math.max(1, Math.ceil(N / COLS));
+        const perLn = Math.min(N, COLS);
         let mw, mh;
         if (this._minVertical) {
-          mw = Math.max(52, mR * 2 + pad * 2);
-          mh = 20 + N * (chR * 2 + gap) + gap + mR * 2 + 14;
+          // Columns of 3 (vertical rows), wrapping right; master at the bottom.
+          mw = Math.max(pad * 2 + lines * pitch, mR * 2 + pad * 2, 52);
+          mh = 20 + perLn * pitch + gap + mR * 2 + 14;
         } else {
-          mw = pad + N * (chR * 2 + gap) + gap + mR * 2 + pad;
-          mh = Math.max(50, mR * 2 + 22);
+          // Rows of 3, wrapping down; master on the right.
+          mw = pad + perLn * pitch + gap + mR * 2 + pad;
+          mh = Math.max(50, 20 + lines * pitch + 8, mR * 2 + 22);
         }
         const fw = this._userMinW ? Math.max(mw, this._userMinW) : mw;
         const fh = this._userMinH ? Math.max(mh, this._userMinH) : mh;
@@ -659,33 +677,49 @@ export class Panel {
   }
 
   hitTest(x, y, layout) {
+    if (layout.shrunk) {
+      const lx = x - this.x, ly = y - this.y;
+      if (lx >= 0 && ly >= 0 && lx <= layout.w && ly <= layout.h) {
+        if (lx >= layout.w - 18) return { type: 'pin' };   // 📌 lives at the right end
+        return { type: 'panel' };
+      }
+      return null;
+    }
     if (layout.minimized) {
       if (x >= this.x && x <= this.x + layout.w && y >= this.y && y <= this.y + layout.h) {
+        const lx = x - this.x, ly = y - this.y;
+        // 🖌 edit brush — bottom-left corner of the minimized panel (its own).
+        if (lx <= 15 && ly >= layout.h - 15) return { type: 'edit' };
         return { type: 'panel' };
       }
       return null;
     }
 
     const s       = DEBUG_STATE.style;
-    const sc      = DEBUG_STATE.scale;
+    const sc      = DEBUG_STATE.scale * (this.contentScale || 1);
     const lh      = s.lineHeight * sc;
     const px      = s.padX * sc;
     const py      = s.padY * sc;
     const pw      = layout.w;
 
     // Hit test minimize and pin buttons (top-right of panel, in panel-local coords)
+    // Header icons, left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
     const minBtnSize = 16;
-    const minBtnX    = pw - minBtnSize - 6;
-    const pinBtnX    = minBtnX - minBtnSize - 4;
+    const maxBtnX    = pw - minBtnSize - 6;
+    const pinBtnX    = maxBtnX - minBtnSize - 4;
+    const minBtnX    = pinBtnX - minBtnSize - 4;
+    const shrBtnX    = minBtnX - minBtnSize - 4;
+    const edtBtnX    = shrBtnX - minBtnSize - 4;
     const btnY       = 6;
     const lx = x - this.x;
     const ly = y - this.y;
 
-    if (lx >= minBtnX && lx <= minBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'minimize' };
-    }
-    if (lx >= pinBtnX && lx <= pinBtnX + minBtnSize && ly >= btnY && ly <= btnY + minBtnSize) {
-      return { type: 'pin' };
+    if (ly >= btnY && ly <= btnY + minBtnSize) {
+      if (lx >= maxBtnX && lx <= maxBtnX + minBtnSize) return { type: 'maximize' };
+      if (lx >= pinBtnX && lx <= pinBtnX + minBtnSize) return { type: 'pin' };
+      if (lx >= minBtnX && lx <= minBtnX + minBtnSize) return { type: 'minimize' };
+      if (lx >= shrBtnX && lx <= shrBtnX + minBtnSize) return { type: 'shrink' };
+      if (lx >= edtBtnX && lx <= edtBtnX + minBtnSize) return { type: 'edit' };
     }
 
     // Hit test section headers

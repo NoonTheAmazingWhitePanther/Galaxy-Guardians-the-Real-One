@@ -18,6 +18,10 @@ export const PALS = [
     { hi: "#ffffaa", mid: "#ddcc00", lo: "#332200", gc: "220,200,60" }
 ];
 
+// Known-color names for the palettes above (Planet Brush color picker).
+// Index-aligned with PALS; -1 everywhere means Random (the classic way).
+export const PAL_NAMES = ["Ember", "Ocean", "Violet", "Emerald", "Magenta", "Gold"];
+
 export const AST_PALETTE = [
     { fill: "#9c8e7a", outline: "#6b5e50", dot: "#c4b49a" },
     { fill: "#7a8490", outline: "#505860", dot: "#a8b4bc" },

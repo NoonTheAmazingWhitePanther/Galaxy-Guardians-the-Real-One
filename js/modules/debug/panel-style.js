@@ -40,6 +40,9 @@ const BASE = {
   labelW:     95,
   valW:       45,
   knobR:      14,
+  minChR:      9,   // minimized mixer channel knob radius
+  minMR:      14,   // minimized mixer master knob radius
+  minFont:     7,   // minimized mixer label font px
 };
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -78,6 +81,15 @@ export const PanelStyle = {
     // controls.js getBounds, which reads this same knobR.
     const knobMul = locked ? 1 : clamp(num('psKnob', 1), 0.25, 2.00);
     st.knobR = Math.max(6, Math.round(BASE.knobR * overall * knobMul));
+
+    // Minimized-panel attributes — their OWN knobs (psMinKnob / psMinFont), so
+    // the opened panel and the minimized panel possess different looks. Not
+    // gated by psLock: the minimized state is a different creature by design.
+    const minKnobMul = clamp(num('psMinKnob', 1), 0.25, 2.00);
+    const minFontMul = clamp(num('psMinFont', 1), 0.25, 2.00);
+    st.minChR      = Math.max(5, Math.round(BASE.minChR  * overall * minKnobMul));  // mixer channel knob
+    st.minMasterR  = Math.max(7, Math.round(BASE.minMR   * overall * minKnobMul));  // mixer master knob
+    st.minFontSize = Math.max(5, round1(BASE.minFont * overall * minFontMul));      // mixer labels
   },
 };
 
