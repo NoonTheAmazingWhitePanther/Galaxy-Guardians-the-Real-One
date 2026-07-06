@@ -165,6 +165,8 @@ export const ManualOverrides = {
   // ── PLANET BRUSH (the metaverse planting tool) ──
   brushSizeMin:             { isManual: false, value: 24 },    // starting (smallest) radius
   brushSizeMax:             { isManual: false, value: 60 },    // maximum radius
+  brushDensity:             { isManual: false, value: 4 },     // ms of delay between paints — 4 = rapid
+  brushSpacing:             { isManual: false, value: 20 },    // px of stroke between stamps — the brush's tooth
   brushRandom:              { isManual: false, value: 1.0 },   // 0 = midpoint · 1 = full min..max spread
   brushPlane:               { isManual: false, value: -1 },    // -1 = CPU picks (round-robin) · 0..3 fixed group
   brushColor:               { isManual: false, value: -1 },    // -1 = Random · 0..5 named palette

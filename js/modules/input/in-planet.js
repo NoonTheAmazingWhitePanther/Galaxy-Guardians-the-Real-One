@@ -12,7 +12,7 @@ import { InputState } from './input.module.js';
 import { config } from '../../core/config.js';
 import { ManualOverrides } from '../debug/governor.js';
 
-const BRUSH_SPACING = 90;   // screen px of stroke between planted planets
+const BRUSH_SPACING = 20;   // px of stroke between stamps (auto default — knob overrides)
 const BRUSH_SLOP    = 14;   // move this far before the hold becomes a brush
 const _ov = (k, d) => {
   const v = ManualOverrides[k]?.value;
@@ -40,7 +40,7 @@ export const InPlanet = {
     InputState.holdTime = performance.now();
     InputState.mouseX = e.clientX;
     InputState.mouseY = e.clientY;
-    this._brush = { lastX: e.clientX, lastY: e.clientY, dist: 0, planted: 0 };
+    this._brush = { lastX: e.clientX, lastY: e.clientY, dist: 0, planted: 0, lastT: 0 };
 
     // CRITICAL: Prevent browser from intercepting touch as scroll gesture
     if (e.cancelable) e.preventDefault();
@@ -62,10 +62,20 @@ export const InPlanet = {
       b.dist += Math.hypot(e.clientX - b.lastX, e.clientY - b.lastY);
       b.lastX = e.clientX; b.lastY = e.clientY;
       // First planet plants once the stroke is clearly a drag; the rest every
-      // BRUSH_SPACING of path length after that.
-      const due = b.planted === 0 ? BRUSH_SLOP : BRUSH_SPACING;
-      if (b.dist >= due) {
+      // BRUSH_SPACING of path length after that — AND no sooner than the
+      // DENSITY delay (ms between paints; 4 = rapid drawing). The knob is a
+      // manual like any other, so the wire system can drive it live and push
+      // past the panel's min/max — ManualOverrides.set is never range-clamped.
+      // A REAL BRUSH: tight spacing (the tooth) + density (the flow rate).
+      // The 4 planes take the collision load — neighbors land round-robin on
+      // different planes, so dense strokes don't explode on contact.
+      const spacing = Math.max(4, _ov('brushSpacing', BRUSH_SPACING));
+      const due = b.planted === 0 ? BRUSH_SLOP : spacing;
+      const density = Math.max(0, _ov('brushDensity', 4));
+      const now = performance.now();
+      if (b.dist >= due && (now - b.lastT) >= density) {
         b.dist = 0;
+        b.lastT = now;
         b.planted++;
         this._plantBrush(e.clientX, e.clientY);
       }

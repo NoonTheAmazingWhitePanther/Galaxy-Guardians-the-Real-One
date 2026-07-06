@@ -2003,6 +2003,38 @@
     },
     {
      "type": "buttons",
+     "text": "Density ms",
+     "variable": "ManualOverrides.brushDensity.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 4,
+      "max": 500,
+      "step": 4
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Spacing px",
+     "variable": "ManualOverrides.brushSpacing.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 4,
+      "max": 200,
+      "step": 4
+     }
+    },
+    {
+     "type": "buttons",
      "text": "Random",
      "variable": "ManualOverrides.brushRandom.value",
      "buttons": [

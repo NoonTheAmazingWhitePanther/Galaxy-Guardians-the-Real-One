@@ -302,8 +302,12 @@ body.dbg-console .dbg-sat { display: none; }
 .fps-counter.low { color: #ff7f7f; text-shadow: 0 0 8px rgba(255,127,127,0.7), 0 0 16px rgba(255,127,127,0.4), 0 2px 4px rgba(0,0,0,0.5); }
 
 /* BEST PREFERENCES — benchmark trigger, centred just below the FPS counter.
-   Hidden until the debug system is toggled on (gets .on from DebugRouter). */
+   REMOVED FROM SCREEN for now: it overlaps the UpdateFeed line. The wiring
+   stays intact — the benchmark is still reachable via the Tetris fan 🏆 —
+   and !important beats the .on toggle, so nothing can re-show it until this
+   rule is deleted. */
 #bench-btn {
+    display: none !important;
     position: fixed;
     top: calc(var(--safe) + 36px);
     left: 50%;

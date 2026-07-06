@@ -100,16 +100,16 @@ function round1(v) { return Math.round(v * 10) / 10; }
  * Renderer draws with it, panel.hitTest tests with it: visible ⟺ touchable
  * by construction. Icons are 2× the old fixed 16px at base scale and now
  * follow the overall ratio, with wider breathing room between them.
- * Left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
+ * Left → right: 🖌 edit · ⤓ shrink · 📌 pin · ⛶ maximize · ▼ open/close LAST.
  */
 export function headerIcons(pw, sc) {
   const size = Math.max(16, Math.round(16 * sc));   // ×2 at the shipped ×2 ratio
   const gap  = Math.max(5,  Math.round(6 * sc));    // better spacing
   const y    = Math.max(4,  Math.round(4 * sc));
-  const max  = pw - size - gap;
+  const min  = pw - size - gap;                     // ▼ the open/close — rightmost
+  const max  = min - size - gap;
   const pin  = max - size - gap;
-  const min  = pin - size - gap;
-  const shr  = min - size - gap;
+  const shr  = pin - size - gap;
   const edt  = shr - size - gap;
   return { size, gap, y, bandH: y * 2 + size,
            xs: { edt, shr, min, pin, max } };
