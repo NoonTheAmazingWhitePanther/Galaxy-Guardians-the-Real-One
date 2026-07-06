@@ -220,7 +220,12 @@ export const DebugRenderer = {
         ctx.fillStyle = 'rgba(130,210,255,0.7)';
         ctx.textAlign = 'left';
         ctx.fillText(`${arrow} ${ln.label}`, padX, ly);
-        if (ln.collapsed && ln.total !== null && ln.total !== undefined) {
+        if (ln.headerValue) {
+          // probe headers carry their own measured ms — always visible
+          ctx.textAlign = 'right';
+          ctx.fillStyle = ln.headerColor || 'rgba(240,245,255,0.5)';
+          ctx.fillText(ln.headerValue, pw - padX, ly);
+        } else if (ln.collapsed && ln.total !== null && ln.total !== undefined) {
           ctx.textAlign = 'right';
           ctx.fillStyle = 'rgba(240,245,255,0.5)';
           ctx.fillText(String(ln.total), pw - padX, ly);

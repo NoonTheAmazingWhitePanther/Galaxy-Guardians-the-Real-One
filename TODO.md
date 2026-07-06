@@ -1,5 +1,26 @@
 # Galaxy Guardians — TODO
 
+## 🌌 GHOST GRID — Gravity Grid Phase 2  ⟵ NEW (the real perf unlock)
+The Gravity Grid (SHIPPED) accelerates the LIVE physics path only. When
+FutureCache is hot, physics is served from precomputed ghost ticks — and ghosts
+are deliberately forced onto the exact legacy loop (`GravityField.ghostMode`)
+so predictions never sample a field built from live positions they've already
+diverged from.
+
+- **The unlock**: give the ghost stepper its OWN field — rebuild from ghost
+  bodies inside ghost stepping every K ticks (K≈8). Field build is
+  O(cells×occupied) amortized; per-ghost-tick gravity drops from
+  O(particles×bodies) to O(particles). At HARD_CAP 1000-step lookahead this is
+  where nearly all gravity time actually lives.
+- **Shape**: a second GravityField instance (or re-entrant frame pair) owned by
+  FutureCache; deposit from ghost bodies; no overlay, no knobs beyond a master
+  toggle; invalidated with the cache itself.
+- **Prereq**: verify ghost grid + live grid never share `cellBodies` (ghost
+  body refs must not leak into live gather).
+- **Consistency rule**: cached ticks were computed under ghost-grid forces, so
+  live playback (playNext) is self-consistent by construction — same reason the
+  legacy-exact ghosts are consistent today.
+
 ## 🌠 THE INVADERS LAYER  ⟵ NEW (the big dream)
 Render the live website *underneath* the Galaxy Guardians engine — turn any
 webpage into a playable universe.

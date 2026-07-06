@@ -14,6 +14,8 @@ import { interBodyCollisions, looseVsPlanets } from './collisions.js';
 import { splitDeadParticles } from './creation.js';
 import { PhysicsCounter } from '../debug/physics-counter.js';
 import { QueOps } from '../../core/que-ops.js';
+import { GravityField } from './gravity-field.js';
+import { MsProbe } from '../../core/ms-probe.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -76,8 +78,10 @@ export const solveSprings = (body, dt) => {
   }
 };
 
+const _gfOut = { x: 0, y: 0 };   // scratch for GravityField.sampleInto (no alloc)
+
 export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodies, sunGrav) => {
-  PhysicsCounter.add('gravityChecks');
+  // ── ONE for the Sun: always analytic, always exact ──
   const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : sunGrav;
   const sdx = sunX - p.x, sdy = sunY - p.y;
   const sd2 = sdx * sdx + sdy * sdy;
@@ -86,8 +90,31 @@ export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodi
   p.fx += (sdx / sd) * sf * p.mass;
   p.fy += (sdy / sd) * sf * p.mass;
 
+  // ── MANY for the planets: grid far field + live near ring ──
+  // Ghost stepping (FutureCache) and warmup fall through to the legacy loop
+  // so predictions never learn from a stale field.
+  if (GravityField.active && GravityField.sampleInto(p.x, p.y, _gfOut)) {
+    const scale = p.mass / nParticles;
+    p.fx += _gfOut.x * scale;
+    p.fy += _gfOut.y * scale;
+
+    // Near correction: exact per-body forces for the scan ring, MINUS the
+    // blended aggregate shares the field sample just delivered for those same
+    // cells (identical corner math) — de-aliases interpolation + COM error
+    // exactly where they are largest. Self-skip handled inside.
+    const nearChecks = GravityField.gatherNear(p.x, p.y, p.body, _gfOut);
+    p.fx += _gfOut.x * scale;
+    p.fy += _gfOut.y * scale;
+
+    // Truthful counters: 1 field sample + only the near-ring body evals.
+    PhysicsCounter.add('gravityGridSamples');
+    if (nearChecks) PhysicsCounter.add('gravityChecks', nearChecks);
+    return;
+  }
+
+  // ── LEGACY direct loop (grid off · ghost mode · warmup · outside the box) ──
   // Distance cull: skip bodies whose gravity contribution < threshold
-  // Saves significant work when bodies are spread far apart
+  let checks = 0;
   for (let bi = 0; bi < bodies.length; bi++) {
     const b = bodies[bi];
     if (p.body === b) continue;
@@ -95,14 +122,18 @@ export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodi
     const d2 = dx * dx + dy * dy;
     // Skip if force would be negligible (b.mass / d2 < 0.0001)
     if (d2 > b.mass * 10000) continue;
+    checks++;
     const d = Math.sqrt(d2) + 0.1;
     const f = (gravConst * b.mass / (d2 + 300)) / nParticles;
     p.fx += (dx / d) * f * p.mass;
     p.fy += (dy / d) * f * p.mass;
   }
+  if (checks) PhysicsCounter.add('gravityChecks', checks);
 };
 
 export const tickLoose = (dt) => {
+  const _probe = !GravityField.ghostMode;
+  const _t0 = _probe ? performance.now() : 0;
   const gravConst = config.GRAV_CONST;
   const sunMass = SUN.mass;
   const sunX = SUN.x;
@@ -186,6 +217,7 @@ export const tickLoose = (dt) => {
     survivors.push(lp);
   }
   state.loose = survivors;
+  if (_probe) MsProbe.record('physics.tick.loose', performance.now() - _t0);
 };
 
 export const tickBodies = (scaledDt) => {
@@ -193,6 +225,13 @@ export const tickBodies = (scaledDt) => {
   const bodies = state.bodies;
   const numBodies = bodies.length;
   if (numBodies === 0) return;
+
+  // Phase probes: accumulate raw ms across substeps, commit ONE sample per
+  // tick. Live path only — ghost stepping (FutureCache) is measured as a
+  // whole by physics.cacheTick; letting ghosts feed these children would make
+  // them sum past their physics.tick parent.
+  const _probe = !GravityField.ghostMode;
+  let _msGrav = 0, _msSpring = 0, _msColl = 0, _t0 = 0;
 
   const gravConst = config.GRAV_CONST;
   const sunMass = SUN.mass;
@@ -222,6 +261,7 @@ export const tickBodies = (scaledDt) => {
     }
 
     // ── PHASE 2: Fused gravity + integration + burn ──
+    if (_probe) _t0 = performance.now();
     for (let bi = 0; bi < numBodies; bi++) {
       const body = bodies[bi];
       const na = nAlives[bi];
@@ -260,15 +300,19 @@ export const tickBodies = (scaledDt) => {
     }
 
     // ── PHASE 3: Springs ──
+    if (_probe) { const t = performance.now(); _msGrav += t - _t0; _t0 = t; }
     for (let bi = 0; bi < numBodies; bi++) {
       solveSprings(bodies[bi], dt);
     }
 
     // ── PHASE 4: Inter-body collisions (last substep only) ──
+    if (_probe) { const t = performance.now(); _msSpring += t - _t0; _t0 = t; }
     if (sub === config.SUBSTEPS - 1) interBodyCollisions();
+    if (_probe) _msColl += performance.now() - _t0;
   }
 
   // ── POST-SUBSTEP: COM, split, filter ──
+  if (_probe) _t0 = performance.now();
   for (let bi = 0; bi < numBodies; bi++) {
     updateCOM(bodies[bi]);
   }
@@ -307,5 +351,12 @@ export const tickBodies = (scaledDt) => {
   // Skip looseVsPlanets when there's almost nothing loose — saves a full O(n*m) loop
   if (state.loose.length >= 5) {
     looseVsPlanets();
+  }
+
+  if (_probe) {
+    MsProbe.record('physics.tick.gravity',    _msGrav);
+    MsProbe.record('physics.tick.springs',    _msSpring);
+    MsProbe.record('physics.tick.collisions', _msColl);
+    MsProbe.record('physics.tick.cleanup',    performance.now() - _t0);
   }
 };

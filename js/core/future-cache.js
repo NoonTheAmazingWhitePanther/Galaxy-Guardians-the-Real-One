@@ -19,6 +19,7 @@
  */
 import { state } from './state.js';
 import { tickBodies, tickLoose } from '../modules/physics/tick.js';
+import { GravityField } from '../modules/physics/gravity-field.js';
 import { AsteroidsModule } from '../modules/entities/asteroids.js';
 import { QueOps } from './que-ops.js';
 import { PhysicsCounter } from '../modules/debug/physics-counter.js';
@@ -223,6 +224,7 @@ export const FutureCache = {
         };
 
     // ── swap live → ghost ──
+    GravityField.ghostMode = true;   // predictions use the EXACT legacy loop, never the grid
     const liveBodies = state.bodies, liveLoose = state.loose, liveFlashes = state.flashes,
           liveAsteroids = state.asteroids, liveAstTimer = state.astTimer;
 
@@ -269,6 +271,7 @@ export const FutureCache = {
     const resultAstTimer  = state.astTimer;
 
     // ── swap ghost → live ──
+    GravityField.ghostMode = false;
     state.bodies    = liveBodies;
     state.loose     = liveLoose;
     state.flashes   = liveFlashes;

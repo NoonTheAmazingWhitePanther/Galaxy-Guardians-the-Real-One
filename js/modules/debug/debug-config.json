@@ -21,7 +21,7 @@
     },
     {
      "type": "divider",
-     "text": "— select profile —"
+     "text": "\u2014 select profile \u2014"
     },
     {
      "type": "profileButtons",
@@ -46,7 +46,7 @@
     },
     {
      "type": "divider",
-     "text": "— current —"
+     "text": "\u2014 current \u2014"
     },
     {
      "type": "display",
@@ -98,7 +98,7 @@
     },
     {
      "type": "divider",
-     "text": "— real fps —"
+     "text": "\u2014 real fps \u2014"
     },
     {
      "type": "display",
@@ -122,7 +122,7 @@
     },
     {
      "type": "divider",
-     "text": "— virtual fps (skip × real) —"
+     "text": "\u2014 virtual fps (skip \u00d7 real) \u2014"
     },
     {
      "type": "display",
@@ -136,7 +136,7 @@
     },
     {
      "type": "divider",
-     "text": "— renderer —"
+     "text": "\u2014 renderer \u2014"
     },
     {
      "type": "display",
@@ -155,7 +155,7 @@
     },
     {
      "type": "divider",
-     "text": "— render skip control —"
+     "text": "\u2014 render skip control \u2014"
     },
     {
      "type": "buttons",
@@ -164,7 +164,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -175,7 +175,7 @@
     },
     {
      "type": "divider",
-     "text": "— skip base (out of) —"
+     "text": "\u2014 skip base (out of) \u2014"
     },
     {
      "type": "profileButtons",
@@ -273,7 +273,7 @@
      "type": "groupedDisplayMap",
      "key": "pass",
      "source": "DrawCallCounter.passRows",
-     "separator": " ∙ ",
+     "separator": " \u2219 ",
      "filter": "positive",
      "sortGroups": "desc",
      "collapsedByDefault": true
@@ -308,7 +308,7 @@
     },
     {
      "type": "divider",
-     "text": "— governor —"
+     "text": "\u2014 governor \u2014"
     },
     {
      "type": "display",
@@ -327,7 +327,7 @@
     },
     {
      "type": "divider",
-     "text": "— tick skip —"
+     "text": "\u2014 tick skip \u2014"
     },
     {
      "type": "display",
@@ -341,7 +341,7 @@
     },
     {
      "type": "divider",
-     "text": "— per frame counts —"
+     "text": "\u2014 per frame counts \u2014"
     },
     {
      "type": "displayMap",
@@ -356,16 +356,16 @@
     },
     {
      "type": "divider",
-     "text": "— controls —"
+     "text": "\u2014 controls \u2014"
     },
     {
      "type": "buttons",
      "text": "Time Scale",
      "variable": "ManualOverrides.physicsTimeScale.value",
      "buttons": [
-      "×",
+      "\u00d7",
       "=",
-      "÷"
+      "\u00f7"
      ],
      "governor": {
       "mode": "mult",
@@ -380,7 +380,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -391,7 +391,7 @@
     },
     {
      "type": "divider",
-     "text": "— tick skip control —"
+     "text": "\u2014 tick skip control \u2014"
     },
     {
      "type": "buttons",
@@ -400,7 +400,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -412,7 +412,7 @@
     },
     {
      "type": "divider",
-     "text": "— skip base (out of) —"
+     "text": "\u2014 skip base (out of) \u2014"
     },
     {
      "type": "profileButtons",
@@ -484,7 +484,7 @@
     },
     {
      "type": "divider",
-     "text": "— governor —"
+     "text": "\u2014 governor \u2014"
     },
     {
      "type": "display",
@@ -503,7 +503,7 @@
     },
     {
      "type": "divider",
-     "text": "— controls —"
+     "text": "\u2014 controls \u2014"
     },
     {
      "type": "buttons",
@@ -512,7 +512,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -524,7 +524,7 @@
     },
     {
      "type": "divider",
-     "text": "— skip base (out of) —"
+     "text": "\u2014 skip base (out of) \u2014"
     },
     {
      "type": "profileButtons",
@@ -613,7 +613,7 @@
     },
     {
      "type": "divider",
-     "text": "— per frame ops —"
+     "text": "\u2014 per frame ops \u2014"
     },
     {
      "type": "display",
@@ -637,7 +637,7 @@
     },
     {
      "type": "divider",
-     "text": "— config —"
+     "text": "\u2014 config \u2014"
     },
     {
      "type": "display",
@@ -657,16 +657,16 @@
     },
     {
      "type": "divider",
-     "text": "— controls —"
+     "text": "\u2014 controls \u2014"
     },
     {
      "type": "buttons",
      "text": "Budget",
      "variable": "ManualOverrides.queOpsBudget.value",
      "buttons": [
-      "×",
+      "\u00d7",
       "=",
-      "÷"
+      "\u00f7"
      ],
      "governor": {
       "mode": "mult",
@@ -686,7 +686,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -702,7 +702,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -737,27 +737,14 @@
     },
     {
      "type": "divider",
-     "text": "— last ms / avg ms / max ms —"
+     "text": "\u2014 last \u00b7 avg \u00b7 max ms \u00b7 tap \u25b6 to open \u2014"
     },
     {
-     "type": "msProbeRow",
-     "label": "physics.tick"
-    },
-    {
-     "type": "msProbeRow",
-     "label": "render.drawAll"
-    },
-    {
-     "type": "msProbeRow",
-     "label": "render.accumulator"
-    },
-    {
-     "type": "msProbeRow",
-     "label": "queops.tick"
+     "type": "msProbeTree"
     }
    ],
    "minimized": true,
-   "maxHeight": 280,
+   "maxHeight": 420,
    "background": null
   },
   {
@@ -781,7 +768,7 @@
     },
     {
      "type": "divider",
-     "text": "— future cache —"
+     "text": "\u2014 future cache \u2014"
     },
     {
      "type": "display",
@@ -820,7 +807,7 @@
     },
     {
      "type": "divider",
-     "text": "— dormancy (measure) —"
+     "text": "\u2014 dormancy (measure) \u2014"
     },
     {
      "type": "display",
@@ -859,7 +846,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -870,12 +857,12 @@
     },
     {
      "type": "buttons",
-     "text": "Radius ×",
+     "text": "Radius \u00d7",
      "variable": "ManualOverrides.dormancyRadiusK.value",
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -891,7 +878,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -907,7 +894,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -923,7 +910,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -939,7 +926,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -950,7 +937,7 @@
     },
     {
      "type": "divider",
-     "text": "— controls —"
+     "text": "\u2014 controls \u2014"
     },
     {
      "type": "buttons",
@@ -959,7 +946,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -975,7 +962,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -991,7 +978,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1007,7 +994,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1024,7 +1011,7 @@
     },
     {
      "type": "divider",
-     "text": "— vault (render interpolation) —"
+     "text": "\u2014 vault (render interpolation) \u2014"
     },
     {
      "type": "display",
@@ -1083,7 +1070,7 @@
     },
     {
      "type": "divider",
-     "text": "— dreamy trails —"
+     "text": "\u2014 dreamy trails \u2014"
     },
     {
      "type": "profileButtons",
@@ -1113,7 +1100,7 @@
     },
     {
      "type": "divider",
-     "text": "— length —"
+     "text": "\u2014 length \u2014"
     },
     {
      "type": "buttons",
@@ -1122,7 +1109,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1138,7 +1125,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1154,7 +1141,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1170,7 +1157,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1181,7 +1168,7 @@
     },
     {
      "type": "divider",
-     "text": "— look —"
+     "text": "\u2014 look \u2014"
     },
     {
      "type": "buttons",
@@ -1190,7 +1177,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1206,7 +1193,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1222,7 +1209,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1238,7 +1225,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1249,7 +1236,7 @@
     },
     {
      "type": "divider",
-     "text": "— buffer —"
+     "text": "\u2014 buffer \u2014"
     },
     {
      "type": "buttons",
@@ -1258,7 +1245,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1274,7 +1261,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1290,7 +1277,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1301,7 +1288,7 @@
     },
     {
      "type": "divider",
-     "text": "— live —"
+     "text": "\u2014 live \u2014"
     },
     {
      "type": "display",
@@ -1414,7 +1401,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1430,7 +1417,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1446,7 +1433,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1505,7 +1492,7 @@
     },
     {
      "type": "divider",
-     "text": "— resolution —"
+     "text": "\u2014 resolution \u2014"
     },
     {
      "type": "display",
@@ -1529,7 +1516,7 @@
     },
     {
      "type": "divider",
-     "text": "— per-trail res ramp —"
+     "text": "\u2014 per-trail res ramp \u2014"
     },
     {
      "type": "display",
@@ -1548,7 +1535,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1559,7 +1546,7 @@
     },
     {
      "type": "divider",
-     "text": "— memory (ring buffers) —"
+     "text": "\u2014 memory (ring buffers) \u2014"
     },
     {
      "type": "display",
@@ -1583,7 +1570,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1627,7 +1614,7 @@
     },
     {
      "type": "divider",
-     "text": "— reserve power for the GUI —"
+     "text": "\u2014 reserve power for the GUI \u2014"
     },
     {
      "type": "buttons",
@@ -1636,7 +1623,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1672,7 +1659,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1713,7 +1700,7 @@
     },
     {
      "type": "divider",
-     "text": "— 0 = free-form · >0 = snap —"
+     "text": "\u2014 0 = free-form \u00b7 >0 = snap \u2014"
     },
     {
      "type": "buttons",
@@ -1722,7 +1709,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1763,7 +1750,7 @@
     },
     {
      "type": "divider",
-     "text": "— overall ratio —"
+     "text": "\u2014 overall ratio \u2014"
     },
     {
      "type": "buttons",
@@ -1772,7 +1759,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1788,7 +1775,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1799,7 +1786,7 @@
     },
     {
      "type": "divider",
-     "text": "— unlock to distort each —"
+     "text": "\u2014 unlock to distort each \u2014"
     },
     {
      "type": "buttons",
@@ -1808,7 +1795,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1824,7 +1811,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1840,7 +1827,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1856,7 +1843,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1872,7 +1859,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1888,7 +1875,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1904,7 +1891,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1915,7 +1902,7 @@
     },
     {
      "type": "divider",
-     "text": "— minimized panel (its own look) —"
+     "text": "\u2014 minimized panel (its own look) \u2014"
     },
     {
      "type": "buttons",
@@ -1924,7 +1911,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1940,7 +1927,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -1980,7 +1967,7 @@
     },
     {
      "type": "divider",
-     "text": "— hold + drag to paint —"
+     "text": "\u2014 hold + drag to paint \u2014"
     },
     {
      "type": "buttons",
@@ -1989,7 +1976,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -2005,7 +1992,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -2021,7 +2008,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -2032,7 +2019,7 @@
     },
     {
      "type": "divider",
-     "text": "— group: -1 = CPU picks —"
+     "text": "\u2014 group: -1 = CPU picks \u2014"
     },
     {
      "type": "buttons",
@@ -2041,7 +2028,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -2052,11 +2039,11 @@
     },
     {
      "type": "divider",
-     "text": "— -1 Rnd · 0 Ember · 1 Ocean · 2 Violet —"
+     "text": "\u2014 -1 Rnd \u00b7 0 Ember \u00b7 1 Ocean \u00b7 2 Violet \u2014"
     },
     {
      "type": "divider",
-     "text": "— 3 Emerald · 4 Magenta · 5 Gold —"
+     "text": "\u2014 3 Emerald \u00b7 4 Magenta \u00b7 5 Gold \u2014"
     },
     {
      "type": "buttons",
@@ -2065,7 +2052,7 @@
      "buttons": [
       "+",
       "=",
-      "−"
+      "\u2212"
      ],
      "governor": {
       "mode": "add",
@@ -2080,6 +2067,174 @@
     "min": 10,
     "max": 110,
     "step": 2,
+    "label": "",
+    "integer": true
+   }
+  },
+  {
+   "id": "gravityGrid",
+   "title": "GRAVITY GRID",
+   "position": {
+    "x": 16,
+    "y": 730
+   },
+   "refreshRate": 250,
+   "minimized": true,
+   "summaryVariable": "GravityField.stats.occupied",
+   "summaryLabel": "cells",
+   "lines": [
+    {
+     "type": "header",
+     "text": "GRAVITY GRID",
+     "value": "GravityField.stats.mode",
+     "color": "accent",
+     "bold": true
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 one for the Sun \u00b7 many for the planets \u2014"
+    },
+    {
+     "type": "buttons",
+     "text": "Grid",
+     "variable": "ManualOverrides.gravGridOn.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 0,
+      "max": 1,
+      "step": 1
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Cols",
+     "variable": "ManualOverrides.gravGridCols.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 8,
+      "max": 96,
+      "step": 4
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Near ring",
+     "variable": "ManualOverrides.gravGridNear.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 0,
+      "max": 3,
+      "step": 1
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Min bodies",
+     "variable": "ManualOverrides.gravGridMinBodies.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 0,
+      "max": 400,
+      "step": 20
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Build/frame",
+     "variable": "ManualOverrides.gravGridBudget.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 64,
+      "max": 4096,
+      "step": 64
+     }
+    },
+    {
+     "type": "buttons",
+     "text": "Weight map",
+     "variable": "ManualOverrides.gravGridOverlay.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 0,
+      "max": 1,
+      "step": 1
+     }
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 live \u2014"
+    },
+    {
+     "type": "display",
+     "text": "occupied",
+     "value": "GravityField.stats.occupied"
+    },
+    {
+     "type": "display",
+     "text": "bodies",
+     "value": "GravityField.stats.bodies"
+    },
+    {
+     "type": "display",
+     "text": "dominant m",
+     "value": "GravityField.stats.dominantMass"
+    },
+    {
+     "type": "display",
+     "text": "cell px",
+     "value": "GravityField.stats.cellSize"
+    },
+    {
+     "type": "display",
+     "text": "build %",
+     "value": "GravityField.stats.buildPct"
+    },
+    {
+     "type": "display",
+     "text": "grid hits",
+     "value": "GravityField.stats.gridHits"
+    },
+    {
+     "type": "display",
+     "text": "direct falls",
+     "value": "GravityField.stats.directFalls"
+    }
+   ],
+   "minimizedKnob": {
+    "variable": "ManualOverrides.gravGridCols.value",
+    "min": 8,
+    "max": 96,
+    "step": 4,
     "label": "",
     "integer": true
    }

@@ -169,6 +169,14 @@ export const ManualOverrides = {
   brushPlane:               { isManual: false, value: -1 },    // -1 = CPU picks (round-robin) · 0..3 fixed group
   brushColor:               { isManual: false, value: -1 },    // -1 = Random · 0..5 named palette
 
+  // ── GRAVITY GRID (the weight map — one for the Sun, many for the planets) ──
+  gravGridOn:               { isManual: false, value: 1 },     // 1 = grid far field · 0 = legacy direct loop
+  gravGridCols:             { isManual: false, value: 48 },    // lattice resolution (N×N over the cluster box)
+  gravGridNear:             { isManual: false, value: 2 },     // near ring (cells) kept exact per-body
+  gravGridMinBodies:        { isManual: false, value: 80 },    // grid sleeps below this body count (legacy loop is cheaper there)
+  gravGridBudget:           { isManual: false, value: 512 },   // field-build slice: cells refreshed per frame
+  gravGridOverlay:          { isManual: false, value: 0 },     // 1 = draw the weight map in world space
+
   // ── UNDO (Ctrl+Z) ─────────────────────────────────────────────────────────
   // Every knob edit flows through set()/reset(), so recording the prior state
   // here captures the full history with one hook. Bulk operations (profile

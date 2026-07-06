@@ -421,6 +421,113 @@ export class Panel {
           break;
         }
 
+        case 'msProbeTree': {
+          // data is MsProbe.allAsMap(). Builds a probe hierarchy from dot
+          // paths: a probe is the CHILD of the longest other probe whose
+          // label + '.' prefixes it (render.drawAll.trails → render.drawAll).
+          // Parents with children render as collapsible headers showing their
+          // OWN measured ms; expand to see the mini functions inside, sorted
+          // heaviest-first, with ▲ heaviest / ▽ cheapest and a synthetic
+          // (self) row for the unprobed remainder.
+          if (!data || typeof data !== 'object') break;
+          const labels = Object.keys(data);
+          if (labels.length === 0) break;
+          const labelSet = new Set(labels);
+          const kidsOf = new Map();          // parent label -> [child labels]
+          const roots  = [];
+          for (const l of labels) {
+            let parent = null;
+            let cut = l.lastIndexOf('.');
+            while (cut > 0) {
+              const pre = l.slice(0, cut);
+              if (labelSet.has(pre)) { parent = pre; break; }
+              cut = pre.lastIndexOf('.');
+            }
+            if (parent) {
+              if (!kidsOf.has(parent)) kidsOf.set(parent, []);
+              kidsOf.get(parent).push(l);
+            } else {
+              roots.push(l);
+            }
+          }
+          const heat = (avg) =>
+            avg > 8 ? 'rgba(255,100,80,0.9)' : avg > 4 ? 'rgba(255,200,80,0.9)' : s.textDim;
+          const fmt = (r) => `${r.last}  ${r.avg}  ${r.max}`;
+
+          roots.sort((a, b) => (data[b]?.avg || 0) - (data[a]?.avg || 0));
+          if (!this._seenGroupKeys) this._seenGroupKeys = new Set();
+
+          const emit = (label, depth) => {
+            const row  = data[label];
+            const kids = kidsOf.get(label);
+            const short = depth === 0 ? label : label.slice(label.lastIndexOf('.') + 1);
+            const indent = '  '.repeat(depth);
+
+            if (kids && kids.length > 0) {
+              const key = `probe:${label}`;
+              if (!this._seenGroupKeys.has(key)) {
+                this._seenGroupKeys.add(key);
+                if (line.collapsedByDefault !== false) this._collapsedSections.add(key);
+              }
+              const collapsed = this._collapsedSections.has(key);
+              lines.push({
+                isSectionHeader: true,
+                key,
+                label: indent + short,
+                collapsed,
+                total: null,
+                headerValue: row ? fmt(row) : '',
+                headerColor: row ? heat(row.avg) : s.textFaint,
+                color: s.textDim,
+                bold: false,
+              });
+              if (collapsed) return;
+
+              kids.sort((a, b) => (data[b]?.avg || 0) - (data[a]?.avg || 0));
+              // heaviest / cheapest markers only when the ranking means something
+              const mark = kids.length >= 2;
+              // synthetic (self): parent's time not covered by any child probe
+              let childSum = 0;
+              for (const k of kids) childSum += data[k]?.avg || 0;
+              const self = row ? +(row.avg - childSum).toFixed(3) : 0;
+
+              kids.forEach((k, i) => {
+                const kr = data[k];
+                const kShort = k.slice(label.length + 1);
+                const pre = mark && i === 0 ? '▲ ' : (mark && i === kids.length - 1 && !(kidsOf.get(k)?.length) ? '▽ ' : '');
+                if (kidsOf.get(k)?.length) {
+                  emit(k, depth + 1);            // nested parent — recurse
+                } else {
+                  lines.push({
+                    label: '  '.repeat(depth + 1) + pre + kShort,
+                    value: kr ? fmt(kr) : '—',
+                    color: kr ? heat(kr.avg) : s.textFaint,
+                    small: true,
+                  });
+                }
+              });
+              if (self > 0.05) {
+                lines.push({
+                  label: '  '.repeat(depth + 1) + '(self)',
+                  value: `${self} avg`,
+                  color: s.textFaint,
+                  small: true,
+                });
+              }
+            } else {
+              lines.push({
+                label: indent + short,
+                value: row ? fmt(row) : '—',
+                color: row ? heat(row.avg) : s.textFaint,
+                small: true,
+              });
+            }
+          };
+
+          for (const r of roots) emit(r, 0);
+          break;
+        }
+
         case 'divider': {
           lines.push({
             label: line.text || '──',

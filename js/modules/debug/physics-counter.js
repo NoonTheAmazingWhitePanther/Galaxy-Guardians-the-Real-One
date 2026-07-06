@@ -19,6 +19,7 @@ export const PhysicsCounter = {
     springsSolved:       0,
     collisionsResolved:  0,
     gravityChecks:       0,
+    gravityGridSamples:  0,
     looseTicked:         0,
   },
 
@@ -27,6 +28,7 @@ export const PhysicsCounter = {
     springsSolved:       'Springs',
     collisionsResolved:  'Collisions',
     gravityChecks:       'Gravity checks',
+    gravityGridSamples:  'Grid samples',
     looseTicked:         'Loose bodies',
   },
 

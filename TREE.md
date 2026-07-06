@@ -1,6 +1,6 @@
 # Galaxy Guardians — Module Tree
 
-84 JS modules. Core loop: See It / Cache It / Predict It.
+86 JS modules. Core loop: See It / Cache It / Predict It.
 
 ```
 js/config/base/config-audio.js
@@ -37,6 +37,7 @@ js/core/state.js
 js/core/texture-atlas.js
 js/core/update-feed.js
 js/main.js
+js/core/field-grid.js
 js/modules/camera/camera.module.js
 js/modules/debug/benchmark.js
 js/modules/debug/console-view.js
@@ -70,6 +71,7 @@ js/modules/input/in-ui.js
 js/modules/input/input.module.js
 js/modules/monetization/ads.js
 js/modules/physics/collisions.js
+js/modules/physics/gravity-field.js
 js/modules/physics/creation.js
 js/modules/physics/softbody.js
 js/modules/physics/tick.js

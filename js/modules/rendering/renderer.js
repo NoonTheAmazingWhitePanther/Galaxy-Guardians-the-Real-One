@@ -106,8 +106,10 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   const cam = CameraModule.cam;
 
   // 1. Interpolate (Tween)
-  const interpData = StateCache.getInterpolationData(alpha);
-  TweenRenderer.applyTween(state.bodies, state.loose, interpData);
+  MsProbe.call('render.drawAll.tween', () => {
+    const interpData = StateCache.getInterpolationData(alpha);
+    TweenRenderer.applyTween(state.bodies, state.loose, interpData);
+  });
 
   // 2. Prepare the accumulator stage — fades ghost, ready for new scene.
   // Sync the phosphor glow (soft persistence behind the trail) from TrailGov:
@@ -126,9 +128,11 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
 
   try {
     // 3. Starfield
-    { const p = new PassProbe(sCtx);
+    MsProbe.call('render.drawAll.stars', () => {
+      const p = new PassProbe(sCtx);
       EffectsModule.drawStars(p.ctx, t, w, h);
-      DrawCallCounter.countPass('stars', p); }
+      DrawCallCounter.countPass('stars', p);
+    });
 
     // 4. Camera transform
     sCtx.save();
@@ -136,20 +140,19 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     sCtx.scale(cam.zoom, cam.zoom);
     sCtx.translate(-cam.x, -cam.y);
 
-    // 5. Solar rays
-    { const p = new PassProbe(sCtx);
-      SunModule.drawSolarRays(p.ctx, t, cam.zoom);
-      DrawCallCounter.countPass('solarRays', p); }
-
-    // 6. Solar tentacles
-    { const p = new PassProbe(sCtx);
-      SunModule.drawSolarTentacles(p.ctx, t, cam.zoom);
-      DrawCallCounter.countPass('tentacles', p); }
-
-    // 7. Sun
-    { const p = new PassProbe(sCtx);
-      SunModule.drawSun(p.ctx, t, cam.zoom);
-      DrawCallCounter.countPass('sun', p); }
+    // 5–7. Sun stack (rays + tentacles + core) — one ms probe, three
+    // draw-call passes (the DRAW CALLS panel keeps its per-pass detail).
+    MsProbe.call('render.drawAll.sun', () => {
+      { const p = new PassProbe(sCtx);
+        SunModule.drawSolarRays(p.ctx, t, cam.zoom);
+        DrawCallCounter.countPass('solarRays', p); }
+      { const p = new PassProbe(sCtx);
+        SunModule.drawSolarTentacles(p.ctx, t, cam.zoom);
+        DrawCallCounter.countPass('tentacles', p); }
+      { const p = new PassProbe(sCtx);
+        SunModule.drawSun(p.ctx, t, cam.zoom);
+        DrawCallCounter.countPass('sun', p); }
+    });
 
     // 7.5 Trails — stamp the last N past tick-positions (from the vault) as a
     // continuous, self-cleaning trail. Length is in TICKS (via getRecentBodies),
@@ -159,35 +162,43 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
       const count  = TrailGov.effectiveCount(state.physSpeed || 1);
       const recent = count > 0 ? StateCache.getRecentBodies(count) : [];
       if (recent.length > 0) {
-        const p = new PassProbe(sCtx);
-        _drawTrailStamps(p.ctx, recent, {
-          skip:    TrailGov.skip,
-          alpha:   TrailGov.alpha,
-          shrink:  TrailGov.shrink,
-          bloom:   TrailGov.bloom,
-          density: TrailGov.density,
+        MsProbe.call('render.drawAll.trails', () => {
+          const p = new PassProbe(sCtx);
+          _drawTrailStamps(p.ctx, recent, {
+            skip:    TrailGov.skip,
+            alpha:   TrailGov.alpha,
+            shrink:  TrailGov.shrink,
+            bloom:   TrailGov.bloom,
+            density: TrailGov.density,
+          });
+          DrawCallCounter.countPass('trails', p);
         });
-        DrawCallCounter.countPass('trails', p);
       }
     }
 
     // 8. Bodies
-    { const p = new PassProbe(sCtx);
+    MsProbe.call('render.drawAll.bodies', () => {
+      const p = new PassProbe(sCtx);
       BodiesModule.drawBodies(p.ctx);
-      DrawCallCounter.countPass('bodies', p); }
+      DrawCallCounter.countPass('bodies', p);
+    });
 
     // 9. Loose particles
-    { const p = new PassProbe(sCtx);
+    MsProbe.call('render.drawAll.particles', () => {
+      const p = new PassProbe(sCtx);
       ParticlesModule.drawLoose(p.ctx, cam.zoom);
-      DrawCallCounter.countPass('particles', p); }
+      DrawCallCounter.countPass('particles', p);
+    });
 
     // 10. Flashes
-    { const p = new PassProbe(sCtx);
+    MsProbe.call('render.drawAll.flashes', () => {
+      const p = new PassProbe(sCtx);
       EffectsModule.drawFlashes(p.ctx, cam.zoom);
-      DrawCallCounter.countPass('flashes', p); }
+      DrawCallCounter.countPass('flashes', p);
+    });
 
-    // 11. Orbit preview (injected — world-space)
-    if (onBeforeRestore) onBeforeRestore(sCtx);
+    // 11. Orbit preview + world-space overlays (injected)
+    if (onBeforeRestore) MsProbe.call('render.drawAll.overlays', () => onBeforeRestore(sCtx));
 
     // 12. Restore camera
     sCtx.restore();
@@ -198,7 +209,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   }
 
   // 15. Flip: blit finished stage to main canvas
-  MsProbe.call('render.accumulator', () => Accumulator.flip(ctx));
+  MsProbe.call('render.drawAll.flip', () => Accumulator.flip(ctx));
 
   // 15. Commit draw call counts for this frame
   DrawCallCounter.endFrame();

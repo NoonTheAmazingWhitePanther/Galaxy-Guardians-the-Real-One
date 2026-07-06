@@ -119,6 +119,16 @@ export const MsProbe = {
   },
 
   /**
+   * record(label, ms)
+   * Record an externally measured duration. For hot loops that accumulate
+   * phase time with raw performance.now() and commit ONE sample per call —
+   * zero closure allocation inside the loop.
+   */
+  record(label, ms) {
+    _record(_get(label), ms);
+  },
+
+  /**
    * stats(label)
    * Returns a plain object with timing stats for one label.
    * avg is the rolling average of the last 60 samples.

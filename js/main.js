@@ -12,6 +12,7 @@ import { Aims } from './core/aims.js';
 import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
+import { GravityField } from './modules/physics/gravity-field.js';
 import { AsteroidsModule } from './modules/entities/asteroids.js';
 import { Accumulator } from './modules/rendering/accumulator.js';
 import { EffectsModule } from './modules/rendering/effects.js';
@@ -240,7 +241,8 @@ export function resetGame(newThemeName = null) {
 }
 
 function physicsTick() {
-  StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
+  MsProbe.call('physics.snapshot', () =>
+    StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose)));
   MsProbe.call('physics.tick', () => {
     tickBodies(currentPhysicsStep);
     tickLoose(currentPhysicsStep);
@@ -386,6 +388,11 @@ function mainLoop(t) {
       // genuine overload or multi-second stall can ever reach it.
       const MAX_STEPS_PER_FRAME = 300;
 
+      // Gravity grid: deposit the weight map + advance the sliced far-field
+      // build ONCE per rAF, before the substeps. Bodies move sub-cell within
+      // one frame, so every substep this frame gathers from coherent geometry.
+      MsProbe.call('physics.gravField', () => GravityField.update());
+
       let stepsThisFrame = 0;
       while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < MAX_STEPS_PER_FRAME) {
         if (isPreCalculating) {
@@ -437,9 +444,9 @@ function mainLoop(t) {
       // frames it's 100 — purely a function of how much time is actually
       // available, never a fixed count.
       if (CacheGov.enabled && !isPreCalculating) {
-        FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead);
+        MsProbe.call('cache.topUp', () => FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead));
       }
-      Dormancy.tick();   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
+      MsProbe.call('dormancy.tick', () => Dormancy.tick());   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
     }
   }
 
@@ -469,6 +476,7 @@ function mainLoop(t) {
         InputState.mouseY
       );
       Dormancy.drawWitness(drawCtx);   // locked-delta cold-body tween witness (world space)
+      GravityField.drawOverlay(drawCtx); // weight map: how much gravity + where, per box
     }, ticksSinceRender));
 
     // Ticks up to this draw are now represented on screen — start a fresh count.
@@ -491,8 +499,10 @@ function mainLoop(t) {
       InAims.debugDraw(ctx, true);
     }
 
-    DebugRouter.drawAll(ctx);
-    TuningLayer.drawAll(ctx);
+    MsProbe.call('debug.panels', () => {
+      DebugRouter.drawAll(ctx);
+      TuningLayer.drawAll(ctx);
+    });
     _drawAimCursor(ctx);
   }
 

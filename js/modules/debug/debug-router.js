@@ -20,6 +20,7 @@ import { Dormancy } from '../../core/dormancy.js';
 import { GovernorProfiles } from './governor-profiles.js';
 import { TrailProfiles } from './trail-profiles.js';
 import { GuiGovernor } from './gui-governor.js';
+import { GravityField } from '../physics/gravity-field.js';
 
 export const DebugRouter = {
   panels: [],
@@ -52,6 +53,7 @@ export const DebugRouter = {
     GovernorRegistry.register('Dormancy',         Dormancy);
     GovernorRegistry.register('GuiGovernor',      GuiGovernor);
     GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
+    GovernorRegistry.register('GravityField',     GravityField);
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
