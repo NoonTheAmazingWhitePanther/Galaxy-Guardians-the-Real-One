@@ -21,6 +21,8 @@ import { GovernorProfiles } from './governor-profiles.js';
 import { TrailProfiles } from './trail-profiles.js';
 import { GuiGovernor } from './gui-governor.js';
 import { GravityField } from '../physics/gravity-field.js';
+import { CycleMeter } from '../../core/cycle-meter.js';
+import { Gate } from '../../core/gate.js';
 
 export const DebugRouter = {
   panels: [],
@@ -54,6 +56,8 @@ export const DebugRouter = {
     GovernorRegistry.register('GuiGovernor',      GuiGovernor);
     GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
     GovernorRegistry.register('GravityField',     GravityField);
+    GovernorRegistry.register('CycleMeter',       CycleMeter);
+    GovernorRegistry.register('Gate',             Gate);
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
@@ -174,21 +178,39 @@ export const DebugRouter = {
     if (sb) {
       const PAD = 4;
       _ants(sb.x - PAD, sb.y - PAD, sb.w + PAD * 2, sb.h + PAD * 2);
-      // The selection is a fully TRANSPARENT panel: the ant border is its
-      // chrome, and it carries group icons top-right — 📌 pin · ⛶ max ·
-      // ▼ min · ⤓ shrink — acting on every selected panel at once.
-      const icons = this._selectionIcons(sb);
+      // The selection IS a panel: headline band above the ants rectangle with
+      // title + the full icon set, drag anywhere on the band moves the whole
+      // group, and the BR grip scales every member proportionally.
+      const band = this.selectionBand(sb);
       ctx.save();
+      ctx.fillStyle = 'rgba(8,8,18,0.82)';
+      ctx.strokeStyle = 'rgba(130,210,255,0.35)';
+      ctx.lineWidth = 1 / vz;
+      ctx.beginPath();
+      ctx.roundRect(band.x, band.y, band.w, band.h, 5 / vz);
+      ctx.fill(); ctx.stroke();
+      ctx.font = `bold ${11 / vz}px ${DEBUG_STATE.style.font}`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(130,210,255,0.95)';
+      ctx.fillText('SELECTION BOX', band.x + 8 / vz, band.y + band.h / 2);
+
+      const icons = this._selectionIcons(sb);
       ctx.font = `${10 / vz}px ${DEBUG_STATE.style.font}`;
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
       for (const ic of icons) {
-        ctx.fillStyle = 'rgba(20,24,36,0.85)';
+        ctx.fillStyle = 'rgba(20,24,36,0.9)';
         ctx.beginPath();
         ctx.roundRect(ic.x, ic.y, ic.s, ic.s, 3 / vz);
         ctx.fill();
         ctx.fillStyle = 'rgba(130,210,255,0.9)';
         ctx.fillText(ic.glyph, ic.x + ic.s / 2, ic.y + ic.s / 2);
       }
+      // BR scale grip — ⊿ like every panel's sizing corner
+      const gr = this.selectionGrip(sb);
+      ctx.fillStyle = 'rgba(130,210,255,0.6)';
+      ctx.font = `${14 / vz}px ${DEBUG_STATE.style.font}`;
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText('⊿', gr.x + gr.w, gr.y + gr.h);
       ctx.restore();
     }
     ctx.restore();
@@ -273,20 +295,39 @@ export const DebugRouter = {
     return ids.length ? { ids } : null;
   },
 
-  // Group icons on the selection's transparent panel — panel-space rects,
-  // sized so they stay ~16 SCREEN px at any zoom. Order: 📌 ⛶ ▼ ⤓.
+  // The SELECTION BOX headline band — a real panel title bar floating above
+  // the ants rectangle: title left, full icon set right. Panel-space rect.
+  selectionBand(sb) {
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const h = 22 / vz, PAD = 4;
+    return { x: sb.x - PAD, y: sb.y - PAD - h - 2 / vz, w: sb.w + PAD * 2, h };
+  },
+
+  // Group icons in the band — panel-space rects, ~16 SCREEN px at any zoom.
+  // Order (right→left): 📌 pin · ⛶ max · ▼ min · ⤓ shrink · ⇆ row · ⇅ column.
   _selectionIcons(sb) {
     const vz = DEBUG_STATE.viewZoom || 1;
-    const s = 16 / vz, g = 4 / vz, PAD = 4;
-    const y = sb.y - PAD - s - g;
-    const right = sb.x + sb.w + PAD;
+    const band = this.selectionBand(sb);
+    const s = 16 / vz, g = 4 / vz;
+    const y = band.y + (band.h - s) / 2;
+    const right = band.x + band.w - g;
     const glyphs = [
+      { glyph: '⇅', act: 'col' },      // vertical switch — stack Y,X
+      { glyph: '⇆', act: 'row' },      // horizontal switch — line up X,Y
       { glyph: '⤓', act: 'shrink' },
       { glyph: '▼', act: 'min' },
       { glyph: '⛶', act: 'max' },
       { glyph: '📌', act: 'pin' },
     ];
     return glyphs.map((it, i) => ({ ...it, s, x: right - (i + 1) * (s + g), y }));
+  },
+
+  // BR resize grip of the selection box — dragging it scales EVERY selected
+  // panel proportionally (positions relative to the box origin + contentScale).
+  selectionGrip(sb) {
+    const vz = DEBUG_STATE.viewZoom || 1;
+    const s = 22 / vz, PAD = 4;
+    return { x: sb.x + sb.w + PAD - s, y: sb.y + sb.h + PAD - s, w: s, h: s };
   },
 
   selectedPanels() {
@@ -299,6 +340,23 @@ export const DebugRouter = {
   selectionAction(act) {
     const list = this.selectedPanels();
     if (!list.length) return;
+    const sb0 = this.selectionBBox();
+    if (act === 'row' || act === 'col') {
+      // ⇆ / ⇅ — line the selected panels up from the box's top-left:
+      // horizontal first (X,Y) or vertical first (Y,X).
+      const GAP = 8;
+      let cx = sb0.x, cy = sb0.y;
+      for (const p of list) {
+        const r = this._panelRect(p);
+        p.x = cx; p.y = cy;
+        if (act === 'row') cx += r.w + GAP; else cy += r.h + GAP;
+        p._chromeDirty = true;
+      }
+      this.snapshotLayout();
+      this._rebuildAimsMap();
+      try { window.UpdateFeed?.push(`SELECTION ${act === 'row' ? 'ROW ⇆' : 'COLUMN ⇅'} × ${list.length}`); } catch (_) {}
+      return;
+    }
     for (const p of list) {
       if (act === 'pin')    p.pinned = !p.pinned;
       if (act === 'max')    { p.shrunk = false; this.maximizePanel(p); }
@@ -395,6 +453,7 @@ export const DebugRouter = {
     else             { p._userW    = newW; p._userH    = newH; }
     p._chromeDirty = true;
     this._rebuildAimsMap();
+    this.snapshotLayout();
   },
 
   // Know-it-all rectangle: shelf-pack every visible panel the marquee caught
@@ -429,6 +488,67 @@ export const DebugRouter = {
       cx += w + GAP;
       shelfH = Math.max(shelfH, h);
     }
+    this._rebuildAimsMap();
+    this.snapshotLayout();
+  },
+
+  // ── LAYOUT HISTORY — panel-arrangement-only undo/redo (Ctrl-Z satellites).
+  // A ring of snapshots {id → x,y,minimized,shrunk,contentScale}; recorded on
+  // every arrange / drag-end / group action. Position 0 = session start.
+  _layHist: [],
+  _layPtr: -1,
+
+  snapshotLayout() {
+    const snap = {};
+    for (const p of this.panels) {
+      snap[p.id] = { x: p.x, y: p.y, minimized: !!p.minimized, shrunk: !!p.shrunk,
+                     contentScale: p.contentScale || 1 };
+    }
+    // truncate redo tail, push, cap at 60
+    this._layHist.length = this._layPtr + 1;
+    this._layHist.push(snap);
+    if (this._layHist.length > 60) this._layHist.shift();
+    this._layPtr = this._layHist.length - 1;
+  },
+
+  _applyLayout(snap) {
+    if (!snap) return;
+    for (const p of this.panels) {
+      const r = snap[p.id];
+      if (!r) continue;
+      p.x = r.x; p.y = r.y;
+      p.minimized = r.minimized; p.shrunk = r.shrunk;
+      p.contentScale = r.contentScale;
+      p._chromeDirty = true;
+    }
+    this._dockShrunk();
+    this._rebuildAimsMap();
+  },
+
+  undoLayout(toStart = false) {
+    if (this._layHist.length === 0) return;
+    this._layPtr = toStart ? 0 : Math.max(0, this._layPtr - 1);
+    this._applyLayout(this._layHist[this._layPtr]);
+    try { window.UpdateFeed?.push(toStart ? 'LAYOUT → SESSION START' : 'LAYOUT UNDO'); } catch (_) {}
+  },
+
+  redoLayout(toFirstRecorded = false) {
+    if (this._layHist.length === 0) return;
+    this._layPtr = toFirstRecorded ? 0 : Math.min(this._layHist.length - 1, this._layPtr + 1);
+    this._applyLayout(this._layHist[this._layPtr]);
+    try { window.UpdateFeed?.push(toFirstRecorded ? 'LAYOUT → FIRST RECORDED' : 'LAYOUT REDO'); } catch (_) {}
+  },
+
+  // 👓 satellite: THREE different clicks — the full ratio scale of panels AND
+  // console cycles ×1 → ×2 → ×3 → ×1. Panels resize through psOverall (the
+  // one sizing surface); the console follows via ConsoleView.setScale.
+  cycleRatio() {
+    const cur = ManualOverrides.psOverall?.value ?? 2;
+    const next = cur < 1.5 ? 2 : (cur < 2.5 ? 3 : 1);
+    ManualOverrides.set('psOverall', next);
+    for (const p of this.panels) p._chromeDirty = true;
+    try { window._ConsoleView?.setScale(next); } catch (_) {}
+    try { window.UpdateFeed?.push(`GLASSES ×${next}`); } catch (_) {}
     this._rebuildAimsMap();
   },
 
@@ -620,6 +740,7 @@ export const DebugRouter = {
       shelfH = Math.max(shelfH, h);
     }
     this._rebuildAimsMap();
+    this.snapshotLayout();
   },
 
   // BUTTON 3 — "Flip": minimize every panel and flip EACH ONE's own

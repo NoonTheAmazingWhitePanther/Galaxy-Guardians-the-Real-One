@@ -1,5 +1,123 @@
 # Galaxy Guardians — TODO
 
+## 🕳️ PORTS: KNOBS OUT, HOLES IN — the minimized panel becomes a patchbay
+The rule, locked: **outputs are KNOBS, inputs are HOLES.**
+- Opened panels: remove the +/=/− button triplets — knobs only from now on.
+  Every `buttons` line becomes a knob control + an AUTO/MANUAL toggle. (The
+  console rows already grew sliders; panels follow.)
+- AUTO/MANUAL on every variable that has a manual. AUTO = the governor drives;
+  MANUAL = you (or a wire) drives.
+- MINIMIZED panels, when a variable is MANUAL: show its INPUT HOLE — a socket
+  drawn on the minimized face, the variable's title beneath it. Holes exist
+  ONLY in minimized mode (the minimized panel is the patch face; the opened
+  panel is the reading face). Plug a wire into a hole → that manual is driven
+  externally: enhance, silence, or balance it back toward automatic.
+- Gate labels are output-side too: a knob can emit its value, a stats field
+  can emit, and the Cycle panel emits its beat.
+
+## 🎛️ ACTION PANELS — the big list
+Panels that DO instead of show, each a node in the wire graph:
+- **Math Action Panel** — takes 1-2 inputs, one op (add/mul/lerp/clamp/curve),
+  one output. The workhorse between any two holes.
+- **Cycle Action Panel** — a skipper: input beat → Gate.declare on any label.
+  "Connected to sun.drawCall, declare a new skip in real time." (Gate SHIPPED —
+  this panel is its face.)
+- **Color Palette Action Panel** — output: theme colors; input: any stat →
+  palette shifts with the sim (heat → warmer).
+- Later: Logic (compare/branch), Envelope (attack/decay on a value), Random,
+  Clock dividers. Every one is just holes + knobs + one function.
+
+## 📜 VISUAL SCRIPTING LAYER FOR MANUAL VARIABLES
+Every manual variable gains an optional script slot — visual-scripting style:
+a tiny chain (input → transform nodes → the variable) built by wiring Action
+Panels. Stored as data (the wire map), evaluated on the `wires` QueOps lane
+once per cycle, capped by a settle limit. The variable's history stays
+undoable; a script is just a persistent hand on the knob.
+
+## ✅ PIPELINE REALITY CHECK — what goes through QueOps and what must not
+Decided and enforced this session:
+- **Deferrable work → QueOps lanes.** Departments now: physics, rendering,
+  particles, logic, ai, audio, ui, gc, custom + NEW input, debug, cache,
+  theme, wires. Bigger list, per-lane budgets, cycling — connect-time ops can
+  queue anywhere, be skipped, or never be used at all, at zero idle cost.
+- **Synchronous hot path → GATES (SHIPPED).** Per-particle loops and draw
+  passes must never pay queue overhead — the 1000 law dies there. Instead
+  every probe label is now a pass point: `Gate.declare(label, {every|mute})`
+  skips it live. The measurement namespace IS the control namespace.
+- **Presentation → per-line refreshEvery (SHIPPED).** Any panel line (or set,
+  or whole panel) declares its own repaint cadence.
+
+## 🔌 BLUEPRINTS-STYLE LOOP ENGINEERING — the Panel Connector & Wires
+The debug deck grows a node-graph soul (Unreal Blueprints, but ours):
+- **Cycle Panel is the heart (SHIPPED)** — it beats at the chosen law. The
+  connector makes it a CLOCK SOURCE: any panel feature wired to it CYCLES —
+  no matter what it is, once connected it ticks on the Cycle's beat (pulse a
+  knob, re-run a sort, refresh a stat, fire an arrange).
+- **Wires**: drag from a panel's output port to another's input port; the wire
+  is drawn in world/panel space (bezier, heat-colored by traffic), persisted in
+  PrefsStore, torn down by cutting the wire (swipe across it).
+- **Ports**: every ManualOverrides knob is implicitly an input port; every
+  stats field (GravityField.stats.*, CycleMeter.stats.*, MsProbe labels) is an
+  output port. The GovernorRegistry already resolves both by path — the wiring
+  layer is a mapping table {fromPath → toPath, transform} evaluated per cycle.
+- **Loop engineering**: wires may form loops ON PURPOSE — a governor built by
+  the user out of wires. Guard: per-cycle evaluation order + a settle limit,
+  never infinite recursion inside one tick.
+
+## 📺 CODING VISUAL ASPECTS OF LIVE STREAMS — the adventure begins
+The deck as a live-stream instrument: panels, wires, and the sim itself as
+composable visual layers a streamer drives in real time. OBS-friendly
+transparent output mode (The Invaders Layer is the seed), scene presets on the
+Tetris fan, and wire-driven visual reactions (physics stats → bloom, trails,
+camera). The replay research object doubles as the stream's rewind.
+
+## 🌀 THE RICK AND MORTY METAVERSE — to anything
+Portals between instances. The planes of existence already give us parallel
+worlds in ONE sim; the metaverse step connects SEPARATE instances: a shared
+replay/state object travels through a "portal" (link, file, QR) and material-
+izes in another running app — planet through the portal, physics intact.
+Dimension C-137 is just plane 0 somewhere else. Builds on: social sharing of
+complete replays (the transport), plane isolation (the docking bay), and the
+Panel Connector (wires across instances, eventually).
+
+## 🍪 PRIME №1 — COOKIES WARNING & ACCEPTANCE
+This is a website. Before anything ships publicly: the cookies/storage consent
+banner. We persist prefs, layouts, benchmarks in localStorage — that requires
+informed acceptance in most jurisdictions. Accept → persistence on; decline →
+session-only memory (prefs live in RAM, gone on close). The two-phase
+PrefsStore already isolates ALL storage writes behind one module, so the gate
+is a single switch at its save() door.
+
+## 🔬 RESEARCHABLE FULL GUI + GAME REPLAY — duplicate experiments
+Record EVERYTHING needed to replay a session exactly, as a research object:
+- **Pointer tracking — all of it**: timestamp, pointer x, pointer y, touch
+  states (down/move/up/cancel, pressure where available), and the time DELTAS
+  between events — the deltas are the researchable signal (hesitation,
+  velocity, rhythm).
+- **Deterministic replay**: fixed timestep (0.016) + recorded input stream +
+  starting seed/state snapshot = the same experiment reruns identically. The
+  FutureCache ghost machinery already proves our physics is replayable.
+- **The researchable object**: one JSON — header (version, device, prefs,
+  seed), input stream, and outcome markers (benchmark scores, MsProbe
+  aggregates). An object that can MULTIPLY: load it, fork it mid-way, run a
+  variation, save the child with lineage back to the parent.
+- **Social sharing — complete replays only (for now)**: export the object,
+  load it in a DIFFERENT instance of the app. No partials, no live sync yet —
+  a whole experiment or nothing. Later: leaderboards attach here.
+
+## 📊 SORT 7.2 — COMMUNITY MS AVERAGES (online half)
+The ⚡ bottleneck sort currently uses the local MsProbe window. Phase 2:
+known-statistics averages downloadable as ONE public JSON (file or link),
+known to all users. Receiving an update prompts Accept / decline; a LONG CLICK
+reverts to the previous accepted set. Schema: { probeLabel: { avg, max, n } }.
+Compare local vs community to flag "your device is the outlier" bottlenecks.
+
+## 🧷 RULE (implemented, keep honoring): PANEL MEMORY SURVIVES EVERYTHING
+Unless the debug panel is explicitly reset, it remembers all previous actions —
+through crashes, refreshes, system failures. PrefsStore's two-phase integrity
+write is the mechanism; every new panel feature MUST route its persistent
+state through PANEL_FIELDS or a prefs section, never ad-hoc storage.
+
 ## 🌌 GHOST GRID — Gravity Grid Phase 2  ⟵ NEW (the real perf unlock)
 The Gravity Grid (SHIPPED) accelerates the LIVE physics path only. When
 FutureCache is hot, physics is served from precomputed ghost ticks — and ghosts

@@ -22,6 +22,7 @@ import { StateCache }     from '../../core/state-cache.js';
 import { state }          from '../../core/state.js';
 import { DrawCallCounter, PassProbe } from '../debug/draw-call-counter.js';
 import { MsProbe } from '../../core/ms-probe.js';
+import { Gate } from '../../core/gate.js';
 import { TrailGov } from '../debug/governor.js';
 
 // Draw the trail. `framesBodies` are the stored keyframe positions (oldest→
@@ -128,7 +129,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
 
   try {
     // 3. Starfield
-    MsProbe.call('render.drawAll.stars', () => {
+    if (Gate.pass('render.drawAll.stars')) MsProbe.call('render.drawAll.stars', () => {
       const p = new PassProbe(sCtx);
       EffectsModule.drawStars(p.ctx, t, w, h);
       DrawCallCounter.countPass('stars', p);
@@ -142,7 +143,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
 
     // 5–7. Sun stack (rays + tentacles + core) — one ms probe, three
     // draw-call passes (the DRAW CALLS panel keeps its per-pass detail).
-    MsProbe.call('render.drawAll.sun', () => {
+    if (Gate.pass('render.drawAll.sun')) MsProbe.call('render.drawAll.sun', () => {
       { const p = new PassProbe(sCtx);
         SunModule.drawSolarRays(p.ctx, t, cam.zoom);
         DrawCallCounter.countPass('solarRays', p); }
@@ -162,7 +163,7 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
       const count  = TrailGov.effectiveCount(state.physSpeed || 1);
       const recent = count > 0 ? StateCache.getRecentBodies(count) : [];
       if (recent.length > 0) {
-        MsProbe.call('render.drawAll.trails', () => {
+        if (Gate.pass('render.drawAll.trails')) MsProbe.call('render.drawAll.trails', () => {
           const p = new PassProbe(sCtx);
           _drawTrailStamps(p.ctx, recent, {
             skip:    TrailGov.skip,
@@ -177,28 +178,28 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
     }
 
     // 8. Bodies
-    MsProbe.call('render.drawAll.bodies', () => {
+    if (Gate.pass('render.drawAll.bodies')) MsProbe.call('render.drawAll.bodies', () => {
       const p = new PassProbe(sCtx);
       BodiesModule.drawBodies(p.ctx);
       DrawCallCounter.countPass('bodies', p);
     });
 
     // 9. Loose particles
-    MsProbe.call('render.drawAll.particles', () => {
+    if (Gate.pass('render.drawAll.particles')) MsProbe.call('render.drawAll.particles', () => {
       const p = new PassProbe(sCtx);
       ParticlesModule.drawLoose(p.ctx, cam.zoom);
       DrawCallCounter.countPass('particles', p);
     });
 
     // 10. Flashes
-    MsProbe.call('render.drawAll.flashes', () => {
+    if (Gate.pass('render.drawAll.flashes')) MsProbe.call('render.drawAll.flashes', () => {
       const p = new PassProbe(sCtx);
       EffectsModule.drawFlashes(p.ctx, cam.zoom);
       DrawCallCounter.countPass('flashes', p);
     });
 
     // 11. Orbit preview + world-space overlays (injected)
-    if (onBeforeRestore) MsProbe.call('render.drawAll.overlays', () => onBeforeRestore(sCtx));
+    if (onBeforeRestore && Gate.pass('render.drawAll.overlays')) MsProbe.call('render.drawAll.overlays', () => onBeforeRestore(sCtx));
 
     // 12. Restore camera
     sCtx.restore();

@@ -3,6 +3,7 @@
  * FIXED: Added _cachedData. Safe value resolution.
  */
 import { DEBUG_STATE } from './debug-state.js';
+import { headerIcons } from './panel-style.js';
 import { PanelStyle } from './panel-style.js';
 import { GovernorRegistry, resolveVariable, Governor } from './governor.js';
 import { ControlRenderer, ControlType } from './controls.js';
@@ -330,7 +331,30 @@ export class Panel {
     let currentSection = null;   // key of the active section
     let sectionSkipping = false; // true when inside a collapsed section
 
+    // PER-LINE PRESENTATION DELAY: any config line may declare
+    // `refreshEvery: N` — its produced rows are memoized and only re-resolved
+    // every Nth layout pass. Works per line, per set (give the same value to
+    // several lines), or effectively per panel (set it on every line). Change
+    // the config value live and the cadence follows — the panel's own
+    // refreshRate stays the outer clock, this divides it.
+    if (!this._lineMemo) this._lineMemo = new Map();
+    let _cfgIdx = -1;
+
     for (const line of this.config.lines || []) {
+      _cfgIdx++;
+
+      const _rev = line.refreshEvery | 0;
+      if (_rev > 1) {
+        const memo = this._lineMemo.get(_cfgIdx) || { tick: -1, rows: null };
+        memo.tick++;
+        if (memo.rows && memo.tick % _rev !== 0) {   // stale on purpose
+          for (const r of memo.rows) lines.push(r);
+          this._lineMemo.set(_cfgIdx, memo);
+          continue;
+        }
+        memo._captureFrom = lines.length;             // record fresh rows below
+        this._lineMemo.set(_cfgIdx, memo);
+      }
 
       // sectionHeader — collapsible group header
       if (line.type === 'sectionHeader') {
@@ -367,15 +391,26 @@ export class Panel {
 
       switch (line.type) {
         case 'header': {
+          // NEW HEADER: the title lives in a dedicated band (drawn with the
+          // icons, larger + separator). The summary value that used to share
+          // the headline moves one row BELOW, right-aligned — its own line.
           const value = this._resolveValue(line.value, data);
           const suffix = line.suffix ? this._resolveValue(line.suffix, data) : '';
-          const label = `${line.text}${suffix ? '  ' + suffix : ''}`;
           lines.push({
-            label,
-            value: line.valueSuffix ? `${value}${line.valueSuffix}` : String(value),
+            isTitleBand: true,
+            label: line.text,
             color: s[line.color] || s.accent,
-            bold: line.bold ?? true
+            bold: true,
           });
+          const valStr = line.valueSuffix ? `${value}${line.valueSuffix}` : String(value ?? '');
+          if (valStr !== '' && valStr !== 'undefined') {
+            lines.push({
+              label: suffix ? String(suffix) : '',
+              value: valStr,
+              color: s[line.color] || s.accent,
+              bold: line.bold ?? true,
+            });
+          }
           break;
         }
 
@@ -657,6 +692,14 @@ export class Panel {
           break;
         }
       }
+      const _rev2 = line.refreshEvery | 0;
+      if (_rev2 > 1) {
+        const memo = this._lineMemo.get(_cfgIdx);
+        if (memo && memo._captureFrom !== undefined) {
+          memo.rows = lines.slice(memo._captureFrom);
+          delete memo._captureFrom;
+        }
+      }
     }
 
     return lines;
@@ -811,13 +854,16 @@ export class Panel {
 
     // Hit test minimize and pin buttons (top-right of panel, in panel-local coords)
     // Header icons, left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
-    const minBtnSize = 16;
-    const maxBtnX    = pw - minBtnSize - 6;
-    const pinBtnX    = maxBtnX - minBtnSize - 4;
-    const minBtnX    = pinBtnX - minBtnSize - 4;
-    const shrBtnX    = minBtnX - minBtnSize - 4;
-    const edtBtnX    = shrBtnX - minBtnSize - 4;
-    const btnY       = 6;
+    // Geometry from headerIcons() — the SAME source the renderer draws with:
+    // visible ⟺ touchable by construction, at every scale.
+    const _ic        = headerIcons(pw, sc);
+    const minBtnSize = _ic.size;
+    const maxBtnX    = _ic.xs.max;
+    const pinBtnX    = _ic.xs.pin;
+    const minBtnX    = _ic.xs.min;
+    const shrBtnX    = _ic.xs.shr;
+    const edtBtnX    = _ic.xs.edt;
+    const btnY       = _ic.y;
     const lx = x - this.x;
     const ly = y - this.y;
 

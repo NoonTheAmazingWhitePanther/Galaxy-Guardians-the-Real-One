@@ -164,6 +164,7 @@ export const ConsoleView = {
       '<div class="mbtns"><b data-d="1">+</b><b data-d="0" class="eq">=</b><b data-d="-1">&#8722;</b></div></div>';
     document.body.appendChild(root);
     this._root   = root;
+    window._ConsoleView = this;          // glasses satellite reaches us here
     this._listEl = root.querySelector('.list');
     this._master = { el: root.querySelector('.master'),
                      val: root.querySelector('.mval'),
@@ -201,9 +202,19 @@ export const ConsoleView = {
   //   1. debug toggle button  →  console top      (never overlaps the buttons)
   //   2. scrolling list       →  console master   (.master margin-top)
   //   3. console master       →  bottom bar (#ui)  (never overlaps the bar)
+  // 👓 ratio — the console follows the same ×1/×2/×3 scale as the panels.
+  // Implemented with CSS zoom (scales every px style at once); _layout divides
+  // the JS-owned top/height by the zoom so the box still fits the viewport.
+  setScale(r) {
+    this._scale = Math.max(1, Math.min(3, r || 1));
+    if (this._root) this._root.style.zoom = this._scale;
+    this._layout();
+  },
+
   _layout() {
     const root = this._root;
     if (!root) return;
+    const Z = this._scale || 1;
 
     const cs  = getComputedStyle(document.documentElement);
     const GAP = parseFloat(cs.getPropertyValue('--safe')) || 16;
@@ -230,8 +241,10 @@ export const ConsoleView = {
     }
 
     const h = Math.max(140, bottomLimit - topY);
-    root.style.top       = topY + 'px';
-    root.style.height    = h + 'px';
+    // zoom multiplies rendered size — divide the JS geometry so the zoomed
+    // box lands exactly between the buttons and the bottom bar.
+    root.style.top       = (topY / Z) + 'px';
+    root.style.height    = (h / Z) + 'px';
     root.style.maxHeight = 'none';   // JS owns the height now; drop the CSS cap
 
     // MIDDLE gap: same GAP between the scrolling list and the master box.
@@ -282,11 +295,108 @@ export const ConsoleView = {
           step: (line.governor && line.governor.step) || 1 };
         el.querySelectorAll('.btns b').forEach(b =>
           b.addEventListener('click', () => this._tune(rec, +b.dataset.d)));
+        // LAZY SLIDER: pressing the row (label/value area, not the ± buttons)
+        // builds this variable's slider on first touch — zero DOM cost until
+        // then. Range is precomputed once so drags are pure math.
+        el.querySelector('.lab').addEventListener('click', () => this._toggleSlider(rec));
+        el.querySelector('.val').addEventListener('click', () => this._toggleSlider(rec));
         this._listEl.appendChild(el);
         this._rows.push(rec);
         this._paintRow(rec);
       }
     }
+  },
+
+  // ── Lazy tweened slider ──────────────────────────────────────────────────
+  // Built ONLY when the row is pressed. The range (min/max/step) is frozen at
+  // creation so every drag frame is one multiply; the fill/thumb TWEENS toward
+  // the finger (rAF lerp) and the value writes through on each animated step —
+  // the same eased-glide feel as the mixer knobs.
+  _toggleSlider(rec) {
+    if (rec.sliderEl) {                       // built before → just show/hide
+      const hide = rec.sliderEl.style.display !== 'none';
+      rec.sliderEl.style.display = hide ? 'none' : 'block';
+      if (!hide) this._syncSlider(rec);
+      return;
+    }
+    // precompute the range once — smooth fluid drag is pure math afterwards
+    const gv = rec.gov.value;
+    let min = Number.isFinite(rec.gov.min) ? rec.gov.min : 0;
+    let max = Number.isFinite(rec.gov.max) ? rec.gov.max : (Number.isFinite(gv) && gv !== 0 ? Math.abs(gv) * 4 : 1);
+    if (max <= min) max = min + 1;
+    const step = rec.step || 0.01;
+    rec.sl = { min, max, span: max - min, step,
+               dp: (step < 1) ? (String(step).split('.')[1] || '').length : 0,
+               frac: 0, target: 0, anim: 0, dragging: false };
+
+    const sl = document.createElement('div');
+    sl.className = 'cslider';
+    sl.innerHTML = '<div class="track"><div class="sfill"></div><div class="thumb"></div></div>';
+    rec.el.after(sl);
+    rec.sliderEl = sl;
+    rec.slFill   = sl.querySelector('.sfill');
+    rec.slThumb  = sl.querySelector('.thumb');
+
+    const track = sl.querySelector('.track');
+    const setTarget = (clientX) => {
+      const r = track.getBoundingClientRect();
+      const z = this._scale || 1;               // zoom affects client rects
+      rec.sl.target = Math.max(0, Math.min(1, (clientX - r.left) / (r.width || 1)));
+      this._animSlider(rec);
+    };
+    track.addEventListener('pointerdown', (e) => {
+      rec.sl.dragging = true;
+      try { track.setPointerCapture(e.pointerId); } catch (_) {}
+      setTarget(e.clientX);
+      e.stopPropagation(); e.preventDefault();
+    });
+    track.addEventListener('pointermove', (e) => { if (rec.sl.dragging) setTarget(e.clientX); });
+    const drop = () => { rec.sl.dragging = false; };
+    track.addEventListener('pointerup', drop);
+    track.addEventListener('pointercancel', drop);
+
+    this._syncSlider(rec);
+  },
+
+  _syncSlider(rec) {
+    const v = rec.gov.value;
+    if (Number.isFinite(v)) {
+      rec.sl.frac = rec.sl.target = Math.max(0, Math.min(1, (v - rec.sl.min) / rec.sl.span));
+    }
+    this._paintSlider(rec);
+  },
+
+  _animSlider(rec) {
+    if (rec.sl.anim) return;                    // one rAF loop per slider
+    const tick = () => {
+      const d = rec.sl.target - rec.sl.frac;
+      if (Math.abs(d) < 0.0015 && !rec.sl.dragging) {
+        rec.sl.frac = rec.sl.target;
+        rec.sl.anim = 0;
+        this._commitSlider(rec);
+        return;
+      }
+      rec.sl.frac += d * 0.28;                  // the tween — eased knob glide
+      this._commitSlider(rec);
+      rec.sl.anim = requestAnimationFrame(tick);
+    };
+    rec.sl.anim = requestAnimationFrame(tick);
+  },
+
+  _commitSlider(rec) {
+    const { min, span, step, dp } = rec.sl;
+    let v = min + rec.sl.frac * span;
+    v = Math.round(v / step) * step;
+    v = +v.toFixed(Math.min(6, dp + 2));
+    rec.variable.set(v);
+    this._paintSlider(rec);
+    this._paintRow(rec);
+  },
+
+  _paintSlider(rec) {
+    const pct = (rec.sl.frac * 100).toFixed(2) + '%';
+    rec.slFill.style.width = pct;
+    rec.slThumb.style.left = pct;
   },
 
   _isManual(rec) {

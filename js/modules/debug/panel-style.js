@@ -56,7 +56,7 @@ export const PanelStyle = {
   BASE,
 
   apply() {
-    const overall = clamp(num('psOverall', 1), 0.30, 2.00);
+    const overall = clamp(num('psOverall', 2), 0.30, 3.00);   // glasses ratio: ×1 · ×2 · ×3
     const locked  = num('psLock', 1) >= 0.5;
 
     // Per-item multiplier: forced to 1 while the ratio is locked (uniform scale).
@@ -94,5 +94,25 @@ export const PanelStyle = {
 };
 
 function round1(v) { return Math.round(v * 10) / 10; }
+
+/**
+ * headerIcons(pw, sc) — SINGLE source of the header icon geometry.
+ * Renderer draws with it, panel.hitTest tests with it: visible ⟺ touchable
+ * by construction. Icons are 2× the old fixed 16px at base scale and now
+ * follow the overall ratio, with wider breathing room between them.
+ * Left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
+ */
+export function headerIcons(pw, sc) {
+  const size = Math.max(16, Math.round(16 * sc));   // ×2 at the shipped ×2 ratio
+  const gap  = Math.max(5,  Math.round(6 * sc));    // better spacing
+  const y    = Math.max(4,  Math.round(4 * sc));
+  const max  = pw - size - gap;
+  const pin  = max - size - gap;
+  const min  = pin - size - gap;
+  const shr  = min - size - gap;
+  const edt  = shr - size - gap;
+  return { size, gap, y, bandH: y * 2 + size,
+           xs: { edt, shr, min, pin, max } };
+}
 
 export default PanelStyle;

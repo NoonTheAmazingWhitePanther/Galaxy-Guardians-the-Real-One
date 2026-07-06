@@ -1764,7 +1764,7 @@
      "governor": {
       "mode": "add",
       "min": 0.45,
-      "max": 1.8,
+      "max": 3.0,
       "step": 0.05
      }
     },
@@ -1940,7 +1940,7 @@
    "minimizedKnob": {
     "variable": "ManualOverrides.psOverall.value",
     "min": 0.45,
-    "max": 1.8,
+    "max": 3.0,
     "step": 0.05,
     "label": ""
    }
@@ -2238,6 +2238,85 @@
     "label": "",
     "integer": true
    }
+  },
+  {
+   "id": "cycle",
+   "title": "CYCLE",
+   "position": {
+    "x": 159,
+    "y": 730
+   },
+   "refreshRate": 250,
+   "minimized": true,
+   "summaryVariable": "CycleMeter.stats.lawPct",
+   "summaryLabel": "% of law",
+   "minimizedKnob": {
+    "variable": "ManualOverrides.cycleTarget.value",
+    "min": 100,
+    "max": 4000,
+    "step": 50,
+    "label": "",
+    "integer": true
+   },
+   "lines": [
+    {
+     "type": "header",
+     "text": "CYCLE",
+     "value": "CycleMeter.stats.lawPct",
+     "valueSuffix": "%",
+     "color": "accent",
+     "bold": true
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 you decide the law \u2014"
+    },
+    {
+     "type": "buttons",
+     "text": "Target c/s",
+     "variable": "ManualOverrides.cycleTarget.value",
+     "buttons": [
+      "+",
+      "=",
+      "\u2212"
+     ],
+     "governor": {
+      "mode": "add",
+      "min": 100,
+      "max": 4000,
+      "step": 50
+     }
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 what you're getting \u2014"
+    },
+    {
+     "type": "display",
+     "text": "physics c/s",
+     "value": "CycleMeter.stats.physSec"
+    },
+    {
+     "type": "display",
+     "text": "virtual c/s",
+     "value": "CycleMeter.stats.virtual"
+    },
+    {
+     "type": "display",
+     "text": "render f/s",
+     "value": "CycleMeter.stats.renderSec"
+    },
+    {
+     "type": "display",
+     "text": "steps/frame",
+     "value": "CycleMeter.stats.stepsFrame"
+    },
+    {
+     "type": "display",
+     "text": "banked ms",
+     "value": "CycleMeter.stats.bankMs"
+    }
+   ]
   }
  ]
 }

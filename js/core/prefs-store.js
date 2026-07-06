@@ -152,8 +152,30 @@ export const PrefsStore = {
       if (Number.isFinite(prefs.view.panX)) DEBUG_STATE.viewPanX = prefs.view.panX;
       if (Number.isFinite(prefs.view.panY)) DEBUG_STATE.viewPanY = prefs.view.panY;
     }
+    // STARTUP COORDINATE FIX: the saved pan was measured on the viewport it
+    // was saved in. If the debug table's centroid now lands off-screen (device
+    // rotation, resize, different window), re-center it instead of restoring a
+    // view of empty space.
+    this._fixViewCoords();
     try { window._InAims?.syncDebugPanels(); } catch (_) {}
     return true;
+  },
+
+  _fixViewCoords() {
+    const R = window._DebugRouter;
+    const panels = (R?.panels || []).filter(p => p.visible);
+    if (!panels.length) return;
+    const vz = DEBUG_STATE.viewZoom || 1;
+    let cx = 0, cy = 0;
+    for (const p of panels) { cx += p.x + (p.w || 120) / 2; cy += p.y + (p.h || 60) / 2; }
+    cx /= panels.length; cy /= panels.length;
+    const sx = cx * vz + (DEBUG_STATE.viewPanX || 0);
+    const sy = cy * vz + (DEBUG_STATE.viewPanY || 0);
+    const W = window.innerWidth, H = window.innerHeight, M = 40;
+    if (sx < M || sx > W - M || sy < M || sy > H - M) {
+      DEBUG_STATE.viewPanX = W / 2 - cx * vz;
+      DEBUG_STATE.viewPanY = H / 2 - cy * vz;
+    }
   },
 
   save() {

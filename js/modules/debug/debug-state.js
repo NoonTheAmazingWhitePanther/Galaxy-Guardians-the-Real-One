@@ -18,7 +18,7 @@ export const DEBUG_STATE = {
   // EDITABLE only inside debug (panel mode); outside debug the zoom bar goes
   // back to the camera and pinned tuning panels render LOCKED at this value.
   // Console mode ignores it.
-  viewZoom: 1 / 1.10,
+  viewZoom: 0.55,   // zoomed OUT to fit the ×2 panel ratio in the same screen footprint
 
   // ── VIEW PAN ──
   // Screen-px translation of the panel layer, driven by the PAN PAD while

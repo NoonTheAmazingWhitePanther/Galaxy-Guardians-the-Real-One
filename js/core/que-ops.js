@@ -23,7 +23,14 @@ const SUBJECTS = {
   audio:         { maxPerFrame: 10,  cycleEvery: 1, costMult: 0.8, delayMs: 0.1 },
   ui:            { maxPerFrame: 25,  cycleEvery: 1, costMult: 1.2, delayMs: 0.4 },
   gc_management: { maxPerFrame: 5,   cycleEvery: 4, costMult: 0.5, delayMs: 0.6 },
-  custom:        { maxPerFrame: 20,  cycleEvery: 1, costMult: 1.0, delayMs: 0.0 }
+  custom:        { maxPerFrame: 20,  cycleEvery: 1, costMult: 1.0, delayMs: 0.0 },
+  // THE BIGGER LIST — every department of the app owns a lane, so real-time
+  // wiring can queue into (or skip past) any of them. Unused lanes cost zero.
+  input:         { maxPerFrame: 30,  cycleEvery: 1, costMult: 0.8, delayMs: 0.05 },
+  debug:         { maxPerFrame: 40,  cycleEvery: 2, costMult: 1.0, delayMs: 0.3 },
+  cache:         { maxPerFrame: 25,  cycleEvery: 1, costMult: 1.5, delayMs: 0.1 },
+  theme:         { maxPerFrame: 15,  cycleEvery: 3, costMult: 0.6, delayMs: 0.5 },
+  wires:         { maxPerFrame: 60,  cycleEvery: 1, costMult: 0.5, delayMs: 0.0 }
 };
 
 const _state = {

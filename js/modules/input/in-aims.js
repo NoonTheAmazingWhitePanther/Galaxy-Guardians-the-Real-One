@@ -170,11 +170,12 @@ function _registerAll() {
   // Action satellites are PANEL-mode-only (hidden via body.dbg-console in
   // console mode) — the tap gate matches: visible ⟺ touchable, no phantom taps.
   const _satOn = () => DebugRouter.masterEnabled && !DebugRouter._consoleMode;
-  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.arrangeTetris(); } }});
+  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (_satOn()) window._TetrisFan?.toggle(DebugRouter); } }});
   _safeReg('dbg-reset',    { depth: 2, on: { tap:  () => { if (_satOn()) DebugRouter.undo(); },
                                              hold: () => { if (_satOn()) DebugRouter.resetAllToProfile(); } }});
   _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.toggleGridSnap(); } }});
   _safeReg('dbg-expand',   { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.expandAll(); } }});
+  _safeReg('dbg-glasses',  { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.cycleRatio(); } }});
 
   // ── Depth 1: Debug panels ────────────────────────────────────────────
   _registerDebugPanels();

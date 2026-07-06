@@ -148,7 +148,7 @@ export const ManualOverrides = {
   // and never resizes panels). psLock is the "keep ratio" tick (1 = uniform scale, per-item knobs
   // ignored; 0 = distort each item freely). The rest are SCALE multipliers
   // (1.00 = 100% of the base pixel value), applied on top of the overall ratio.
-  psOverall:                { isManual: false, value: 1.00 },  // overall ratio (→ DEBUG_STATE.scale)
+  psOverall:                { isManual: false, value: 2.00 },  // overall ratio (→ DEBUG_STATE.scale) — ships at ×2
   psLock:                   { isManual: false, value: 1 },     // 1 = keep ratio · 0 = free
   psFont:                   { isManual: false, value: 1.00 },  // text size
   psPad:                    { isManual: false, value: 1.00 },  // inner padding
@@ -176,6 +176,9 @@ export const ManualOverrides = {
   gravGridMinBodies:        { isManual: false, value: 80 },    // grid sleeps below this body count (legacy loop is cheaper there)
   gravGridBudget:           { isManual: false, value: 512 },   // field-build slice: cells refreshed per frame
   gravGridOverlay:          { isManual: false, value: 0 },     // 1 = draw the weight map in world space
+
+  // ── CYCLE PANEL — the chosen law ──────────────────────────────────────────
+  cycleTarget:              { isManual: false, value: 1000 },  // how many cycles you want
 
   // ── UNDO (Ctrl+Z) ─────────────────────────────────────────────────────────
   // Every knob edit flows through set()/reset(), so recording the prior state

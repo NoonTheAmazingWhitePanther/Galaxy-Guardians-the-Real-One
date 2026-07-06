@@ -123,7 +123,23 @@ export const InUI = {
     return !!(R && R.masterEnabled && !R._consoleMode);
   },
   _applyViewZoom: function(v) {
-    DEBUG_STATE.viewZoom = clamp(v, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
+    const oldZ = DEBUG_STATE.viewZoom || 1;
+    const newZ = clamp(v, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX);
+    // ZOOM FROM THE CENTER OF THE DEBUG TABLE: the pivot is the centroid of
+    // every visible panel (screen space). Adjust the pan so that point stays
+    // put while the scale changes — the table breathes around its own middle.
+    const R = window._DebugRouter;
+    const panels = (R?.panels || []).filter(p => p.visible);
+    if (panels.length && newZ !== oldZ) {
+      let cx = 0, cy = 0;
+      for (const p of panels) { cx += p.x + (p.w || 120) / 2; cy += p.y + (p.h || 60) / 2; }
+      cx /= panels.length; cy /= panels.length;                       // panel-space pivot
+      const sx = cx * oldZ + (DEBUG_STATE.viewPanX || 0);             // its screen position
+      const sy = cy * oldZ + (DEBUG_STATE.viewPanY || 0);
+      DEBUG_STATE.viewPanX = sx - cx * newZ;                          // keep it fixed
+      DEBUG_STATE.viewPanY = sy - cy * newZ;
+    }
+    DEBUG_STATE.viewZoom = newZ;
     try { window._InAims?.syncDebugPanels(); } catch (_) {}   // view scaled → refresh tap map
   },
   _panelZoomBy:    function(mult) { this._applyViewZoom((DEBUG_STATE.viewZoom || 1) * mult); },

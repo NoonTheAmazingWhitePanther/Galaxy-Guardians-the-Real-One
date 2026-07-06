@@ -18,6 +18,7 @@ import { DEBUG_STATE } from '../debug/debug-state.js';
 import { ControlRenderer } from '../debug/controls.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
+import { headerIcons } from '../debug/panel-style.js';
 
 function makeCanvas(w, h) {
   // Use OffscreenCanvas where available, fall back to regular canvas
@@ -174,7 +175,7 @@ export const DebugRenderer = {
     if (!minimized) {
       ctx.fillStyle = 'rgba(255,255,255,0.04)';
       ctx.beginPath();
-      ctx.roundRect(1, 1, pw - 2, 28, [radius, radius, 0, 0]);
+      ctx.roundRect(1, 1, pw - 2, Math.max(28, Math.round(28 * sc * 0.75)), [radius, radius, 0, 0]);
       ctx.fill();
       // Drag handle dots — three dots centred, subtle
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
@@ -205,38 +206,71 @@ export const DebugRenderer = {
 
     ctx.textBaseline = 'middle';
 
+    // One-liner guarantee: canvas never wraps, so overflow = overlap. Clip any
+    // string to its available width with an ellipsis instead.
+    const _fit = (txt, maxW) => {
+      if (!txt) return '';
+      if (ctx.measureText(txt).width <= maxW) return txt;
+      let lo = 0, hi = txt.length;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (ctx.measureText(txt.slice(0, mid) + '…').width <= maxW) lo = mid; else hi = mid - 1;
+      }
+      return lo > 0 ? txt.slice(0, lo) + '…' : '…';
+    };
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(padX, padY, pw - padX * 2, ph - padY);
     ctx.clip();
     ctx.translate(0, -scrollOff);
 
+    const icons = headerIcons(pw, sc);
     let ly = padY + lineHeight / 2;
     for (const ln of lines) {
       const fs = ln.small ? fontSize - 1 : fontSize;
-      if (ln.isSectionHeader) {
+      if (ln.isTitleBand) {
+        // ── THE HEADER BAND: title left (larger, accent), icons live to its
+        // right (drawn by chrome/icon pass), separator underneath. ──
+        const bandFs = Math.round(fontSize * 1.25);
+        ctx.font      = `bold ${bandFs}px ${s.font}`;
+        ctx.fillStyle = ln.color || s.accent;
+        ctx.textAlign = 'left';
+        const titleMaxW = icons.xs.edt - padX - icons.gap;   // stop before the icon row
+        ctx.fillText(_fit(ln.label || '', Math.max(20, titleMaxW)), padX, ly);
+        // separator — the band's shelf
+        ctx.strokeStyle = 'rgba(130,210,255,0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padX, ly + lineHeight / 2 - 1);
+        ctx.lineTo(pw - padX, ly + lineHeight / 2 - 1);
+        ctx.stroke();
+      } else if (ln.isSectionHeader) {
         const arrow = ln.collapsed ? '▶' : '▼';
         ctx.font      = `bold ${fs}px ${s.font}`;
         ctx.fillStyle = 'rgba(130,210,255,0.7)';
         ctx.textAlign = 'left';
-        ctx.fillText(`${arrow} ${ln.label}`, padX, ly);
-        if (ln.headerValue) {
-          // probe headers carry their own measured ms — always visible
+        let right = '';
+        let rightColor = 'rgba(240,245,255,0.5)';
+        if (ln.headerValue) { right = ln.headerValue; rightColor = ln.headerColor || rightColor; }
+        else if (ln.collapsed && ln.total !== null && ln.total !== undefined) right = String(ln.total);
+        const rightW = right ? ctx.measureText(right).width : 0;
+        ctx.fillText(_fit(`${arrow} ${ln.label}`, pw - padX * 2 - rightW - 8), padX, ly);
+        if (right) {
           ctx.textAlign = 'right';
-          ctx.fillStyle = ln.headerColor || 'rgba(240,245,255,0.5)';
-          ctx.fillText(ln.headerValue, pw - padX, ly);
-        } else if (ln.collapsed && ln.total !== null && ln.total !== undefined) {
-          ctx.textAlign = 'right';
-          ctx.fillStyle = 'rgba(240,245,255,0.5)';
-          ctx.fillText(String(ln.total), pw - padX, ly);
+          ctx.fillStyle = rightColor;
+          ctx.fillText(right, pw - padX, ly);
         }
       } else {
         ctx.font      = `${ln.bold ? 'bold ' : ''}${fs}px ${s.font}`;
         ctx.fillStyle = ln.color || s.textDim;
-        ctx.textAlign = 'left';
-        ctx.fillText(ln.label || '', padX, ly);
+        // value first (right) so the label knows how much room is left
+        const val = ln.value || '';
+        const valW = val ? Math.min(ctx.measureText(val).width, pw - padX * 2) : 0;
         ctx.textAlign = 'right';
-        ctx.fillText(ln.value || '', pw - padX, ly);
+        if (val) ctx.fillText(_fit(val, pw - padX * 2), pw - padX, ly);
+        ctx.textAlign = 'left';
+        if (ln.label) ctx.fillText(_fit(ln.label, pw - padX * 2 - valW - 6), padX, ly);
       }
       ly += lineHeight;
     }
@@ -267,22 +301,25 @@ export const DebugRenderer = {
 
     // ── Icons drawn LAST — always on top of all text ─────────────────────
     // Left → right: 🖌 edit · ⤓ shrink · ▼ minimize · 📌 pin · ⛶ maximize.
-    // Geometry mirrors panel.hitTest exactly — visible ⟺ touchable.
-    const minBtnSize = 16;
-    const maxBtnX    = pw - minBtnSize - 6;
-    const minBtnY    = 6;
-    const pinBtnX    = maxBtnX - minBtnSize - 4;
-    const minBtnX    = pinBtnX - minBtnSize - 4;
-    const shrBtnX    = minBtnX - minBtnSize - 4;
-    const edtBtnX    = shrBtnX - minBtnSize - 4;
+    // Geometry comes from headerIcons() — the SAME function panel.hitTest
+    // uses, so visible ⟺ touchable by construction. Doubled + spaced.
+    const _ic        = headerIcons(pw, sc);
+    const minBtnSize = _ic.size;
+    const minBtnY    = _ic.y;
+    const maxBtnX    = _ic.xs.max;
+    const pinBtnX    = _ic.xs.pin;
+    const minBtnX    = _ic.xs.min;
+    const shrBtnX    = _ic.xs.shr;
+    const edtBtnX    = _ic.xs.edt;
+    const _icFont    = Math.max(10, Math.round(minBtnSize * 0.62));
 
     const _iconBtn = (bx, glyph, color) => {
       ctx.fillStyle = 'rgba(20,24,36,0.85)';
       ctx.beginPath();
-      ctx.roundRect(bx, minBtnY, minBtnSize, minBtnSize, 3);
+      ctx.roundRect(bx, minBtnY, minBtnSize, minBtnSize, Math.round(minBtnSize * 0.2));
       ctx.fill();
       ctx.fillStyle = color;
-      ctx.font = `10px ${s.font}`;
+      ctx.font = `${_icFont}px ${s.font}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(glyph, bx + minBtnSize / 2, minBtnY + minBtnSize / 2);
     };
@@ -292,7 +329,7 @@ export const DebugRenderer = {
     // Pin button
     if (window._DebugRouter?.masterEnabled) {
       ctx.fillStyle    = panel.pinned ? 'rgba(255,200,80,1)' : 'rgba(240,245,255,0.45)';
-      ctx.font         = `10px ${s.font}`;
+      ctx.font         = `${_icFont}px ${s.font}`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('📌', pinBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
@@ -301,10 +338,10 @@ export const DebugRenderer = {
     // Minimize button (left of the pin) — opaque bg so text doesn't bleed through
     ctx.fillStyle = 'rgba(20,24,36,0.85)';
     ctx.beginPath();
-    ctx.roundRect(minBtnX, minBtnY, minBtnSize, minBtnSize, 3);
+    ctx.roundRect(minBtnX, minBtnY, minBtnSize, minBtnSize, Math.round(minBtnSize * 0.2));
     ctx.fill();
     ctx.fillStyle    = 'rgba(240,245,255,0.85)';
-    ctx.font         = `10px ${s.font}`;
+    ctx.font         = `${_icFont}px ${s.font}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('▼', minBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);
@@ -312,10 +349,10 @@ export const DebugRenderer = {
     // Maximize button (rightmost) — grow as far as the neighbours allow
     ctx.fillStyle = 'rgba(20,24,36,0.85)';
     ctx.beginPath();
-    ctx.roundRect(maxBtnX, minBtnY, minBtnSize, minBtnSize, 3);
+    ctx.roundRect(maxBtnX, minBtnY, minBtnSize, minBtnSize, Math.round(minBtnSize * 0.2));
     ctx.fill();
     ctx.fillStyle    = 'rgba(130,210,255,0.85)';
-    ctx.font         = `10px ${s.font}`;
+    ctx.font         = `${_icFont}px ${s.font}`;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('⛶', maxBtnX + minBtnSize / 2, minBtnY + minBtnSize / 2);

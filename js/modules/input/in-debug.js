@@ -157,6 +157,12 @@ export const InDebug = {
     this._activePanelMaster = null;
     this._scrollingPanel  = null;
     this._resizingPanel   = null;
+    if (this._selDragging || this._selScaling) {
+      this._selDragging = null;
+      this._selScaling  = null;
+      try { DebugRouter._rebuildAimsMap(); DebugRouter.snapshotLayout(); } catch (_) {}
+      try { window._InAims?.syncDebugPanels(); } catch (_) {}
+    }
   },
 
   /**
@@ -199,7 +205,7 @@ export const InDebug = {
     const x = pt.x;
     const y = pt.y;
 
-    // ── Selection panel icons (📌 ⛶ ▼ ⤓ on the transparent group panel) ──
+    // ── SELECTION BOX — a real panel: icons, band drag, BR scale grip ──
     if (DEBUG_STATE.selection && DebugRouter.masterEnabled && !DebugRouter._consoleMode) {
       const sb = DebugRouter.selectionBBox();
       if (sb) {
@@ -209,6 +215,32 @@ export const InDebug = {
             e.preventDefault();
             return true;
           }
+        }
+        // BR grip → group SCALE: every member keeps its proportions, positions
+        // stay relative to the box origin — the whole selection grows as one.
+        const gr = DebugRouter.selectionGrip(sb);
+        if (x >= gr.x && x <= gr.x + gr.w && y >= gr.y && y <= gr.y + gr.h) {
+          this._selScaling = {
+            ox: sb.x, oy: sb.y, d0: Math.max(60, Math.hypot(sb.w, sb.h)),
+            panels: DebugRouter.selectedPanels().map(p => ({
+              p, x: p.x, y: p.y, cs: p.contentScale || 1 })),
+          };
+          this.pointerId = e.pointerId;
+          try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+          e.preventDefault(); e.stopImmediatePropagation();
+          return true;
+        }
+        // Band → group DRAG, exactly like dragging a panel by its title bar.
+        const band = DebugRouter.selectionBand(sb);
+        if (x >= band.x && x <= band.x + band.w && y >= band.y && y <= band.y + band.h) {
+          this._selDragging = {
+            sx: x, sy: y,
+            panels: DebugRouter.selectedPanels().map(p => ({ p, x: p.x, y: p.y })),
+          };
+          this.pointerId = e.pointerId;
+          try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+          e.preventDefault(); e.stopImmediatePropagation();
+          return true;
         }
       }
     }
@@ -658,6 +690,31 @@ export const InDebug = {
         }
       }
 
+      e.preventDefault();
+      return true;
+    }
+
+    // ── Selection group drag / scale ──────────────────────────────────
+    if (this._selDragging) {
+      const dx = x - this._selDragging.sx;
+      const dy = y - this._selDragging.sy;
+      for (const r of this._selDragging.panels) {
+        r.p.x = r.x + dx;
+        r.p.y = r.y + dy;
+      }
+      e.preventDefault();
+      return true;
+    }
+    if (this._selScaling) {
+      const S = this._selScaling;
+      const d = Math.max(40, Math.hypot(x - S.ox, y - S.oy));
+      const f = Math.max(0.4, Math.min(3, d / S.d0));
+      for (const r of S.panels) {
+        r.p.x = S.ox + (r.x - S.ox) * f;
+        r.p.y = S.oy + (r.y - S.oy) * f;
+        r.p.contentScale = Math.max(0.5, Math.min(3, r.cs * f));
+        r.p._chromeDirty = true;
+      }
       e.preventDefault();
       return true;
     }

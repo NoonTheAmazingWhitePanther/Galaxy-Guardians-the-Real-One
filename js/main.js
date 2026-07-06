@@ -13,6 +13,10 @@ import { CameraModule } from './modules/camera/camera.module.js';
 import { DrawAll } from './modules/rendering/renderer.js';
 import { tickBodies, tickLoose } from './modules/physics/tick.js';
 import { GravityField } from './modules/physics/gravity-field.js';
+import { CycleMeter } from './core/cycle-meter.js';
+import { Gate } from './core/gate.js';
+import { TetrisFan } from './modules/debug/tetris-fan.js';
+window._TetrisFan = TetrisFan;
 import { AsteroidsModule } from './modules/entities/asteroids.js';
 import { Accumulator } from './modules/rendering/accumulator.js';
 import { EffectsModule } from './modules/rendering/effects.js';
@@ -176,10 +180,11 @@ export function init() {
     b.addEventListener('pointerleave', () => { clear(); held = false; b.classList.remove('active'); });
     b.addEventListener('pointercancel', () => { clear(); held = false; b.classList.remove('active'); });
   };
-  satWire('dbg-closeall', () => DebugRouter.arrangeTetris());                              // ⊟ → Tetris arrange
+  satWire('dbg-closeall', () => TetrisFan.toggle(DebugRouter));                            // ▦ → open the Tetris fan (two lines of tools)
   satWireHold('dbg-reset', () => DebugRouter.undo(), () => DebugRouter.resetAllToProfile()); // ⟳ → undo / hold: reset
   satWire('dbg-arrange',  () => DebugRouter.toggleGridSnap());                            // ⊞ → Free Roam ⇄ Grid
   satWire('dbg-expand',   () => DebugRouter.expandAll());                                 // ⛶ → all panels to max size
+  satWire('dbg-glasses',  () => DebugRouter.cycleRatio());                                // 👓 → ratio ×1 ×2 ×3 (panels + console)
 
   // User preferences — load the saved customizations now that the panels
   // exist, then autosave every change in real time (GGPrefs.export() for the
@@ -325,6 +330,7 @@ function mainLoop(t) {
   requestAnimationFrame(mainLoop);
 
   // Feed FPS counter every frame — before any frame-skip logic
+  window._FpsCounter = FpsCounter;
   FpsCounter.tick(t, RenderGov.frameSkip, RenderGov.BASE);
   RenderGov.tick();
 
@@ -391,7 +397,7 @@ function mainLoop(t) {
       // Gravity grid: deposit the weight map + advance the sliced far-field
       // build ONCE per rAF, before the substeps. Bodies move sub-cell within
       // one frame, so every substep this frame gathers from coherent geometry.
-      MsProbe.call('physics.gravField', () => GravityField.update());
+      if (Gate.pass('physics.gravField')) MsProbe.call('physics.gravField', () => GravityField.update());
 
       let stepsThisFrame = 0;
       while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < MAX_STEPS_PER_FRAME) {
@@ -438,15 +444,19 @@ function mainLoop(t) {
       // frame count.
       ticksSinceRender += stepsThisFrame;
 
+      // Cycle meter — count what the accumulator actually drained (the 1000
+      // law's ground truth) + the banked remainder still owed to physics.
+      CycleMeter.frame(stepsThisFrame, physicsAccumulator, currentPhysicsStep);
+
       // Adaptive cache-ahead top-up — spend whatever spare ms CacheGov
       // allows pre-computing more future ticks, right now, while there's
       // still budget left in this frame. Some frames that's 1 step, some
       // frames it's 100 — purely a function of how much time is actually
       // available, never a fixed count.
       if (CacheGov.enabled && !isPreCalculating) {
-        MsProbe.call('cache.topUp', () => FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead));
+        if (Gate.pass('cache.topUp')) MsProbe.call('cache.topUp', () => FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead));
       }
-      MsProbe.call('dormancy.tick', () => Dormancy.tick());   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
+      if (Gate.pass('dormancy.tick')) MsProbe.call('dormancy.tick', () => Dormancy.tick());   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
     }
   }
 
@@ -467,6 +477,7 @@ function mainLoop(t) {
   if (RenderGov.shouldRender() && GuiGovernor.shouldRenderCanvas()) {
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
+    CycleMeter.paint();
     MsProbe.call('render.drawAll', () => DrawAll(ctx, t, alpha, didPhysicsTick, (drawCtx) => {
       OverlaysModule.drawOrbitPreview(
         drawCtx,
@@ -499,7 +510,7 @@ function mainLoop(t) {
       InAims.debugDraw(ctx, true);
     }
 
-    MsProbe.call('debug.panels', () => {
+    if (Gate.pass('debug.panels')) MsProbe.call('debug.panels', () => {
       DebugRouter.drawAll(ctx);
       TuningLayer.drawAll(ctx);
     });

@@ -196,12 +196,33 @@ body.dbg-on .dbg-sat { display: flex; }
 #dbg-reset    { left: calc(var(--safe) + var(--pad-size) * 1.138); top: calc(var(--safe) + var(--pad-size) * 2.008); }
 #dbg-arrange  { left: calc(var(--safe) + var(--pad-size) * 0.794); top: calc(var(--safe) + var(--pad-size) * 2.277); }
 #dbg-expand   { left: calc(var(--safe) + var(--pad-size) * 0.370); top: calc(var(--safe) + var(--pad-size) * 2.383); }
+#dbg-glasses  { left: calc(var(--safe) + var(--pad-size) * 1.224); top: calc(var(--safe) + var(--pad-size) * 0.777); }
 
 /* Console mode: the 4 action satellites are PANEL-mode tools — hidden while
    the Live Text console owns the screen. Only the console/panel ray
    (#gg-console-mode — not a .dbg-sat) survives in both debug modes. Must sit
    AFTER `body.dbg-on .dbg-sat` so it wins the cascade. */
 body.dbg-console .dbg-sat { display: none; }
+
+/* Console row slider — lazy-built on row press, tweened thumb. */
+#gg-console .cslider { padding: 2px 8px 6px; }
+#gg-console .cslider .track {
+    position: relative; height: 14px; border-radius: 7px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.10);
+    touch-action: none; cursor: pointer;
+}
+#gg-console .cslider .sfill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+    border-radius: 7px; background: rgba(130,210,255,0.30);
+}
+#gg-console .cslider .thumb {
+    position: absolute; top: 50%; left: 0; width: 10px; height: 10px;
+    margin: -5px 0 0 -5px; border-radius: 50%;
+    background: rgba(130,210,255,0.95);
+    box-shadow: 0 0 6px rgba(130,210,255,0.6);
+    pointer-events: none;
+}
 
 #aims-btn {
     position: fixed;
