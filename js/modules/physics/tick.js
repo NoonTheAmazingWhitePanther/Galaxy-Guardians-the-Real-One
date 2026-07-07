@@ -220,6 +220,47 @@ export const tickLoose = (dt) => {
   if (_probe) MsProbe.record('physics.tick.loose', performance.now() - _t0);
 };
 
+/**
+ * PLANE MERGE — bodies born on brush planes (1..N-1) come home to plane 0.
+ * Per tick: tick down mergeSoft ramps, tick down mergeDelay counters, and
+ * for due bodies check clearance against the prime plane. Clear (or out of
+ * patience) → plane 0, particles follow, mergeSoft arms the soft landing.
+ * O(offPlane × bodies) and offPlane drains to zero — effectively free.
+ */
+export const mergePlanes = (bodies) => {
+  const n = bodies.length;
+  const margin = config.COLLISION_R * 4;
+  for (let i = 0; i < n; i++) {
+    const b = bodies[i];
+    if (b.mergeSoft > 0) b.mergeSoft--;              // collision ease ramp
+    if ((b.plane | 0) === 0) continue;
+    if (b.mergeDelay === undefined) b.mergeDelay = config.PLANE_MERGE_GRACE | 0; // legacy bodies
+    if (b.mergeDelay > 0) { b.mergeDelay--; continue; }
+
+    // Clearance vs the prime plane: no plane-0 body inside touch + margin.
+    // Bodies merged earlier in this same pass already read as plane 0 here,
+    // so two overlapping brush planets never merge on the same tick.
+    let clear = true;
+    for (let j = 0; j < n; j++) {
+      const o = bodies[j];
+      if ((o.plane | 0) !== 0) continue;
+      const dx = o.cx - b.cx, dy = o.cy - b.cy;
+      const need = o.radius + b.radius + margin;
+      if (dx * dx + dy * dy < need * need) { clear = false; break; }
+    }
+
+    b.mergeTries = (b.mergeTries | 0) + 1;
+    if (clear || b.mergeTries >= (config.PLANE_MERGE_FORCE | 0)) {
+      b.plane = 0;
+      b.mergeSoft = config.PLANE_MERGE_SOFT | 0;     // ease into prime collisions
+      const ps = b.particles;
+      for (let k = 0; k < ps.length; k++) ps[k].plane = 0;  // future debris is prime too
+    } else {
+      b.mergeDelay = config.PLANE_MERGE_RETRY | 0;   // ask again later
+    }
+  }
+};
+
 export const tickBodies = (scaledDt) => {
   const dt = scaledDt / config.SUBSTEPS;
   const bodies = state.bodies;
@@ -347,6 +388,16 @@ export const tickBodies = (scaledDt) => {
     }
   }
   bodies.length = writeIdx;
+
+  // ── PLANE MERGE: interpolation into the prime meta plane ──
+  // Brush planets land on planes 1..N-1 so dense strokes don't explode on
+  // contact. The planes are a landing pad, not a home: after GRACE ticks a
+  // body asks plane 0 for clearance; granted (or FORCE tries exhausted) it
+  // merges home, and mergeSoft eases its first collisions in (0 → 1
+  // smoothstep in collisions.js) so even a forced overlap separates gently.
+  // Everything counts in TICKS off body state — fully deterministic, so
+  // ghost stepping (FutureCache) reproduces every merge byte-for-byte.
+  mergePlanes(bodies);
 
   // Skip looseVsPlanets when there's almost nothing loose — saves a full O(n*m) loop
   if (state.loose.length >= 5) {

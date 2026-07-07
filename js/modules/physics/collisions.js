@@ -11,6 +11,20 @@ import { hypot, clamp, rnd, rndR } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
 import { PhysicsCounter } from '../debug/physics-counter.js';
+import { GravityField } from './gravity-field.js';
+
+// Soft landing for freshly plane-merged bodies: while either body's
+// mergeSoft ramp is running, collision response scales 0 → 1 (smoothstep).
+// The interpolation into the prime meta plane — overlaps separate gently
+// instead of exploding. Full strength (1) the moment no ramp is active.
+const _pairSoft = (A, B) => {
+  const total = config.PLANE_MERGE_SOFT || 45;
+  if (!(A.mergeSoft > 0) && !(B.mergeSoft > 0)) return 1;
+  const sa = A.mergeSoft > 0 ? 1 - A.mergeSoft / total : 1;
+  const sb = B.mergeSoft > 0 ? 1 - B.mergeSoft / total : 1;
+  const t = Math.max(0, Math.min(sa, sb));
+  return t * t * (3 - 2 * t);
+};
 
 // Persistent objects to avoid GC pressure
 const _grid = new Map();
@@ -44,6 +58,8 @@ export const interBodyCollisions = () => {
       const cd2 = cdx * cdx + cdy * cdy;
       const thresh = A.radius + B.radius + collisionR * 4;
       if (cd2 > thresh * thresh) continue;
+
+      const soft = _pairSoft(A, B);   // 0→1 ease for freshly merged bodies
 
       // Clear persistent grid
       _grid.clear();
@@ -101,7 +117,7 @@ export const interBodyCollisions = () => {
 
             const d = Math.sqrt(d2) || 0.001;
             const nx = dx / d, ny = dy / d;
-            const ov = collisionR - d;
+            const ov = (collisionR - d) * soft;   // soft landing: eased separation
             const ma = pa.mass, mb = pb.mass;
             const mt = ma + mb;
 
@@ -116,11 +132,12 @@ export const interBodyCollisions = () => {
               const denom = (1 / ma + 1 / mb);
               // FIX: Guard against division by zero in impulse
               if (denom <= 0 || !Number.isFinite(denom)) continue;
-              const jVal = -(1.35) * vn / denom;
+              const jVal = -(1.35) * vn * soft / denom;  // eased impulse too
               PhysicsCounter.add('collisionsResolved');
+              GravityField.noteCollision(pa.x, pa.y, 1); // HARD — into the weight map segment
               pa.vx += jVal * nx / ma; pa.vy += jVal * ny / ma;
               pb.vx -= jVal * nx / mb; pb.vy -= jVal * ny / mb;
-              const h = Math.min(0.4, Math.abs(vn) * 0.12);
+              const h = Math.min(0.4, Math.abs(vn) * 0.12) * soft;
               pa.heat = clamp(pa.heat + h, 0, 1);
               pb.heat = clamp(pb.heat + h, 0, 1);
             }
@@ -175,6 +192,7 @@ export const looseVsPlanets = () => {
         nearP.vx += lp.vx * lp.mass / nearP.mass * 0.5;
         nearP.vy += lp.vy * lp.mass / nearP.mass * 0.5;
         nearP.heat = Math.min(1, nearP.heat + 0.4);
+        GravityField.noteCollision(lp.x, lp.y, 0);   // SOFT — absorbed debris
         lp.life = 0;
         if (lp.heat > 0.4) {
           state.flashes.push({
@@ -191,6 +209,7 @@ export const looseVsPlanets = () => {
         if (denom <= 0 || !Number.isFinite(denom)) continue;
         const j = -(1 + 0.45) * vn / denom;
         PhysicsCounter.add('collisionsResolved');
+        GravityField.noteCollision(lp.x, lp.y, 0);   // SOFT — debris bounce
         lp.vx -= j * nx / ma; lp.vy -= j * ny / ma;
         nearP.vx += j * nx / mb; nearP.vy += j * ny / mb;
         const h = clamp(Math.abs(vn) * 0.12, 0, 1);

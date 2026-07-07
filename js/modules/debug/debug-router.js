@@ -357,8 +357,15 @@ export const DebugRouter = {
       try { window.UpdateFeed?.push(`SELECTION ${act === 'row' ? 'ROW ⇆' : 'COLUMN ⇅'} × ${list.length}`); } catch (_) {}
       return;
     }
+    // 📌 group pin must go through Panel.pin()/unpin() — those are what
+    // register the panel with the TuningLayer (the pinned-outside-debug
+    // surface). Writing p.pinned directly leaves the flag lit but the panel
+    // invisible in tuning mode. Unified semantics: if ANY selected panel is
+    // still unpinned, this pins ALL of them; only a fully-pinned selection
+    // unpins — one tap always leaves the group in one coherent state.
+    const pinAll = act === 'pin' && list.some(p => !p.pinned);
     for (const p of list) {
-      if (act === 'pin')    p.pinned = !p.pinned;
+      if (act === 'pin')    { pinAll ? p.pin() : p.unpin(); }
       if (act === 'max')    { p.shrunk = false; this.maximizePanel(p); }
       if (act === 'min')    { p.shrunk = false; p.minimized = true; }
       if (act === 'shrink') p.shrunk = true;

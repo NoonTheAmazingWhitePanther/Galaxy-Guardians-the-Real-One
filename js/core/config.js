@@ -12,6 +12,20 @@ export const config = {
   // and radius/proximity checking happen ONLY within the same plane (gravity to
   // the Sun is shared by all). 4 parallel strings of physics by default.
   PLANE_COUNT: 4,
+  // Plane merge — the brush planes are a LANDING PAD, not a home. Bodies
+  // planted on planes 1..N-1 interpolate back into plane 0 (the prime meta
+  // plane, where the real physics group lives) once it is safe:
+  //   GRACE  ticks after spawn before the first clearance check,
+  //   RETRY  ticks between failed clearance checks,
+  //   FORCE  failed checks before merging anyway (SOFT absorbs the landing),
+  //   SOFT   ticks of eased collision response after a merge (impulse and
+  //          positional correction ramp 0 → 1 smoothstep — no explosions).
+  // All counted in physics TICKS (deterministic: ghosts reproduce merges
+  // exactly, so the FutureCache stays valid through them).
+  PLANE_MERGE_GRACE: 90,
+  PLANE_MERGE_RETRY: 30,
+  PLANE_MERGE_FORCE: 10,
+  PLANE_MERGE_SOFT:  45,
   SPRING_K: 0.40,
   DAMPING: 1.0,
   SUBSTEPS: 8,

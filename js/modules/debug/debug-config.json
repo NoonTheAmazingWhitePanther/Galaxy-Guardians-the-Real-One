@@ -2260,6 +2260,44 @@
      "type": "display",
      "text": "direct falls",
      "value": "GravityField.stats.directFalls"
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 grid ms \u00b7 in the MsProbe tree \u2014"
+    },
+    {
+     "type": "display",
+     "text": "grid ms",
+     "value": "GravityField.stats.msUpdate"
+    },
+    {
+     "type": "display",
+     "text": "\u00b7 deposit ms",
+     "value": "GravityField.stats.msDeposit"
+    },
+    {
+     "type": "display",
+     "text": "\u00b7 build ms",
+     "value": "GravityField.stats.msBuild"
+    },
+    {
+     "type": "divider",
+     "text": "\u2014 collisions in the map \u2014"
+    },
+    {
+     "type": "display",
+     "text": "coll \u26a1hard",
+     "value": "GravityField.stats.collHard"
+    },
+    {
+     "type": "display",
+     "text": "coll \u2219soft",
+     "value": "GravityField.stats.collSoft"
+    },
+    {
+     "type": "display",
+     "text": "hot segments",
+     "value": "GravityField.stats.collCells"
     }
    ],
    "minimizedKnob": {

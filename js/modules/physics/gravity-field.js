@@ -36,14 +36,22 @@
  *   the exact legacy loop. The cached future stays exact; only live frames
  *   ride the grid.
  *
+ * COLLISION MAP (weight map, second tenant):
+ *   Beyond HOW MUCH gravity and WHERE, each segment now records WHERE
+ *   collisions happen: HARD (body↔body impulses) and SOFT (loose-debris
+ *   hits), deposited by collisions.js at resolve time, decaying ~1s.
+ *   Ghost-gated — predicted collisions never paint the live map. The
+ *   overlay writes both into the segment's text: `1.2k ⚡3 ∙5`.
+ *
  * The lattice itself is the generic core/field-grid.js — this module is just
- * gravity renting cells in it.
+ * gravity renting cells in it (the collision map rents alongside).
  */
 
 import { FieldGrid } from '../../core/field-grid.js';
 import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
 import { ManualOverrides } from '../debug/governor.js';
+import { MsProbe } from '../../core/ms-probe.js';
 
 const SOFT = 300;            // same softening as the legacy per-body loop
 const _c = { x: 0, y: 0 };   // scratch cell-center
@@ -79,9 +87,21 @@ export const GravityField = {
   ghostMode: false,                    // set by FutureCache around ghost stepping
   dominant: null,                      // heaviest live body (the "sun role")
 
+  // ── collision map: WHERE collisions happen, per weight-map segment ──────
+  // Persistent heat (decays ~1s), separate from the per-frame mass channels
+  // (grid.clear() wipes those every deposit; this must survive frames).
+  // HARD = body↔body impulses · SOFT = loose-debris hits. Ghost-gated:
+  // predicted collisions never paint the live map.
+  _collHard: null,
+  _collSoft: null,
+  _collLen: 0,
+  _collOn: false,                      // true only while the grid is awake (geometry valid)
+
   stats: {
     on: 0, occupied: 0, bodies: 0, dominantMass: 0,
     cellSize: 0, cols: 0, buildPct: 0, gridHits: 0, directFalls: 0, mode: 'OFF',
+    collHard: 0, collSoft: 0, collCells: 0,          // this frame · hot segments
+    msUpdate: 0, msDeposit: 0, msBuild: 0,           // grid time (also in MsProbe tree)
   },
 
   get enabled() { return ManualOverrides.get('gravGridOn', 1) >= 0.5; },
@@ -98,20 +118,22 @@ export const GravityField = {
   update() {
     const s = this.stats;
     s.gridHits = 0; s.directFalls = 0;
-    if (!this.enabled) { s.mode = 'OFF'; s.on = 0; this._front.ready = false; this._building = false; return; }
+    s.collHard = 0; s.collSoft = 0;                       // per-frame counts (deposits land after us, during substeps)
+    if (!this.enabled) { s.mode = 'OFF'; s.on = 0; this._front.ready = false; this._building = false; this._collOn = false; return; }
     s.on = 1;
     this._G = config.GRAV_CONST;
 
     const bodies = state.bodies;
     const n = bodies.length;
     s.bodies = n;
-    if (n === 0) { s.mode = 'EMPTY'; s.occupied = 0; this._front.ready = false; this._building = false; this.dominant = null; return; }
+    if (n === 0) { s.mode = 'EMPTY'; s.occupied = 0; this._front.ready = false; this._building = false; this.dominant = null; this._collOn = false; return; }
 
     // Below the threshold the legacy direct loop (with its distance cull) is
     // cheaper than field upkeep + gather — the grid SLEEPS and wakes at scale.
     if (n < ManualOverrides.get('gravGridMinBodies', 80)) {
       s.mode = 'SMALL'; s.occupied = 0;
       this._front.ready = false; this._building = false;
+      this._collOn = false;                               // asleep grid = frozen geometry: no deposits
       // still track the dominant body — the "sun role" is wanted regardless
       let dom = null, domM = -1;
       for (let i = 0; i < n; i++) { const b = bodies[i]; if (b.mass > domM) { domM = b.mass; dom = b; } }
@@ -122,13 +144,65 @@ export const GravityField = {
     const cols = Math.max(8, Math.min(96, ManualOverrides.get('gravGridCols', 48) | 0));
     this.grid.resize(cols, cols, 3);
 
-    this._updateBounds(bodies, n);
+    // Grid time has a name: two children under the physics.gravField parent
+    // (auto-nested in the msProbeTree), mirrored into stats for the panel.
+    // update() only ever runs on the LIVE path (main loop, pre-substeps) —
+    // ghosts never come through here, so no ghost gating is needed.
+    const _t0 = performance.now();
+    const reanchored = this._updateBounds(bodies, n);
+    this._collUpkeep(reanchored);                         // decay heat · count hot segments · realloc
     this._deposit(bodies, n);
+    const _t1 = performance.now();
     this._buildSlice(Math.max(16, ManualOverrides.get('gravGridBudget', 512) | 0));
+    const _t2 = performance.now();
+    MsProbe.record('physics.gravField.deposit', _t1 - _t0);
+    MsProbe.record('physics.gravField.build',   _t2 - _t1);
+    s.msDeposit = +(_t1 - _t0).toFixed(2);
+    s.msBuild   = +(_t2 - _t1).toFixed(2);
+    s.msUpdate  = +(_t2 - _t0).toFixed(2);
 
     s.cols = cols;
     s.cellSize = Math.round(this.grid.cellW);
     s.mode = this._front.ready ? 'GRID' : 'WARMUP';
+  },
+
+  // Collision-map upkeep: (re)allocate to the current cell count, wipe when
+  // the bounds re-anchored (old heat would sit in wrong world segments),
+  // decay everything toward zero (~1s half-life), count hot segments.
+  _collUpkeep(reanchored) {
+    const cells = this.grid.cols * this.grid.rows;
+    if (this._collLen !== cells) {
+      this._collHard = new Float32Array(cells);
+      this._collSoft = new Float32Array(cells);
+      this._collLen = cells;
+    } else if (reanchored) {
+      this._collHard.fill(0);
+      this._collSoft.fill(0);
+    }
+    const H = this._collHard, S = this._collSoft;
+    let hot = 0;
+    for (let i = 0; i < cells; i++) {
+      let h = H[i], sf = S[i];
+      if (h > 0) { h *= 0.94; if (h < 0.05) h = 0; H[i] = h; }
+      if (sf > 0) { sf *= 0.94; if (sf < 0.05) sf = 0; S[i] = sf; }
+      if (h + sf > 0.5) hot++;
+    }
+    this.stats.collCells = hot;
+    this._collOn = true;
+  },
+
+  /**
+   * Deposit ONE collision into the weight map's segment at world (x,y).
+   * hard=1 → body↔body impulse · hard=0 → loose-debris hit. Called from
+   * collisions.js at resolve time. GHOST-GATED: predicted collisions (ghost
+   * stepping shares the same collision code) never paint the live map.
+   */
+  noteCollision(x, y, hard) {
+    if (this.ghostMode || !this._collOn) return;
+    const g = this.grid;
+    const ci = g.rowOf(y) * g.cols + g.colOf(x);
+    if (hard) { this._collHard[ci] += 1; this.stats.collHard++; }
+    else      { this._collSoft[ci] += 1; this.stats.collSoft++; }
   },
 
   // Bounds: bbox of body COMs + margin, with hysteresis — only re-anchor when
@@ -156,8 +230,11 @@ export const GravityField = {
     if (escaped || shrunk) {
       this._bx0 = nx0; this._by0 = ny0; this._bw = nw; this._bh = nh;
       this._hasBounds = true;
+      this.grid.setBounds(this._bx0, this._by0, this._bw, this._bh);
+      return true;                    // re-anchored — segment identities changed
     }
     this.grid.setBounds(this._bx0, this._by0, this._bw, this._bh);
+    return false;
   },
 
   // Deposit: Σm, Σm·x, Σm·y per cell + live cell→bodies index + dominant.
@@ -440,31 +517,56 @@ export const GravityField = {
     }
     ctx.stroke();
 
-    // occupied cells: heat by mass share + COM dot + mass label
+    // occupied cells: heat by mass share + COM dot + segment text.
+    // The segment's text now reads: mass · ⚡hard · ∙soft — HOW MUCH gravity,
+    // and HOW MUCH collision is happening in this box right now.
     let maxM = 0;
     for (let ci = 0; ci < g.cols * g.rows; ci++) maxM = Math.max(maxM, d[ci * 3]);
-    if (maxM > 0) {
+    const cH = this._collHard, cS = this._collSoft;
+    const collOk = this._collOn && cH && cH.length === g.cols * g.rows;
+    if (maxM > 0 || collOk) {
       const fontPx = Math.max(10, g.cellH * 0.18);
       ctx.font = `${fontPx}px monospace`;
       ctx.textAlign = 'center';
       for (let cy = 0; cy < g.rows; cy++) {
         for (let cx = 0; cx < g.cols; cx++) {
-          const di = (cy * g.cols + cx) * 3;
+          const ci = cy * g.cols + cx;
+          const di = ci * 3;
           const m = d[di];
-          if (m <= 0) continue;
-          const t = m / maxM;
+          const hard = collOk ? cH[ci] : 0;
+          const soft = collOk ? cS[ci] : 0;
+          const hasColl = (hard + soft) > 0.5;
+          if (m <= 0 && !hasColl) continue;
           const x = g.x0 + cx * g.cellW, y = g.y0 + cy * g.cellH;
-          ctx.fillStyle = `rgba(255,${Math.round(190 - 120 * t)},60,${0.08 + 0.22 * t})`;
-          ctx.fillRect(x, y, g.cellW, g.cellH);
-          // center of mass — the WHERE of this box's gravity
-          const comX = d[di + 1] / m, comY = d[di + 2] / m;
-          ctx.fillStyle = 'rgba(255,255,255,0.85)';
-          ctx.beginPath();
-          ctx.arc(comX, comY, Math.max(2, g.cellW * 0.02), 0, Math.PI * 2);
-          ctx.fill();
-          // the HOW MUCH
-          ctx.fillStyle = 'rgba(255,230,160,0.9)';
-          ctx.fillText((m >= 1000 ? `${(m / 1000).toFixed(1)}k` : Math.round(m)), x + g.cellW / 2, y + fontPx * 1.1);
+
+          if (m > 0 && maxM > 0) {
+            const t = m / maxM;
+            ctx.fillStyle = `rgba(255,${Math.round(190 - 120 * t)},60,${0.08 + 0.22 * t})`;
+            ctx.fillRect(x, y, g.cellW, g.cellH);
+            // center of mass — the WHERE of this box's gravity
+            const comX = d[di + 1] / m, comY = d[di + 2] / m;
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.beginPath();
+            ctx.arc(comX, comY, Math.max(2, g.cellW * 0.02), 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // collision heat: red segment border, brighter with more impact
+          if (hasColl) {
+            const ct = Math.min(1, (hard + soft) / 12);
+            ctx.strokeStyle = `rgba(255,70,70,${0.25 + 0.6 * ct})`;
+            ctx.lineWidth = Math.max(1.5, g.cellW * 0.03);
+            ctx.strokeRect(x + 1, y + 1, g.cellW - 2, g.cellH - 2);
+          }
+
+          // the segment's text: HOW MUCH · ⚡hard · ∙soft
+          let label = m > 0 ? (m >= 1000 ? `${(m / 1000).toFixed(1)}k` : `${Math.round(m)}`) : '';
+          if (hard > 0.5) label += ` ⚡${Math.round(hard)}`;
+          if (soft > 0.5) label += ` ∙${Math.round(soft)}`;
+          if (label) {
+            ctx.fillStyle = hasColl ? 'rgba(255,180,160,0.95)' : 'rgba(255,230,160,0.9)';
+            ctx.fillText(label.trim(), x + g.cellW / 2, y + fontPx * 1.1);
+          }
         }
       }
     }

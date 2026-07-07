@@ -77,7 +77,14 @@ export const makeSpring = (a, b, restLen, stiff, breakAt) => ({
         p.plane = plane | 0;      // particles inherit the body's plane (loose debris keeps it)
         tm += p.mass;
     }
-    return { id: nextId(), particles, springs, pal, cx, cy, mass: tm, radius, dead: false, gravMult: 1.0, plane: plane | 0 };
+    // Plane-merge state: brush planets (plane ≠ 0) wait GRACE ticks, then
+    // interpolate home to plane 0. mergeSoft eases their first collisions.
+    return {
+        id: nextId(), particles, springs, pal, cx, cy, mass: tm, radius,
+        dead: false, gravMult: 1.0, plane: plane | 0,
+        mergeDelay: (plane | 0) !== 0 ? (config.PLANE_MERGE_GRACE | 0) : 0,
+        mergeSoft: 0, mergeTries: 0,
+    };
 };
 
 export const spawnRing = (body) => {

@@ -1,5 +1,72 @@
 # Galaxy Guardians — TODO
 
+## 🎯 THE MISSION — 160 planets · 60 FPS · POCO C71
+Current: ~80 planets fluid with Gravity Grid + Weight Grid live. Target:
+double it. The path is not more force cleverness — it's *doing nothing,
+beautifully*: cold planets must stop paying integration AND stop paying
+per-frame tween bookkeeping. Longer tweens, fewer decisions, exact wakes.
+
+## ⏩ SPEED-AWARE TWEEN (×1–×5) — the Stark resolution  ⟵ TOP PRIORITY
+The cold-body tween must be planned in *steps*, played in *time*, and scaled
+by the speed bar — because the future is already cached, we know everything
+in advance, including the wake.
+
+**The contract:**
+- At speed ×S, one render loop drains S physics steps. A tween spanning L
+  cached steps therefore lasts `L/(60·S)` wall seconds. The tween parameter
+  advances by steps drained (from the accumulator), NEVER by frames:
+  `u += stepsDrained / L`. Speed change mid-tween = u keeps its value and the
+  denominator stays L — **re-parameterize, never restart.** (Restart is the
+  jitter.)
+- If one loop ticks 10 steps, the tween animates the planet 10 steps of its
+  cached path that loop — unless `wakeTick` lands inside it, in which case it
+  animates exactly up to the wake.
+- **Ease-out into wake [CACHED→REAL handoff]:** wakeTick is known in advance
+  (the oracle). Over the last W steps before wake, blend tween position →
+  live-integration position so velocity is continuous at the seam. W default
+  ≈ 8 steps; velocity-aware (bigger W for faster bodies).
+
+**📏 THE TWEEN LAW (rule, locked): the longer the planet-movement tween, the
+better — at identical time and speed.** Playing one L-step tween must land
+the planet at the same place, at the same wall time, as playing five
+(L/5)-step tweens back-to-back. Guaranteed by construction when u is
+step-driven (above). What longer buys: fewer keyframe fetches, fewer
+retarget decisions, fewer seams (each seam is a jitter opportunity).
+
+**The honest bound (Fake Physics, labeled):** a linear tween replaces the
+true curved arc with a chord. Max deviation (sagitta):
+`err ≈ a · (L·Δt)² / 8`, a = body acceleration, Δt = 0.016.
+So the maximum earned tween length is `L_max = (1/Δt)·√(8ε/a)` for error
+budget ε (default 0.5 px world). Low acceleration EARNS long tweens; a body
+skimming the sun earns short ones. `a` is free — read it from the cached
+window. Endpoints are **[CACHED]** (exact); in-betweens are **[FAKE
+(bounded)]**; the moment of wake is **[REAL]**. Write this taxonomy on every
+tween-touching module header.
+
+**Freeze the cold state:** while cold, the body pays zero integration
+(Dormancy Stage 2) and zero per-frame tween math beyond one lerp — no field
+sampling, no neighbor checks, no cache reads except at knots. Cold = one
+multiply-add per frame, full stop.
+
+**Jitter / gap / constancy checklist (quality gates before ship):**
+- [ ] No tween restart on speed change (u preserved — test ×1→×5→×1 mid-glide)
+- [ ] No tween restart on cache top-up (knots extend; only invalidate() resets)
+- [ ] DPR rounding identical in tween draw vs live draw (no ½-px pop at wake)
+- [ ] Wake seam velocity-continuous (ease-out W steps, no direction snap)
+- [ ] Strided-sampling gap closed by velocity-aware wake margin
+- [ ] MsProbe: `render.drawAll.tween` flat-lines as cold% rises (the proof)
+- [ ] A/B: 160 bodies, grid ON, Stage 2 ON, ×1 and ×5 — 60 FPS or the item stays open
+
+## 📖 TODO-GUINNESS — the Book of Known Limitations  ⟵ NEW FILE
+See **TODO-GUINNESS.md**: browsers (canvas caps, rAF throttling, storage),
+low-end phones (C71 class), Snapdragon/MediaTek/UNISOC old & new, RISC-V,
+mini-PCs / TV boxes / Roku-class, screens (e-paper, car, watch, glasses),
+cross-platform rendering limits, multiplayer/server limits (including the
+cross-engine float-determinism landmine under replay sharing), and
+legitimation (🍪 consent, ratings, COPPA stance, GPL hygiene). Every entry
+has a checkbox and a counter-move. It ends with the **Physics Truth Table**:
+Real vs Fake vs Cached, engine-wide, with error bounds on every FAKE.
+
 ## 🕳️ PORTS: KNOBS OUT, HOLES IN — the minimized panel becomes a patchbay
 The rule, locked: **outputs are KNOBS, inputs are HOLES.**
 - Opened panels: remove the +/=/− button triplets — knobs only from now on.
@@ -265,3 +332,64 @@ A dedicated panel to control render/trail resolution across the whole engine.
 
 ## Effects (later)
 - Speed-triggered shooting particles with their own trails.
+
+---
+
+## 💰 TOKEN BUDGET — approx Claude output tokens to implement each item
+
+Estimates are **Claude output tokens** (code + edits + explanation) for a
+clean single pass on the current 89-module codebase. Reading context is not
+counted (it's input, and it's large — every session pays a fixed ~10–20k
+input overhead re-establishing the relevant modules).
+
+| Item | Est. tokens | Confidence |
+|---|---|---|
+| ⏩ Speed-Aware Tween ×1–×5 + Tween Law + ease-out wake | ~14k | Med — touches dormancy, tween, accumulator, speed UI |
+| Dormancy Stage 2 (skip integration, staggered wakes) | ~15k | Med — hot-path surgery, needs on-device validation loops |
+| 🌌 Ghost Grid Phase 2 (FutureCache's own field) | ~12k | High — pattern already proven by live grid |
+| 🕳️ PORTS knobs/holes (panel UI rework) | ~25k | Low — UI needs Noon's live eye = iteration rounds |
+| 🎛️ Action Panels (Math + Cycle + Palette) | ~18k | Med — each panel ~6k once the first lands |
+| 📜 Visual scripting layer (wire map on wires lane) | ~12k | Med — plumbing exists (registry, gates, lanes) |
+| 🔌 Blueprints wires (ports, bezier draw, persistence, loops) | ~30k | Low — new interaction model, hit-testing, cut gesture |
+| 📺 Live-stream visual coding (OBS mode, scene presets) | ~15k | Low — depends on Invaders render switch |
+| 🌀 Metaverse portals (cross-instance transport) | ~40k | Very low — spec-first item, estimate is for prototype |
+| 🍪 Cookies consent gate | ~4k | High — one switch at PrefsStore.save() + banner |
+| ⭐ Ratings (link + Update Bar toast + prefs flag) | ~3k | High |
+| 🔬 Replay research object (record, rerun, fork, share) | ~25k | Med — determinism same-engine is proven; serializer is the bulk |
+| 📊 Sort 7.2 community averages (fetch, accept, revert) | ~8k | High |
+| 🌠 Invaders Layer prototype (fake page + transparent + click-through) | ~20k | Med — render-mode switch + AIMS forward path |
+| Screen Resolution panel follow-ups + formula unification | ~8k | High — the ⚠️ FINDING is a decide-then-edit |
+| Trails slice 2 (channel knobs, stamp ramp, presets row) | ~6k | High |
+| Benchmark next (tier auto-switch, 2nd pass, pin scope) | ~8k | Med |
+| GUI Governor follow-ups (surgical freeze split) | ~3k | High |
+| Planes follow-ups (tints, plane knob, dust policy) | ~5k | High |
+| Selection panel opens (Collect, group-drag, deselect) | ~4k | High |
+| Update Bar routing + console hello line | ~2k | High |
+| Mesh War weighting in BEST PREFERENCES | ~6k | Med |
+| Planet Panel + Planet Statistics Panel (tap-select) | ~12k | Med — world-select mode vs marquee coexistence |
+| Effects: speed-triggered shooting particles | ~5k | High |
+| Leaderboards / rewarded daily benchmark | ~10k | Low — backend-shaped, spec incomplete |
+| **Total open book** | **~310k** | |
+
+**Deviation, explained honestly:** expect **±40–60%** per item, skewed high.
+Why estimates drift: (1) each debug round after first ship adds ~30–50% of
+the item's cost — UI items average two rounds, hot-path items average one but
+each round is on-device; (2) the restart law means every fix cycle has a
+human-verification gap that tempts scope creep ("while we're in there…") —
+that's where budgets die; (3) items marked Low confidence hide unknown
+interaction models — their true cost is discovered, not estimated; (4) the
+fixed input overhead per session favors batching 2–3 small items per sitting
+(Trails slice 2 + Update Bar + Selection opens = one session, one overhead).
+
+---
+
+## 🔁 STANDING QUALITY GATES (apply to every item above)
+- English pass: docs and UI strings read clean (this file counts).
+- Math pass: every formula written down and unit-checked (Tween Law above is
+  the template).
+- Physics honesty pass: tag REAL / FAKE / CACHED, and every FAKE ships with
+  its error bound (see TODO-GUINNESS Physics Truth Table).
+- Physics ⟷ Tween matching: cached knots are the single source of truth;
+  tween draw and live draw share coordinate/DPR code paths.
+- node --check all JS · Python-validate all JSON · full server restart · AIMS
+  sync on any panel move — the locked rules, unchanged.
