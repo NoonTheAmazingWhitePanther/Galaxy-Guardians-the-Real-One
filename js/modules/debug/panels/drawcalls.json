@@ -1,0 +1,64 @@
+{
+ "id": "drawCalls",
+ "title": "DRAW CALLS",
+ "position": {
+  "x": 16,
+  "y": 200
+ },
+ "refreshRate": 100,
+ "summaryVariable": "DrawCallCounter.total",
+ "summaryLabel": "draw calls",
+ "lines": [
+  {
+   "type": "header",
+   "text": "DRAW CALLS",
+   "value": "DrawCallCounter.total",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "display",
+   "text": "total draws",
+   "value": "DrawCallCounter.total"
+  },
+  {
+   "type": "display",
+   "text": "total path ops",
+   "value": "DrawCallCounter.pathOps"
+  },
+  {
+   "type": "sectionHeader",
+   "key": "method totals",
+   "text": "method totals",
+   "totalSource": "DrawCallCounter.methodTotals"
+  },
+  {
+   "type": "displayMap",
+   "source": "DrawCallCounter.methodTotals",
+   "filter": "positive",
+   "sort": "desc"
+  },
+  {
+   "type": "sectionHeader",
+   "key": "per pass",
+   "text": "per pass",
+   "totalSource": "DrawCallCounter.total"
+  },
+  {
+   "type": "groupedDisplayMap",
+   "key": "pass",
+   "source": "DrawCallCounter.passRows",
+   "separator": " \u2219 ",
+   "filter": "positive",
+   "sortGroups": "desc",
+   "collapsedByDefault": true
+  }
+ ],
+ "minimized": true,
+ "maxHeight": 280,
+ "collapsedByDefault": [
+  "method totals",
+  "per pass"
+ ],
+ "background": null
+}
