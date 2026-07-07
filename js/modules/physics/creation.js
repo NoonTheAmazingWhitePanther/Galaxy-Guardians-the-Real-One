@@ -136,7 +136,7 @@ export const spawnRing = (body) => {
             priority: 2,
             cost:     1,
             fn: () => {
-                if (state.loose.length >= 400) return;
+                if (state.loose.length >= 300) return;
                 const px = SUN.x + Math.cos(angle) * r;
                 const py = SUN.y + Math.sin(angle) * r;
                 state.loose.push({
@@ -178,12 +178,12 @@ export const splitDeadParticles = (body) => {
         const p = ps[i];
         if (p.dead) continue;
         if (!vis[i]) {
-            if (debrisCount < MAX_DEBRIS && state.loose.length < 350) {
+            if (debrisCount < MAX_DEBRIS && state.loose.length < 280) {
                 const _p = p;
                 QueOps.add({
                     subject: 'particles', priority: 2, cost: 1,
                     fn: () => {
-                        if (state.loose.length >= 350) return;
+                        if (state.loose.length >= 280) return;
                         state.loose.push({
                             id: nextId(), x: _p.x, y: _p.y, vx: _p.vx, vy: _p.vy,
                             mass: _p.mass, pal: _p.pal, heat: _p.heat, life: 1,
@@ -201,14 +201,14 @@ export const splitDeadParticles = (body) => {
     }
     if (alive < Math.max(3, n * 0.08)) {
         const remaining = n - debrisCount;
-        if (remaining > 0 && state.loose.length < 365) {
+        if (remaining > 0 && state.loose.length < 295) {
             const burst = Math.min(MAX_DEBRIS - debrisCount, remaining);
             for (let i = 0; i < burst; i++) {
                 const _pi = ps[i];
                 QueOps.add({
                     subject: 'particles', priority: 3, cost: 1,
                     fn: () => {
-                        if (state.loose.length >= 365) return;
+                        if (state.loose.length >= 295) return;
                         state.loose.push({
                             id: nextId(), x: _pi.x, y: _pi.y, vx: _pi.vx, vy: _pi.vy,
                             mass: _pi.mass, pal: _pi.pal, heat: 1, life: 0.6,

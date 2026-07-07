@@ -2,8 +2,11 @@
  * js/modules/rendering/particles.js
  * Prime Module: Loose particles, debris, rings, and burnt particle rendering.
  * 
- * Uses particle-management.js batchArcs for single-pass batch rendering.
- * Rule: classify once, draw in batches. No per-particle beginPath/fill.
+ * OPTIMIZATION (2026-07-07):
+ * - Removed shadowBlur from burntWarm rendering (expensive per-particle filter)
+ * - Added LOD gate: skip burntWarm rendering when camZoom < 0.15 (planetary view)
+ * - Uses particle-management.js batchArcs for batched rendering where possible
+ * Rule: classify once, batch where possible, minimize per-particle state changes.
  */
 import { hypot, lerp, clamp, PI2 } from '../../core/math.js';
 import { config } from '../../core/config.js';
@@ -86,26 +89,19 @@ export const ParticlesModule = {
     ctx.fillStyle = "rgba(30,15,8,1)";
     batchArcs(ctx, burnt);
 
-    // Burnt warm (individual color per particle — can't batch by style)
-    // These are few, so per-particle draw is acceptable
-    for (const { x, y, r, heat } of burntWarm) {
-      const intensity = Math.min(heat, 1);
-      const red = Math.floor(lerp(80, 180, intensity));
-      const green = Math.floor(lerp(20, 60, intensity));
-      
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = `rgba(${red},${green},15,1)`;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, PI2); ctx.fill();
-
-      // Glow overlay for hot burnt
-      if (intensity > 0.2) {
-        ctx.save();
-        ctx.globalAlpha = intensity * 0.6;
-        ctx.shadowBlur = r * (4 + intensity * 3);
-        ctx.shadowColor = `rgba(255,100,20,${intensity * 0.8})`;
-        ctx.fillStyle = `rgba(255,120,40,${intensity * 0.5})`;
-        ctx.beginPath(); ctx.arc(x, y, r * 1.2, 0, PI2); ctx.fill();
-        ctx.restore();
+    // Burnt warm (OPTIMIZATION: skip if zoomed out, no shadow blur)
+    // These are individual-color particles, so per-particle draw.
+    // Removed shadowBlur which was expensive per-particle filter.
+    if (camZoom >= 0.15 && burntWarm.length) {
+      for (const { x, y, r, heat } of burntWarm) {
+        const intensity = Math.min(heat, 1);
+        const red = Math.floor(lerp(80, 180, intensity));
+        const green = Math.floor(lerp(20, 60, intensity));
+        
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = `rgba(${red},${green},15,1)`;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, PI2); ctx.fill();
+        // NOTE: Removed shadow glow. Restored with future glow layer if needed.
       }
     }
 
