@@ -1,0 +1,176 @@
+{
+ "id": "physics",
+ "title": "PHYSICS",
+ "position": {
+  "x": 16,
+  "y": 260
+ },
+ "refreshRate": 100,
+ "summaryVariable": "PhysicsGov.timeScale",
+ "summaryLabel": "Time Scale",
+ "lines": [
+  {
+   "type": "header",
+   "text": "PHYSICS",
+   "value": "PhysicsCounter.total",
+   "suffix": "PhysicsGov.label",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 governor \u2014"
+  },
+  {
+   "type": "display",
+   "text": "substeps",
+   "value": "PhysicsGov.substepLabel"
+  },
+  {
+   "type": "display",
+   "text": "time scale",
+   "value": "PhysicsGov.timeScale"
+  },
+  {
+   "type": "display",
+   "text": "mode",
+   "value": "PhysicsGov.label"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 tick skip \u2014"
+  },
+  {
+   "type": "display",
+   "text": "skip",
+   "value": "PhysicsGov.fractionLabel"
+  },
+  {
+   "type": "display",
+   "text": "ticked",
+   "value": "PhysicsGov.tickedLabel"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 per frame counts \u2014"
+  },
+  {
+   "type": "displayMap",
+   "source": "PhysicsCounter.stats",
+   "labels": "PhysicsCounter._labels",
+   "filter": "positive"
+  },
+  {
+   "type": "display",
+   "text": "total ops",
+   "value": "PhysicsCounter.total"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 controls \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Time Scale",
+   "variable": "ManualOverrides.physicsTimeScale.value",
+   "buttons": [
+    "\u00d7",
+    "=",
+    "\u00f7"
+   ],
+   "governor": {
+    "mode": "mult",
+    "min": 0.25,
+    "max": 4
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Substeps",
+   "variable": "ManualOverrides.physicsSubsteps.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 1,
+    "max": 16,
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 tick skip control \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Tick Skip",
+   "variable": "ManualOverrides.physicsFrameSkip.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "dynamicMaxFromBase": true,
+    "dynamicMaxSource": "physics",
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 skip base (out of) \u2014"
+  },
+  {
+   "type": "profileButtons",
+   "buttons": [
+    {
+     "label": "60",
+     "profile": null
+    },
+    {
+     "label": "120",
+     "profile": null
+    },
+    {
+     "label": "240",
+     "profile": null
+    },
+    {
+     "label": "480",
+     "profile": null
+    },
+    {
+     "label": "960",
+     "profile": null
+    }
+   ],
+   "variable": "ManualOverrides.physicsSkipBase.value",
+   "isBaseSelector": true,
+   "clampVariable": "physicsFrameSkip"
+  },
+  {
+   "type": "resetButton",
+   "text": "Reset Tick Skip",
+   "variable": "ManualOverrides.physicsFrameSkip.value",
+   "color": "rgba(255,70,70,0.85)"
+  }
+ ],
+ "minimizedKnob": {
+  "variable": "ManualOverrides.physicsFrameSkip.value",
+  "min": 0,
+  "dynamicMaxFromBase": true,
+  "dynamicMaxSource": "physics",
+  "step": 1,
+  "label": "",
+  "integer": true
+ },
+ "summaryExtra": "PhysicsGov.fractionLabel",
+ "minimized": true,
+ "maxHeight": 280,
+ "background": null
+}

@@ -484,7 +484,8 @@ function mainLoop(t) {
         InputState.isHolding,
         InputState.holdTime,
         InputState.mouseX,
-        InputState.mouseY
+        InputState.mouseY,
+        slider.value
       );
       Dormancy.drawWitness(drawCtx);   // locked-delta cold-body tween witness (world space)
       GravityField.drawOverlay(drawCtx); // weight map: how much gravity + where, per box

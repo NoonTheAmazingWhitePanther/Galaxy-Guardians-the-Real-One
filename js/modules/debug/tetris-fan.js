@@ -35,7 +35,8 @@ const BLOB = 24, GAP = 6;
 const CATEGORY = {
   fps: 'Rendering', drawCalls: 'Rendering', trails: 'Rendering', accumulator: 'Rendering',
   screenRes: 'Rendering', physics: 'Physics', gravityGrid: 'Physics', cache: 'Physics',
-  dormancy: 'Physics', planes: 'Physics', queops: 'Physics', input: 'Input', aims: 'Input',
+  dormancy: 'Physics', planes: 'Physics', queops: 'Physics', trajectory: 'Physics',
+  input: 'Input', aims: 'Input',
   msProbe: 'Debugging', governors: 'Debugging', benchmark: 'Debugging',
   panelSettings: 'Theme', mixer: 'Theme',
 };
@@ -47,6 +48,7 @@ const PROBE_OF = {
   dormancy: 'dormancy.tick', queops: 'queops.tick', fps: 'render.drawAll',
   drawCalls: 'render.drawAll', trails: 'render.drawAll.trails',
   accumulator: 'render.drawAll.flip', msProbe: 'debug.panels',
+  trajectory: 'physics.trajectory',
 };
 
 export const TetrisFan = {

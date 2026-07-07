@@ -1,0 +1,123 @@
+{
+ "id": "trajectory",
+ "title": "TRAJECTORY",
+ "position": {
+  "x": 302,
+  "y": 730
+ },
+ "refreshRate": 100,
+ "minimized": true,
+ "summaryVariable": "TrajectoryPreview.stats.pathTicks",
+ "summaryLabel": "ticks",
+ "lines": [
+  {
+   "type": "header",
+   "text": "TRAJECTORY",
+   "value": "TrajectoryPreview.stats.mode",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 the preview IS the future cache \u2014"
+  },
+  {
+   "type": "display",
+   "text": "live",
+   "value": "TrajectoryPreview.stats.live",
+   "format": "onoff"
+  },
+  {
+   "type": "display",
+   "text": "path ticks",
+   "value": "TrajectoryPreview.stats.pathTicks"
+  },
+  {
+   "type": "display",
+   "text": "walked/frame",
+   "value": "TrajectoryPreview.stats.walked"
+  },
+  {
+   "type": "display",
+   "text": "from tick",
+   "value": "TrajectoryPreview.stats.fromTick"
+  },
+  {
+   "type": "display",
+   "text": "to tick",
+   "value": "TrajectoryPreview.stats.toTick"
+  },
+  {
+   "type": "display",
+   "text": "walk ms",
+   "value": "TrajectoryPreview.stats.msWalk"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 prediction \u2014"
+  },
+  {
+   "type": "display",
+   "text": "burns at",
+   "value": "TrajectoryPreview.stats.burnsAt"
+  },
+  {
+   "type": "display",
+   "text": "collides at",
+   "value": "TrajectoryPreview.stats.collidesAt"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 on commit \u2014"
+  },
+  {
+   "type": "display",
+   "text": "spliced last",
+   "value": "TrajectoryPreview.stats.splicedLast"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 controls \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Preview",
+   "variable": "ManualOverrides.trajPreviewOn.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Ms Budget",
+   "variable": "ManualOverrides.trajPreviewMsBudget.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 8,
+    "step": 0.25
+   }
+  },
+  {
+   "type": "resetButton",
+   "text": "Reset Ms Budget",
+   "variable": "ManualOverrides.trajPreviewMsBudget.value",
+   "color": "rgba(255,70,70,0.85)"
+  }
+ ],
+ "maxHeight": 320,
+ "background": null
+}

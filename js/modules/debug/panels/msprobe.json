@@ -1,0 +1,31 @@
+{
+ "id": "msProbe",
+ "title": "MS PROBE",
+ "position": {
+  "x": 159,
+  "y": 140
+ },
+ "refreshRate": 250,
+ "summaryVariable": "MsProbe.topAvg",
+ "summaryLabel": "Slowest avg ms",
+ "lines": [
+  {
+   "type": "header",
+   "text": "MS PROBE",
+   "value": "MsProbe.topAvg",
+   "suffix": "MsProbe.topLabel",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 last \u00b7 avg \u00b7 max ms \u00b7 tap \u25b6 to open \u2014"
+  },
+  {
+   "type": "msProbeTree"
+  }
+ ],
+ "minimized": true,
+ "maxHeight": 420,
+ "background": null
+}

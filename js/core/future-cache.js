@@ -13,9 +13,14 @@
  *
  * Correctness depends on determinism: nothing outside the tick sequence
  * itself may mutate bodies/loose/asteroids between the playhead and the
- * frontier. Anything that does (spawning a planet, changing gravity,
- * clearing the field) MUST call invalidate() — see the call sites in
- * planet.js / in-ui.js / in-aims.js.
+ * frontier. Anything that does (changing gravity, clearing the field)
+ * MUST call invalidate() — see the call sites in in-ui.js / in-aims.js.
+ *
+ * NEW PLANETS ARE THE ONE EXCEPTION: spawnPlanet() no longer invalidates.
+ * TrajectoryPreview (js/core/trajectory-preview.js) precomputes the new
+ * body's path through the ALREADY-cached future (see spliceBodyIntoFuture
+ * below), so confirming a planet folds it into the existing buffer instead
+ * of throwing the whole frontier away — nothing already built is wasted.
  */
 import { state } from './state.js';
 import { tickBodies, tickLoose } from '../modules/physics/tick.js';
@@ -89,6 +94,12 @@ export const FutureCache = {
   get bufferedAhead() {
     return this._frontierTick - this._playheadTick;
   },
+
+  // Public read-only ticks — TrajectoryPreview rides these to know how far
+  // ahead it may walk (frontier) and what's already been shown (playhead),
+  // without reaching into the underscored internals directly.
+  get playheadTick() { return this._playheadTick; },
+  get frontierTick()  { return this._frontierTick; },
 
   // ── Read-only window accessors (for the dormancy classifier) ─────────────
   // The un-consumed future currently sitting in the buffer is exactly ticks
@@ -311,7 +322,55 @@ export const FutureCache = {
     return stepsDone;
   },
 
-  get debugInfo() {
+  // ── Candidate splice — the orbit preview IS the Future Cache ────────────
+  // TrajectoryPreview walks the ALREADY-cached future (peekAt) to draw the
+  // orbit line for freehand review, spending zero extra simulation on the
+  // rest of the world. When the planet is actually confirmed, this method
+  // folds that same precomputed path directly into the existing buffer —
+  // NO invalidate(), no thrown-away frontier. Every tick still cached
+  // (playhead, frontier] gets the new body pushed onto its `bodies` array,
+  // reconstructed from `pathAt(tick)` via the caller-supplied factory.
+  //
+  // Honesty note: the OTHER bodies at those already-cached ticks do not yet
+  // feel this body's pull (they were computed before it existed) — that is
+  // the one bounded approximation this buys. It self-heals the instant the
+  // frontier advances past the splice point: the next _shadowTick() seeds
+  // from a buffer entry that already contains the real body, so every tick
+  // computed from there on is the ordinary exact simulation, gravity and
+  // collisions both ways, same as if the body had always been there.
+  //
+  // Returns the number of ticks actually patched (0 if none were still
+  // cached — e.g. the hold ran longer than the whole buffered window).
+  spliceBodyIntoFuture(makeGhostAt) {
+    let n = 0;
+    for (let tick = this._playheadTick + 1; tick <= this._frontierTick; tick++) {
+      const cached = this._buffer.get(tick);
+      if (!cached) continue;
+      const ghost = makeGhostAt(tick);
+      if (!ghost) continue;
+      cached.bodies.push(ghost);
+      n++;
+    }
+    return n;
+  },
+
+  // Rollback for spliceBodyIntoFuture — strips every body with the given id
+  // out of every still-cached tick. Used when a spliced candidate turns out
+  // not to have been a real planet after all (init failure after splice, or
+  // any other reason the commit must be undone). Cheap: a single pass over
+  // whatever's left in the buffer, most of which won't contain the id.
+  unspliceBody(ghostId) {
+    if (ghostId == null) return 0;
+    let n = 0;
+    for (const cached of this._buffer.values()) {
+      const bodies = cached.bodies;
+      const idx = bodies.findIndex(b => b.id === ghostId);
+      if (idx >= 0) { bodies.splice(idx, 1); n++; }
+    }
+    return n;
+  },
+
+
     return {
       playhead: this._playheadTick,
       frontier: this._frontierTick,

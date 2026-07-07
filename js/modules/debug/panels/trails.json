@@ -1,0 +1,276 @@
+{
+ "id": "trails",
+ "title": "TRAILS",
+ "position": {
+  "x": 159,
+  "y": 240
+ },
+ "refreshRate": 200,
+ "summaryVariable": "TrailGov.debugInfo.count",
+ "summaryLabel": "Trail length",
+ "lines": [
+  {
+   "type": "header",
+   "text": "TRAILS",
+   "value": "TrailGov.debugInfo.count",
+   "suffix": "TrailGov.label",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 dreamy trails \u2014"
+  },
+  {
+   "type": "profileButtons",
+   "profileTarget": "trails",
+   "buttons": [
+    {
+     "label": "Long",
+     "profile": "LONG"
+    },
+    {
+     "label": "Norm",
+     "profile": "NORMAL"
+    },
+    {
+     "label": "Short",
+     "profile": "SHORT"
+    },
+    {
+     "label": "Ease",
+     "profile": "EASE"
+    },
+    {
+     "label": "AUTO",
+     "profile": null
+    }
+   ]
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 length \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Max Trails",
+   "variable": "ManualOverrides.trailMax.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1000,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Density",
+   "variable": "ManualOverrides.trailDensity.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 8,
+    "max": 1000,
+    "step": 8
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Skip",
+   "variable": "ManualOverrides.trailSkip.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 1,
+    "max": 16,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Speed Scale",
+   "variable": "ManualOverrides.trailSpeedScale.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 4,
+    "step": 0.1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 look \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Alpha",
+   "variable": "ManualOverrides.trailAlpha.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.02,
+    "max": 1,
+    "step": 0.02
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Shrink Tail",
+   "variable": "ManualOverrides.trailShrink.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Bloom",
+   "variable": "ManualOverrides.trailBloom.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Enabled",
+   "variable": "ManualOverrides.trailEnabled.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 buffer \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Res Ramp",
+   "variable": "ManualOverrides.trailDownscale.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 8,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Glow Depth",
+   "variable": "ManualOverrides.trailGlowDepth.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 2,
+    "max": 16,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Glow Fade",
+   "variable": "ManualOverrides.trailGlowFade.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.04,
+    "max": 0.95,
+    "step": 0.02
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 live \u2014"
+  },
+  {
+   "type": "display",
+   "text": "count",
+   "value": "TrailGov.debugInfo.count"
+  },
+  {
+   "type": "display",
+   "text": "density",
+   "value": "TrailGov.debugInfo.density"
+  },
+  {
+   "type": "display",
+   "text": "skip",
+   "value": "TrailGov.debugInfo.skip"
+  },
+  {
+   "type": "display",
+   "text": "speed scale",
+   "value": "TrailGov.debugInfo.speedScale"
+  },
+  {
+   "type": "display",
+   "text": "prime",
+   "value": "Accumulator.debugInfo.primeRes"
+  },
+  {
+   "type": "display",
+   "text": "ramp floor",
+   "value": "Accumulator.debugInfo.rampFloor"
+  }
+ ],
+ "minimized": true,
+ "maxHeight": 320,
+ "background": null
+}
