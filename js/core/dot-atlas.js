@@ -50,19 +50,21 @@ export const DotAtlas = {
    */
   hasChanged: (body, cache) => {
     const particleCountChanged = Math.abs(body.particles.length - cache.lastParticleCount) > 1;
-    const heatChanged = Math.abs(body.heat - cache.lastHeat) > 0.1;
-    
+    const heatChanged = Math.abs((body.heat || 0) - cache.lastHeat) > 0.1;
+
     if (particleCountChanged || heatChanged) {
       cache.lastChangeTime = performance.now();
       cache.lastParticleCount = body.particles.length;
       cache.lastHeat = body.heat || 0;
       cache.lastCheckTime = performance.now();  // Reset check timer
-      
-      // If heat just increased significantly, force immediate recapture
-      if (heatChanged && (body.heat || 0) > (cache.lastHeat || 0)) {
-        cache.isCached = false;  // Invalidate cache when heating up
-        cache.cacheOpacity = 0;
-      }
+
+      // BUG FIX (was comparing body.heat to a value just overwritten to
+      // equal body.heat — always false, dead code). ANY detected change
+      // invalidates the sprite: it no longer matches the body's current
+      // state. Recapture happens next time stability is regained.
+      cache.isCached = false;
+      cache.cacheOpacity = 0;
+
       return true;
     }
     return false;
@@ -100,12 +102,18 @@ export const DotAtlas = {
   },
 
   /**
-   * Capture planet to canvas sprite (simple particle render).
-   * High quality: match live particle rendering as closely as possible.
+   * Capture planet to canvas sprite — a REAL snapshot, not a re-implementation.
+   * We redirect the exact same drawNormal() the live renderer uses onto an
+   * offscreen canvas and grab the pixels it produces. Whatever bodies.js
+   * draws live (hull, springs, particles, burn glow, aura, heat sparkles)
+   * is what gets cached — pixel-identical, always in sync, no drift, no
+   * separate "cardboard" approximation to maintain by hand.
    */
-  captureSprite: (ctx, body, cache) => {
+  captureSprite: (ctx, body, cache, drawNormalFn) => {
     MsProbe.call('dotatlas.captureSprite', () => {
-      const size = Math.ceil(body.radius * 2.5);
+      // Pad past the aura radius (body.radius * 1.6, gradient reaches
+      // 1.76x) plus room for heat-sparkle halo.
+      const size = Math.ceil(body.radius * 4);
       if (!cache.spriteCanvas || cache.spriteCanvas.width !== size) {
         cache.spriteCanvas = document.createElement('canvas');
         cache.spriteCanvas.width = size;
@@ -115,68 +123,13 @@ export const DotAtlas = {
       const spriteCtx = cache.spriteCanvas.getContext('2d');
       spriteCtx.clearRect(0, 0, size, size);
       spriteCtx.save();
-      spriteCtx.translate(size / 2, size / 2);
 
-      // Draw particles with full quality (matching live renderer)
-      const alive = body.particles.filter(p => !p.dead);
-      
-      // Draw convex hull outline first (like live render)
-      if (alive.length > 2) {
-        const hull = body.particles.filter(p => !p.dead);
-        if (hull.length > 2) {
-          spriteCtx.strokeStyle = body.pal.lo;
-          spriteCtx.lineWidth = 1.2;
-          spriteCtx.beginPath();
-          spriteCtx.moveTo(hull[0].x - body.cx, hull[0].y - body.cy);
-          for (let i = 1; i < hull.length; i++) {
-            spriteCtx.lineTo(hull[i].x - body.cx, hull[i].y - body.cy);
-          }
-          spriteCtx.closePath();
-          spriteCtx.stroke();
-        }
-      }
+      // drawNormalFn draws in world coordinates (body.cx/cy), so shift the
+      // sprite canvas's coordinate system so that world position lands
+      // centered in the sprite.
+      spriteCtx.translate(size / 2 - body.cx, size / 2 - body.cy);
 
-      // Draw hull fill
-      if (alive.length > 2) {
-        spriteCtx.fillStyle = body.pal.hi;
-        spriteCtx.beginPath();
-        spriteCtx.moveTo(alive[0].x - body.cx, alive[0].y - body.cy);
-        for (let i = 1; i < alive.length; i++) {
-          spriteCtx.lineTo(alive[i].x - body.cx, alive[i].y - body.cy);
-        }
-        spriteCtx.closePath();
-        spriteCtx.fill();
-      }
-
-      // Draw particles with glow (high quality)
-      for (const p of alive) {
-        const dx = p.x - body.cx;
-        const dy = p.y - body.cy;
-        const r = Math.max(1.5, 2.5);
-        
-        // Glow
-        spriteCtx.fillStyle = `rgba(${p.pal.gc},0.4)`;
-        spriteCtx.beginPath();
-        spriteCtx.arc(dx, dy, r * 1.8, 0, Math.PI * 2);
-        spriteCtx.fill();
-        
-        // Core
-        spriteCtx.fillStyle = `rgba(${p.pal.gc},1)`;
-        spriteCtx.beginPath();
-        spriteCtx.arc(dx, dy, r, 0, Math.PI * 2);
-        spriteCtx.fill();
-      }
-
-      // Draw aura (like live render)
-      const auraRadius = body.radius * 0.6;
-      const auraGrad = spriteCtx.createRadialGradient(0, 0, auraRadius * 0.1, 0, 0, auraRadius);
-      auraGrad.addColorStop(0, body.pal.hi + '66');
-      auraGrad.addColorStop(0.5, body.pal.lo + '33');
-      auraGrad.addColorStop(1, body.pal.lo + '00');
-      spriteCtx.fillStyle = auraGrad;
-      spriteCtx.beginPath();
-      spriteCtx.arc(0, 0, auraRadius, 0, Math.PI * 2);
-      spriteCtx.fill();
+      drawNormalFn(spriteCtx);
 
       spriteCtx.restore();
       cache.isCached = true;
@@ -209,7 +162,7 @@ export const DotAtlas = {
 
     // Stable - capture and fade in cache
     if (!cache.isCached) {
-      DotAtlas.captureSprite(ctx, body, cache);
+      DotAtlas.captureSprite(ctx, body, cache, drawNormal);
     }
 
     cache.cacheOpacity = Math.min(1, cache.cacheOpacity + DotAtlas.FADE_IN);

@@ -15,7 +15,7 @@ export const state = {
     shake: { intensity: 0, decay: 0.9 }
 };
 
-export const SUN = { x: 0, y: 0, radius: 240, burnRadius: 300, mass: 182784, coronaTime: 0 };
+export const SUN = { x: 0, y: 0, radius: 240, burnRadius: 1200, mass: 182784, coronaTime: 0 };
 export const solarTentacles = [];
 
 export const PALS = [

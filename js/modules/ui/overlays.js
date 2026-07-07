@@ -171,7 +171,7 @@ export const OverlaysModule = {
 
     const total = pts.length;
     const lw = 1.8 / CameraModule.cam.zoom;
-    const BURN_ZONE_R = SUN.burnRadius * 4;
+    const BURN_ZONE_R = SUN.burnRadius;
 
     ctx.save();
     ctx.lineCap = 'round';

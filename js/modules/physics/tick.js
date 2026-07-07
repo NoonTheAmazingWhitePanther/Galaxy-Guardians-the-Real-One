@@ -311,9 +311,14 @@ export const tickBodies = (scaledDt) => {
   const damping = config.DAMPING;
   const sunGrav = sunGravMult;
 
-  const burnR = SUN.burnRadius;
-  const burnZoneR = burnR * 4;
-  const burnSq = burnR * burnR;
+  // Instant-vaporize boundary: touching the sun's actual visible surface.
+  // Gradual heat zone: the full burn radius — now the single source of
+  // truth, same value BurnMap uses for body.heat. No more *4 hack; this
+  // WAS silently 4x smaller than the visual glow, which is why bodies
+  // barely ever heated up despite sitting inside the glow.
+  const sunSurfaceR = SUN.radius;
+  const burnZoneR = SUN.burnRadius;
+  const sunSurfaceSq = sunSurfaceR * sunSurfaceR;
   const burnZoneSq = burnZoneR * burnZoneR;
 
   const nAlives = new Array(numBodies);
@@ -360,7 +365,7 @@ export const tickBodies = (scaledDt) => {
         // 3. Burn zone
         const dx = sunX - p.x, dy = sunY - p.y;
         const sd2 = dx * dx + dy * dy;
-        if (sd2 < burnSq) {
+        if (sd2 < sunSurfaceSq) {
           p.dead = true;
           p.heat = 1;
         } else if (sd2 < burnZoneSq) {
