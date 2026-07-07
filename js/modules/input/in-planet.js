@@ -11,7 +11,6 @@ import { CameraModule } from '../camera/camera.module.js';
 import { InputState } from './input.module.js';
 import { config } from '../../core/config.js';
 import { ManualOverrides } from '../debug/governor.js';
-import { TrajectoryPreview } from '../../core/trajectory-preview.js';
 
 const BRUSH_SPACING = 20;   // px of stroke between stamps (auto default — knob overrides)
 const BRUSH_SLOP    = 14;   // move this far before the hold becomes a brush
@@ -97,17 +96,7 @@ export const InPlanet = {
     const brushed = (this._brush?.planted || 0) > 0;
     this._brush = null;
     // A brush stroke already planted its planets — no charged mega-spawn on top.
-    if (!brushed) {
-      this._spawnPlanet();
-    } else {
-      // The charge preview (TrajectoryPreview) had been walking a HYPOTHETICAL
-      // classic spawn at the drag's current position this whole time (see
-      // drawOrbitPreview, called every frame while holding). That candidate
-      // never became real — this hold turned into a brush stroke instead —
-      // so drop it. Nothing was ever written into FutureCache for it, so
-      // this is just local cleanup.
-      TrajectoryPreview.cancel();
-    }
+    if (!brushed) this._spawnPlanet();
     return true; // CONSUMED
   },
 
@@ -144,14 +133,15 @@ export const InPlanet = {
   _spawnPlanet() {
     const charge = Math.min((performance.now() - InputState.holdTime) / 2000, 1);
     const sliderVal = parseFloat(this.slider.value);
-    // Same formula the orbit preview used every frame of this hold
-    // (OverlaysModule.computeChargeRadius) — one source of truth, so the
-    // planet that spawns is EXACTLY the one the preview promised.
+    const raw = sliderVal * (1 + charge * 4);
+    const t = Math.min(raw / 50, 1);
+    const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
+    const radius = Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+
     const w = CameraModule.screenToWorld(InputState.mouseX, InputState.mouseY);
 
     import('../ui/overlays.js').then((module) => {
-      const radius = module.OverlaysModule.computeChargeRadius(sliderVal, charge);
-      module.OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, this.pcountEl, 0, -1, true);
+      module.OverlaysModule.spawnPlanet(w.x, w.y, radius / 8, this.pcountEl, 0);
     });
   }
 };

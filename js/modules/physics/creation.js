@@ -35,33 +35,7 @@ export const makeParticle = (x, y, mass, pal, isCore) => ({
 export const makeSpring = (a, b, restLen, stiff, breakAt) => ({
     a, b, restLen, stiff: stiff || config.SPRING_K,
     breakAt: breakAt || (restLen * config.BREAK_MULT), broken: false
-});
-
-/**
- * How many particles makeBody(radius) WILL produce — same grid-fill geometry
- * (spacing, row/col count, the radius+spacing*0.3 cutoff), just counting
- * instead of allocating. Translation-invariant, so no cx/cy needed.
- *
- * TrajectoryPreview uses this to know the REAL nParticles divisor a
- * candidate planet will integrate with (tick.js's applyGravity divides
- * every force by nParticles) — the same single source of truth makeBody
- * itself uses, so the orbit preview and the eventual real body can never
- * silently drift out of formula-sync with each other.
- */
-export const estimateParticleCount = (radius) => {
-    const spacing = config.PARTICLE_R * 1.82;
-    const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;
-    const ox = -(cols - 1) * spacing * 0.5, oy = -(rows - 1) * spacing * 0.5;
-    let n = 0;
-    for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-            const px = ox + col * spacing + (row % 2) * 0.5 * spacing, py = oy + row * spacing;
-            if (hypot(px, py) > radius + spacing * 0.3) continue;
-            n++;
-        }
-    }
-    return Math.max(1, n);
-};export const makeBody = (cx, cy, radius, pal, plane = 0) => {
+});export const makeBody = (cx, cy, radius, pal, plane = 0) => {
     const particles = [], springs = [], grid = {};
     const spacing = config.PARTICLE_R * 1.82;
     const rows = Math.ceil(radius / spacing) * 2 + 1, cols = rows;

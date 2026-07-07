@@ -6,10 +6,9 @@ import { hypot, clamp, lerp, PI2 } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { CONFIG } from '../../../js/config/config-index.js';
 import { state, SUN, sunGravMult, physSpeed, PALS } from '../../core/state.js';
-import { makeBody, estimateParticleCount } from '../physics/creation.js';
+import { makeBody } from '../physics/creation.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { FutureCache } from '../../core/future-cache.js';
-import { TrajectoryPreview } from '../../core/trajectory-preview.js';
 
 export const OverlaysModule = {
   fpsSamples: [],
@@ -41,14 +40,7 @@ export const OverlaysModule = {
   },
 
   // ── Spawn Planet ──
-  // usePreview: true ONLY for the classic hold-and-release spawn, where
-  // TrajectoryPreview has been walking THIS exact candidate the whole hold
-  // (see drawOrbitPreview). Brush stamps have no matching preview — each
-  // stamp is instantaneous — so they keep the safe invalidate() path.
-  // Passing usePreview=true for a body TrajectoryPreview never tracked is
-  // harmless too: commit() falls back to invalidate() itself when nothing
-  // meaningful was walked.
-  spawnPlanet: (x, y, size, pcountEl, plane = 0, palIdx = -1, usePreview = false) => {
+  spawnPlanet: (x, y, size, pcountEl, plane = 0, palIdx = -1) => {
     if (state.bodies.length >= CONFIG.physics.MAX_BODIES) return;
     const radius = clamp(size * 8, 16, 110);
     const pal = (palIdx >= 0 && palIdx < PALS.length)
@@ -66,27 +58,11 @@ export const OverlaysModule = {
     for (const p of body.particles) { p.vx = vx; p.vy = vy; }
     state.bodies.push(body);
 
-    // A newly-planted body isn't in anything already cached ahead. THE OLD
-    // FIX was FutureCache.invalidate() — correct, but it threw away every
-    // tick already computed for every OTHER body too. TrajectoryPreview has
-    // been walking this exact candidate through the ALREADY-cached future
-    // since the hold began (see drawOrbitPreview below); commit() folds
-    // that precomputed path directly into the existing buffer instead —
-    // nothing already built for the rest of the world is wasted. If no
-    // preview was ever walked (a brush stamp, or an instant tap-release),
-    // commit() falls back to invalidate() itself, so this is never less
-    // safe than before, only sometimes much cheaper.
-    if (usePreview) {
-      TrajectoryPreview.commit(body);
-    } else {
-      // Brush stamp — no matching preview was ever walked for THIS body's
-      // exact position (each stamp is instantaneous), so committing here
-      // would splice a DIFFERENT, unrelated candidate's path in (whatever
-      // the classic-hold preview happens to be tracking elsewhere on
-      // screen). Leave that live candidate alone — it isn't this body —
-      // and fall back to the always-correct invalidate().
-      FutureCache.invalidate();
-    }
+    // A newly-planted body isn't in anything already cached ahead. Without this,
+    // stale future ticks (computed before this planet existed) replay and
+    // overwrite state.bodies via playNext(), wiping the new planet — which is
+    // why only the first planet (planted while the cache was still empty) stuck.
+    FutureCache.invalidate();
 
     state.flashes.push({
       x, y, r: radius * 0.1, maxR: radius * 2, gc: pal.gc,
@@ -137,36 +113,62 @@ export const OverlaysModule = {
     return { vx: -(y - SUN.y) / dist * v, vy: (x - SUN.x) / dist * v, dist };
   },
 
-  // Single source of truth for "how big is the planet at THIS charge" — used
-  // by both the real spawn (in-planet.js._spawnPlanet) and the orbit preview
-  // (drawOrbitPreview below), so they can never silently drift apart.
-  computeChargeRadius: (sliderVal, charge) => {
-    const raw = sliderVal * (1 + charge * 4);
-    const t = Math.min(raw / 50, 1);
-    const multiplier = 0.25 + 2.25 * Math.pow(t, 1.4);
-    return Math.max(10, Math.min(110, Math.round(40 * multiplier)));
+  computePreviewDamping: (periodSub) => Math.pow(0.88, 1 / Math.max(periodSub, 1)),
+
+  // ── Orbit Prediction ──
+  predictOrbit: (spawnX, spawnY, vx0, vy0, nP, steps, dtPerStep, recordEvery = 40, grav = sunGravMult) => {
+    const pts = [];
+    let px = spawnX, py = spawnY, vx = vx0, vy = vy0;
+    const gm = config.GRAV_CONST * SUN.mass * grav / Math.max(nP, 1);
+    const burnR2 = SUN.burnRadius * SUN.burnRadius;
+    const periodSub = OverlaysModule.getOrbitalPeriod(hypot(spawnX - SUN.x, spawnY - SUN.y) || 1, nP, grav) / dtPerStep;
+    const vDamp = OverlaysModule.computePreviewDamping(periodSub);
+
+    for (let i = 0; i < steps; i++) {
+      const sdx = SUN.x - px, sdy = SUN.y - py;
+      const sd2 = sdx * sdx + sdy * sdy;
+      if (sd2 < burnR2) break;
+      const sd = Math.sqrt(sd2) + 0.1;
+      const f = gm / (sd2 + 500);
+      vx = (vx + (sdx / sd) * f * dtPerStep) * vDamp;
+      vy = (vy + (sdy / sd) * f * dtPerStep) * vDamp;
+      px += vx * dtPerStep;
+      py += vy * dtPerStep;
+      if (i % recordEvery === 0) pts.push({ x: px, y: py });
+    }
+    return pts;
+  },
+
+  _previewCache: null,
+
+  getPreviewPath: (wx, wy) => {
+    if (OverlaysModule._previewCache &&
+        Math.abs(OverlaysModule._previewCache.wx - wx) < 2 &&
+        Math.abs(OverlaysModule._previewCache.wy - wy) < 2 &&
+        OverlaysModule._previewCache.mult === sunGravMult) {
+      return OverlaysModule._previewCache.pts;
+    }
+
+    const dist = hypot(wx - SUN.x, wy - SUN.y) || 1;
+    const dtPerStep = 1 / config.SUBSTEPS;
+    const periodSub = OverlaysModule.getOrbitalPeriod(dist, 100, sunGravMult) / dtPerStep;
+    const totalSteps = Math.min(Math.ceil(periodSub * 7), 40000);
+    const { vx, vy } = OverlaysModule.getSpawnVelocity(wx, wy, 100, sunGravMult);
+    const pts = OverlaysModule.predictOrbit(wx, wy, vx, vy, 100, totalSteps, dtPerStep, 40, sunGravMult);
+
+    OverlaysModule._previewCache = { wx, wy, pts, mult: sunGravMult };
+    return pts;
   },
 
   // ── Draw Orbit Preview (WORLD SPACE — called inside camera transform) ──
-  // The orbit line IS the Future Cache now: TrajectoryPreview walks this
-  // exact candidate through FutureCache's own already-computed future (see
-  // trajectory-preview.js's doc header for the full case). This function
-  // just feeds it the current candidate params each frame and draws
-  // whatever path comes back — the rendering below is unchanged.
-  drawOrbitPreview: (ctx, holding, holdT, tx, ty, sliderVal) => {
+  drawOrbitPreview: (ctx, holding, holdT, tx, ty) => {
     if (!holding) return;
     const charge = Math.min((performance.now() - holdT) / 2000, 1);
     const alpha = clamp(charge * 1.6, 0, 0.9);
     const w = CameraModule.screenToWorld(tx, ty);
     const dx = w.x - SUN.x, dy = w.y - SUN.y;
     const dist = hypot(dx, dy) || 1;
-
-    const radius = OverlaysModule.computeChargeRadius(parseFloat(sliderVal) || 0, charge);
-    const nP = estimateParticleCount(radius);
-    const { vx, vy } = OverlaysModule.getSpawnVelocity(w.x, w.y, nP, sunGravMult);
-    TrajectoryPreview.beginIfChanged(w.x, w.y, vx, vy, sunGravMult, radius, nP);
-    TrajectoryPreview.update();
-    const pts = TrajectoryPreview.getPathPoints();
+    const pts = OverlaysModule.getPreviewPath(w.x, w.y);
     if (pts.length < 4) return;
 
     const total = pts.length;
@@ -273,7 +275,7 @@ export const OverlaysModule = {
 
     // text info — FIX: use ctx.save()/ctx.restore() instead of getTransform()/setTransform(m)
     const isBurnZone = dist < BURN_ZONE_R;
-    const period_frames = Math.round(OverlaysModule.getOrbitalPeriod(dist, nP, sunGravMult) / physSpeed);
+    const period_frames = Math.round(OverlaysModule.getOrbitalPeriod(dist, 100, sunGravMult) / physSpeed);
     const midSX = ((SUN.x - CameraModule.cam.x) * CameraModule.cam.zoom + CameraModule.width / 2 +
                    (w.x - CameraModule.cam.x) * CameraModule.cam.zoom + CameraModule.width / 2) / 2;
     const midSY = ((SUN.y - CameraModule.cam.y) * CameraModule.cam.zoom + CameraModule.height / 2 +
