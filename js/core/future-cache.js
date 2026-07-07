@@ -370,7 +370,7 @@ export const FutureCache = {
     return n;
   },
 
-
+  get debugInfo() {
     return {
       playhead: this._playheadTick,
       frontier: this._frontierTick,
