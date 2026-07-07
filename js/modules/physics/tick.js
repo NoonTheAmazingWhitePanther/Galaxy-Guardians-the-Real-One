@@ -16,6 +16,10 @@ import { PhysicsCounter } from '../debug/physics-counter.js';
 import { QueOps } from '../../core/que-ops.js';
 import { GravityField } from './gravity-field.js';
 import { MsProbe } from '../../core/ms-probe.js';
+import { BurnMap } from '../../core/burn-map.js';
+import { TweenGovernor } from '../../core/tween-governor.js';
+import { BurningParticles } from '../../core/burning-particles.js';
+import { BurningSystem } from '../../core/burning-system.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -148,17 +152,19 @@ export const tickLoose = (dt) => {
   const maxSurvivors = 350;
   const hardCap = looseArr.length > 400;
 
+  // Update burn map before particle loop
+  BurnMap.update(SUN, state.novas || [], state.supernovas || []);
+
   for (let li = looseArr.length - 1; li >= 0; li--) {
     const lp = looseArr[li];
     if (lp.life <= 0.02) continue;
     PhysicsCounter.add('looseTicked');
     if (hardCap && survivors.length >= maxSurvivors) break;
 
-    const sdx = sunX - lp.x, sdy = sunY - lp.y;
-    const sd2 = sdx * sdx + sdy * sdy;
-    const sd = Math.sqrt(sd2) + 0.1;
-    const inBurnZone = sd < sunBurnR * 4;
-    const inCritical = sd < sunBurnR;
+    // Query burn map instead of distance checks
+    const mapHeat = BurnMap.queryHeat(lp.x, lp.y);
+    const inBurnZone = mapHeat > 0.1;
+    const inCritical = mapHeat > 0.8;
 
     if (!lp.isBurnt && lp.heat > 0.7 && !inBurnZone) {
       lp.isBurnt = true;
@@ -168,6 +174,9 @@ export const tickLoose = (dt) => {
 
     if (lp.isBurnt && inBurnZone) {
       lp.life -= lp.meltRate * dt * 2.5;
+      // Repel away from sun (approximate direction from map)
+      const sdx = sunX - lp.x, sdy = sunY - lp.y;
+      const sd = Math.hypot(sdx, sdy) + 0.1;
       const escapeFactor = lp.detachSpeed / 15;
       lp.vx += (sdx / sd) * escapeFactor * 0.3 * dt;
       lp.vy += (sdy / sd) * escapeFactor * 0.3 * dt;
@@ -185,8 +194,12 @@ export const tickLoose = (dt) => {
       lp.vy += (Math.random() - 0.5) * 0.1 * dt;
     }
 
-    if (sd < sunBurnR) continue;
+    if (inCritical) continue;
 
+    // Sun gravity (kept as is, still uses distance)
+    const sdx = sunX - lp.x, sdy = sunY - lp.y;
+    const sd2 = sdx * sdx + sdy * sdy;
+    const sd = Math.sqrt(sd2) + 0.1;
     const sf = gravConst * sunMass * sunGrav / (sd2 + 500) * 0.04;
     lp.vx += sdx / sd * sf * dt;
     lp.vy += sdy / sd * sf * dt;
@@ -208,10 +221,16 @@ export const tickLoose = (dt) => {
     lp.x += lp.vx * dt;
     lp.y += lp.vy * dt;
 
+    // Heat accumulation scaled by burn map heat
+    const currentHeat = BurnMap.queryHeat(lp.x, lp.y);
     if (lp.isBurnt) {
-      lp.heat = sd < sunBurnR * 3 ? Math.min(1, lp.heat + 0.015 * dt) : Math.max(0.5, lp.heat - 0.003 * dt);
+      lp.heat = currentHeat > 0.1
+        ? Math.min(1, lp.heat + (0.015 * currentHeat) * dt)
+        : Math.max(0.5, lp.heat - 0.003 * dt);
     } else {
-      lp.heat = sd < sunBurnR * 3 ? Math.min(1, lp.heat + 0.02 * dt) : Math.max(0, lp.heat - 0.008 * dt);
+      lp.heat = currentHeat > 0.1
+        ? Math.min(1, lp.heat + (0.02 * currentHeat) * dt)
+        : Math.max(0, lp.heat - 0.008 * dt);
     }
 
     survivors.push(lp);
@@ -267,6 +286,17 @@ export const tickBodies = (scaledDt) => {
   const numBodies = bodies.length;
   if (numBodies === 0) return;
 
+  // ✅ NEW: Update burning particle physics (real-time sun attraction)
+  BurningParticles.updateBurningPhysics(scaledDt);
+
+  // ✅ NEW: Update body heat from BurnMap (continuous heat state)
+  for (const body of bodies) {
+    if (!body.dead) {
+      BurningSystem.updateBodyHeat(body);
+      BurningSystem.onBurnStart(body);
+    }
+  }
+
   // Phase probes: accumulate raw ms across substeps, commit ONE sample per
   // tick. Live path only — ghost stepping (FutureCache) is measured as a
   // whole by physics.cacheTick; letting ghosts feed these children would make
@@ -305,6 +335,10 @@ export const tickBodies = (scaledDt) => {
     if (_probe) _t0 = performance.now();
     for (let bi = 0; bi < numBodies; bi++) {
       const body = bodies[bi];
+      
+      // OPTIMIZATION: Skip tweening bodies entirely
+      if (TweenGovernor.shouldPause(body.id)) continue;
+      
       const na = nAlives[bi];
       const particles = body.particles;
       for (let pi = 0; pi < particles.length; pi++) {
@@ -343,7 +377,19 @@ export const tickBodies = (scaledDt) => {
     // ── PHASE 3: Springs ──
     if (_probe) { const t = performance.now(); _msGrav += t - _t0; _t0 = t; }
     for (let bi = 0; bi < numBodies; bi++) {
-      solveSprings(bodies[bi], dt);
+      const body = bodies[bi];
+      // OPTIMIZATION: Skip tweening bodies (no shape changes during tween)
+      if (TweenGovernor.shouldPause(body.id)) continue;
+      solveSprings(body, dt);
+    }
+
+    // ── PHASE 3B: Burning particles emission ──
+    // Emit loose particles from hot bodies (they're melting into the sun)
+    for (let bi = 0; bi < numBodies; bi++) {
+      const body = bodies[bi];
+      if (body.heat && body.heat > 0.5) {
+        BurningParticles.emit(body, dt);
+      }
     }
 
     // ── PHASE 4: Inter-body collisions (last substep only) ──
@@ -355,6 +401,8 @@ export const tickBodies = (scaledDt) => {
   // ── POST-SUBSTEP: COM, split, filter ──
   if (_probe) _t0 = performance.now();
   for (let bi = 0; bi < numBodies; bi++) {
+    // OPTIMIZATION: Skip tweening bodies (position/rotation fixed)
+    if (TweenGovernor.shouldPause(bodies[bi].id)) continue;
     updateCOM(bodies[bi]);
   }
   // Queue splitDeadParticles only for bodies that had spring breaks this tick

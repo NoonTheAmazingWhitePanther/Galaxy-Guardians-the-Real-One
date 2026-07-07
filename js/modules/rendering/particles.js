@@ -89,19 +89,46 @@ export const ParticlesModule = {
     ctx.fillStyle = "rgba(30,15,8,1)";
     batchArcs(ctx, burnt);
 
-    // Burnt warm (OPTIMIZATION: skip if zoomed out, no shadow blur)
-    // These are individual-color particles, so per-particle draw.
-    // Removed shadowBlur which was expensive per-particle filter.
+    // Burnt warm — batch by heat intensity (avoid per-particle draws)
+    // OPTIMIZATION: Only draw highest-heat particles individually, batch the rest
     if (camZoom >= 0.15 && burntWarm.length) {
+      const highHeat = [];    // heat >= 0.7 — draw individually (rare)
+      const mediumHeat = [];  // heat 0.4–0.7 — batch one style
+      const lowHeat = [];     // heat < 0.4 — batch one style
+      
       for (const { x, y, r, heat } of burntWarm) {
+        const item = { x, y, r };
+        if (heat >= 0.7) {
+          highHeat.push({ ...item, heat });
+        } else if (heat >= 0.4) {
+          mediumHeat.push(item);
+        } else {
+          lowHeat.push(item);
+        }
+      }
+      
+      // High heat — per-particle (few, color varies)
+      for (const { x, y, r, heat } of highHeat) {
         const intensity = Math.min(heat, 1);
-        const red = Math.floor(lerp(80, 180, intensity));
-        const green = Math.floor(lerp(20, 60, intensity));
-        
+        const red = Math.floor(lerp(150, 180, intensity));
+        const green = Math.floor(lerp(40, 60, intensity));
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = `rgba(${red},${green},15,1)`;
         ctx.beginPath(); ctx.arc(x, y, r, 0, PI2); ctx.fill();
-        // NOTE: Removed shadow glow. Restored with future glow layer if needed.
+      }
+      
+      // Medium heat — batched (orange-ish)
+      if (mediumHeat.length) {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = 'rgba(120,35,15,1)';
+        batchArcs(ctx, mediumHeat);
+      }
+      
+      // Low heat — batched (dark red)
+      if (lowHeat.length) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = 'rgba(80,20,10,1)';
+        batchArcs(ctx, lowHeat);
       }
     }
 

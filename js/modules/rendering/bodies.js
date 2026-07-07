@@ -12,6 +12,8 @@ import { config } from '../../core/config.js';
 import { state, SUN } from '../../core/state.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { renderParticles } from '../rendering/particle-management.js';
+import { DotAtlasRenderer } from './dot-atlas-renderer.js';
+import { HeatSparkles } from '../../core/heat-sparkles.js';
 
 export const BodiesModule = {
   drawBodies: (ctx) => {
@@ -29,27 +31,24 @@ export const BodiesModule = {
     const hull = convexHull(alive);
     if (hull.length < 3) return;
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: If body center is NaN, skip ALL gradient rendering.
-    // This prevents DOMException (IndexSizeError) from NaN in gradients.
-    // ═══════════════════════════════════════════════════════════════════════
     if (!Number.isFinite(body.cx) || !Number.isFinite(body.cy)) return;
 
-    // Burn factor calculation
-    const dxSun = SUN.x - body.cx, dySun = SUN.y - body.cy;
-    const sDist = hypot(dxSun, dySun);
-    const burnZoneRadius = SUN.burnRadius * 4;
-    let burnFactor = 0;
-    if (sDist < burnZoneRadius) {
-      burnFactor = 1 - (sDist / burnZoneRadius);
-      burnFactor *= (0.9 + 0.1 * Math.sin(SUN.coronaTime * 15));
-      burnFactor = clamp(burnFactor, 0, 1);
-    }
+    // Normal rendering function (called either directly or via caching layer)
+    const drawNormal = () => {
+      const dxSun = SUN.x - body.cx, dySun = SUN.y - body.cy;
+      const sDist = hypot(dxSun, dySun);
+      const burnZoneRadius = SUN.burnRadius * 4;
+      let burnFactor = 0;
+      if (sDist < burnZoneRadius) {
+        burnFactor = 1 - (sDist / burnZoneRadius);
+        burnFactor *= (0.9 + 0.1 * Math.sin(SUN.coronaTime * 15));
+        burnFactor = clamp(burnFactor, 0, 1);
+      }
 
-    // Hull fill
-    ctx.beginPath();
-    ctx.moveTo(hull[0].x, hull[0].y);
-    for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y);
+      // Hull fill
+      ctx.beginPath();
+      ctx.moveTo(hull[0].x, hull[0].y);
+      for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i].x, hull[i].y);
     ctx.closePath();
     const gr = ctx.createRadialGradient(body.cx, body.cy, 0, body.cx, body.cy, body.radius);
     gr.addColorStop(0, pal.hi + 'dd'); gr.addColorStop(0.35, pal.mid + 'cc');
@@ -100,22 +99,32 @@ export const BodiesModule = {
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    renderParticles(ctx, alive, pal, burnFactor, config.PARTICLE_R, lerp);
+      renderParticles(ctx, alive, pal, burnFactor, config.PARTICLE_R, lerp);
 
-    // ─── PLANET AURA & GLOSS ───
-    const auraRadius = body.radius * 1.6;
-    const auraGrad = ctx.createRadialGradient(
-      body.cx, body.cy, body.radius * 0.01,
-      body.cx, body.cy, auraRadius * 1.1
-    );
-    ctx.save();
-    auraGrad.addColorStop(0, body.pal.hi + '66');
-    auraGrad.addColorStop(0.5, body.pal.lo + '33');
-    auraGrad.addColorStop(1, body.pal.lo + '00');
-    ctx.fillStyle = auraGrad;
-    ctx.beginPath();
-    ctx.arc(body.cx, body.cy, auraRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+      // ─── PLANET AURA & GLOSS ───
+      const auraRadius = body.radius * 1.6;
+      const auraGrad = ctx.createRadialGradient(
+        body.cx, body.cy, body.radius * 0.01,
+        body.cx, body.cy, auraRadius * 1.1
+      );
+      ctx.save();
+      auraGrad.addColorStop(0, body.pal.hi + '66');
+      auraGrad.addColorStop(0.5, body.pal.lo + '33');
+      auraGrad.addColorStop(1, body.pal.lo + '00');
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(body.cx, body.cy, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // ─── HEAT SPARKLES (sun-facing arc) ───
+      // White noise shimmer on borders when burning
+      if (body.heat && body.heat > 0.3) {
+        HeatSparkles.draw(ctx, body, body.heat);
+      }
+    };
+
+    // Use caching layer with stability thresholds
+    DotAtlasRenderer.draw(ctx, body, drawNormal);
   }
 };

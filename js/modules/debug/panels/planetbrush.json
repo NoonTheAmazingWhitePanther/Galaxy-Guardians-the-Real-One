@@ -13,14 +13,29 @@
   {
    "type": "header",
    "text": "PLANET BRUSH",
-   "value": "ManualOverrides.brushSizeMax.value",
+   "value": "PaintingState.debugInfo.status",
    "color": "accent",
-   "bold": true,
-   "valueSuffix": " px"
+   "bold": true
   },
   {
    "type": "divider",
-   "text": "\u2014 hold + drag to paint \u2014"
+   "text": "─ painting mode ─"
+  },
+  {
+   "type": "buttons",
+   "text": "Painting",
+   "variable": "PaintingState.enabled",
+   "buttons": [
+    "ON",
+    "OFF"
+   ],
+   "governor": {
+    "mode": "toggle"
+   }
+  },
+  {
+   "type": "divider",
+   "text": "─ hold + drag to paint ─"
   },
   {
    "type": "buttons",
@@ -29,7 +44,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -45,7 +60,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -61,7 +76,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -77,7 +92,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -93,7 +108,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -104,7 +119,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 group: -1 = CPU picks \u2014"
+   "text": "─ group: -1 = CPU picks ─"
   },
   {
    "type": "buttons",
@@ -113,7 +128,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -124,11 +139,24 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 -1 Rnd \u00b7 0 Ember \u00b7 1 Ocean \u00b7 2 Violet \u2014"
+   "text": "─ color palette ─"
   },
   {
-   "type": "divider",
-   "text": "\u2014 3 Emerald \u00b7 4 Magenta \u00b7 5 Gold \u2014"
+   "type": "buttons",
+   "text": "Palette",
+   "variable": "ColorPalette.current",
+   "buttons": [
+    "Ember",
+    "Ocean",
+    "Violet",
+    "Emerald",
+    "Magenta",
+    "Gold"
+   ],
+   "governor": {
+    "mode": "cycle",
+    "options": ["ember", "ocean", "violet", "emerald", "magenta", "gold"]
+   }
   },
   {
    "type": "buttons",
@@ -137,7 +165,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",

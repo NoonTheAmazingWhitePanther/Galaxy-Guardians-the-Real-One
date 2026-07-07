@@ -251,6 +251,35 @@ body.dbg-console .dbg-sat { display: none; }
     color: rgba(130, 255, 160, 0.95);
     box-shadow: 0 0 12px rgba(130, 255, 160, 0.2), 0 4px 12px rgba(0,0,0,0.4);
 }
+
+/* PAINTING BUTTON — Below AIMS */
+#painting-btn {
+    position: fixed;
+    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + var(--pad-size) + 12px);
+    right: var(--safe);
+    z-index: 55;
+    width: var(--pad-size); height: var(--pad-size);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#painting-btn:active { transform: scale(0.92); }
+#painting-btn.active {
+    background: rgba(80, 30, 60, 0.9);
+    border-color: rgba(255, 130, 200, 0.5);
+    color: rgba(255, 130, 200, 0.95);
+    box-shadow: 0 0 12px rgba(255, 130, 200, 0.2), 0 4px 12px rgba(0,0,0,0.4);
+}
 #debug-btn.active  {
     background: rgba(30, 60, 90, 0.9);
     border-color: rgba(130, 210, 255, 0.5);

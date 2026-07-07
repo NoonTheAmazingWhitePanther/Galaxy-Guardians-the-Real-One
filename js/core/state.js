@@ -1,8 +1,17 @@
 import { CONFIG } from '../config/config-index.js';
 
 export const state = {
-    bodies: [], loose: [], flashes: [], stars: [], asteroids: [], astTimer: 0,
-    physSpeed: 1, paused: false, sunGravMult: 1.0,
+    bodies: [],
+    loose: [],
+    flashes: [],
+    stars: [],
+    asteroids: [],
+    astTimer: 0,
+    novas: [],
+    supernovas: [],
+    physSpeed: 1,
+    paused: false,
+    sunGravMult: 1.0,
     shake: { intensity: 0, decay: 0.9 }
 };
 
@@ -33,7 +42,9 @@ export const SPEED_MAX = 12;
 export const RING_MIN_RADIUS = 0;
 export const RING_PARTICLES = 0;
 export const AST_SPAWN_INTERVAL = 600;
-export const AST_MAX = 3;export const setSunGravMult = (v) => { state.sunGravMult = v; };
+export const AST_MAX = 3;
+
+export const setSunGravMult = (v) => { state.sunGravMult = v; };
 
 export const setPhysSpeed = (v) => {
     state.physSpeed = v;

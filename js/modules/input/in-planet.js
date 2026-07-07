@@ -12,6 +12,7 @@ import { InputState } from './input.module.js';
 import { config } from '../../core/config.js';
 import { ManualOverrides } from '../debug/governor.js';
 import { TrajectoryPreview } from '../../core/trajectory-preview.js';
+import { PaintingState } from '../../core/painting-state.js';
 
 const BRUSH_SPACING = 20;   // px of stroke between stamps (auto default — knob overrides)
 const BRUSH_SLOP    = 14;   // move this far before the hold becomes a brush
@@ -117,6 +118,9 @@ export const InPlanet = {
   //   plane  = fixed group knob, or -1 = the CPU selects (round-robin)
   //   color  = named palette knob, or -1 = Random (the classic way)
   _plantBrush(sx, sy) {
+    // GATE: Only plant if painting is enabled
+    if (!PaintingState.isAllowed()) return;
+
     const lo = Math.min(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
     const hi = Math.max(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
     const rf = Math.max(0, Math.min(1, _ov('brushRandom', 1)));
@@ -142,6 +146,9 @@ export const InPlanet = {
   },
 
   _spawnPlanet() {
+    // GATE: Only spawn if painting is enabled
+    if (!PaintingState.isAllowed()) return;
+
     const charge = Math.min((performance.now() - InputState.holdTime) / 2000, 1);
     const sliderVal = parseFloat(this.slider.value);
     // Same formula the orbit preview used every frame of this hold

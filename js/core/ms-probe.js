@@ -215,6 +215,28 @@ export const MsProbe = {
   },
 
   /**
+   * dotAtlasMetrics()
+   * Get dot atlas specific metrics for debug panel.
+   * Returns: { initBodyCalls, drawCalls, captureSpriteCalls, drawAvgMs, captureAvgMs, fadeAvgMs, totalMs }
+   */
+  dotAtlasMetrics() {
+    const cacheInit = this.stats('dotatlas.initBody');
+    const cacheDraw = this.stats('dotatlas.draw');
+    const cacheCapture = this.stats('dotatlas.captureSprite');
+    const fadeCycles = this.stats('dotatlas.fade');
+
+    return {
+      initBodyCalls: cacheInit.calls,
+      drawCalls: cacheDraw.calls,
+      captureSpriteCalls: cacheCapture.calls,
+      drawAvgMs: cacheDraw.avg,
+      captureAvgMs: cacheCapture.avg,
+      fadeAvgMs: fadeCycles.avg,
+      totalMs: cacheDraw.total + cacheCapture.total
+    };
+  },
+
+  /**
    * log()
    * console.table() all current stats. Dev convenience.
    */

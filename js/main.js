@@ -31,11 +31,17 @@ import { TuningLayer } from './modules/tuning/tuning-layer.js';
 import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
-// ✅ FIX: Import from unified governor
 import { PhysicsGov, RenderGov, CacheGov } from './modules/debug/governor.js';
 import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { Benchmark } from './modules/debug/benchmark.js';
 import { QueOps } from './core/que-ops.js';
+
+// ✅ NEW SYSTEMS (2026-07-07)
+import { DotAtlasRenderer } from './modules/rendering/dot-atlas-renderer.js';
+import { TweenGovernor } from './core/tween-governor.js';
+import { PaintingState } from './core/painting-state.js';
+import { PaintingButton } from './modules/ui/painting-button.js';
+import { BurnMap } from './core/burn-map.js';
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false });
@@ -203,11 +209,29 @@ export function init() {
     }, { passive: false });
   }
 
+  // ✅ PAINTING BUTTON — wire to PaintingState toggle
+  PaintingButton.init();
+  const paintingBtn = document.getElementById('painting-btn');
+  if (paintingBtn) {
+    paintingBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      PaintingState.toggle();
+      PaintingButton.update();
+    }, { passive: false });
+  }
+
   window.Sim = window.Sim || {};
   window.Sim.physicsAccumulator = physicsAccumulator;
   window.Sim.isPreCalculating = isPreCalculating;
   window.Sim.lastPhysicsTime = lastPhysicsTime;
   window.Sim.preCalcCounter = preCalcCounter;
+  
+  // ✅ NEW SYSTEMS — export to window for debugging
+  window.Sim.DotAtlasRenderer = DotAtlasRenderer;
+  window.Sim.TweenGovernor = TweenGovernor;
+  window.Sim.PaintingState = PaintingState;
+  window.Sim.BurnMap = BurnMap;
 
   requestAnimationFrame(mainLoop);
 }

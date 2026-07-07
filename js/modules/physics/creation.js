@@ -105,11 +105,22 @@ export const estimateParticleCount = (radius) => {
     }
     // Plane-merge state: brush planets (plane ≠ 0) wait GRACE ticks, then
     // interpolate home to plane 0. mergeSoft eases their first collisions.
+    const shineIntensity = 0.3 + Math.random() * 0.7;  // 0.3-1.0 per planet
+    const shineCount = Math.floor(3 + shineIntensity * 4);  // 3-7 specular points
     return {
         id: nextId(), particles, springs, pal, cx, cy, mass: tm, radius,
         dead: false, gravMult: 1.0, plane: plane | 0,
         mergeDelay: (plane | 0) !== 0 ? (config.PLANE_MERGE_GRACE | 0) : 0,
         mergeSoft: 0, mergeTries: 0,
+        shine: {
+            intensity: shineIntensity,
+            count: shineCount,
+            points: Array.from({ length: shineCount }, () => ({
+                angle: Math.random() * Math.PI * 2,
+                distance: Math.random() * radius * 0.8,
+                brightness: 0.4 + Math.random() * 0.6
+            }))
+        }
     };
 };
 
