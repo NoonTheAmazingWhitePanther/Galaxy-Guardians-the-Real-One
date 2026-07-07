@@ -23,6 +23,8 @@ import { GuiGovernor } from './gui-governor.js';
 import { GravityField } from '../physics/gravity-field.js';
 import { CycleMeter } from '../../core/cycle-meter.js';
 import { Gate } from '../../core/gate.js';
+import { TrajectoryPreview } from '../../core/trajectory-preview.js';
+import { loadPanelConfigs } from '../../core/panel-loader.js';
 
 export const DebugRouter = {
   panels: [],
@@ -58,6 +60,7 @@ export const DebugRouter = {
     GovernorRegistry.register('GravityField',     GravityField);
     GovernorRegistry.register('CycleMeter',       CycleMeter);
     GovernorRegistry.register('Gate',             Gate);
+    GovernorRegistry.register('TrajectoryPreview', TrajectoryPreview);
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
@@ -65,11 +68,14 @@ export const DebugRouter = {
     window._ManualOverrides = ManualOverrides;
 
     try {
-      const response = await fetch('./js/modules/debug/debug-config.json');
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      this._config = await response.json();
+      // PRIME IDEAL: one JSON file per panel (js/modules/debug/panels/*.json),
+      // assembled from panels/manifest.json in manifest order. Replaces the
+      // old single debug-config.json monolith — adding, removing, or handing
+      // a panel to someone else is now a one-file change, not a diff inside
+      // a 1000-line array. See js/core/panel-loader.js.
+      this._config = await loadPanelConfigs('./js/modules/debug/panels/');
     } catch (err) {
-      console.warn('[DebugRouter] Config load failed:', err);
+      console.warn('[DebugRouter] Panel config load failed:', err);
       this._config = { panels: [] };
     }
 

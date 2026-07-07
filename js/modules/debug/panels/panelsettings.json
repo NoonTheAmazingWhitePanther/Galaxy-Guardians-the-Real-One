@@ -1,0 +1,217 @@
+{
+ "id": "panelSettings",
+ "title": "PANEL SETTINGS",
+ "position": {
+  "x": 16,
+  "y": 600
+ },
+ "refreshRate": 250,
+ "minimized": true,
+ "summaryVariable": "ManualOverrides.psOverall.value",
+ "summaryLabel": "style",
+ "lines": [
+  {
+   "type": "header",
+   "text": "PANEL SETTINGS",
+   "value": "ManualOverrides.psOverall.value",
+   "valueSuffix": "x",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 overall ratio \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Overall",
+   "variable": "ManualOverrides.psOverall.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.45,
+    "max": 3.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Keep Ratio",
+   "variable": "ManualOverrides.psLock.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 unlock to distort each \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Font",
+   "variable": "ManualOverrides.psFont.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Pad",
+   "variable": "ManualOverrides.psPad.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Line",
+   "variable": "ManualOverrides.psLine.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Label W",
+   "variable": "ManualOverrides.psLabelW.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Value W",
+   "variable": "ManualOverrides.psValW.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Radius",
+   "variable": "ManualOverrides.psRadius.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Knob",
+   "variable": "ManualOverrides.psKnob.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 minimized panel (its own look) \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Min Knob",
+   "variable": "ManualOverrides.psMinKnob.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Min Font",
+   "variable": "ManualOverrides.psMinFont.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.25,
+    "max": 2.0,
+    "step": 0.05
+   }
+  }
+ ],
+ "minimizedKnob": {
+  "variable": "ManualOverrides.psOverall.value",
+  "min": 0.45,
+  "max": 3.0,
+  "step": 0.05,
+  "label": ""
+ }
+}

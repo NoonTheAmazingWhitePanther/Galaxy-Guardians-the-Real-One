@@ -111,6 +111,12 @@ export const ManualOverrides = {
   cacheMsBudget:            { isManual: false, value: 2.0 },  // spare ms/frame spent caching ahead
   cacheDirtySubsteps:       { isManual: false, value: 0 },    // ghost-sim substeps for the FUTURE cache; 0 = exact (same as live). >0 = dirty/cheaper future.
 
+  // TrajectoryPreview — the orbit-preview line IS the Future Cache: it
+  // walks FutureCache's already-computed future (peekAt) instead of a
+  // separate toy integrator, then folds straight into the buffer on spawn.
+  trajPreviewOn:            { isManual: false, value: 1 },    // 1 = FutureCache-driven preview · 0 = line hidden
+  trajPreviewMsBudget:      { isManual: false, value: 1.5 },  // ms/frame spent walking the candidate forward
+
   // Trails (position-history stamp trail + phosphor glow ring)
   trailEnabled:             { isManual: false, value: 1 },
   trailMax:                 { isManual: false, value: 8 },    // # of past tick-positions stamped (0..1000)

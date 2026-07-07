@@ -1,0 +1,20 @@
+[
+ "governor.json",
+ "fps.json",
+ "drawcalls.json",
+ "physics.json",
+ "input.json",
+ "queops.json",
+ "msprobe.json",
+ "statecache.json",
+ "trails.json",
+ "aim.json",
+ "screenres.json",
+ "guigov.json",
+ "panelgrid.json",
+ "panelsettings.json",
+ "planetbrush.json",
+ "gravitygrid.json",
+ "trajectory.json",
+ "cycle.json"
+]

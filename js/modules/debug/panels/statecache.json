@@ -1,0 +1,302 @@
+{
+ "id": "stateCache",
+ "title": "CACHE",
+ "position": {
+  "x": 159,
+  "y": 200
+ },
+ "refreshRate": 100,
+ "summaryVariable": "FutureCache.debugInfo.ahead",
+ "summaryLabel": "Cached ahead",
+ "lines": [
+  {
+   "type": "header",
+   "text": "CACHE",
+   "value": "FutureCache.debugInfo.ahead",
+   "suffix": "CacheGov.label",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 future cache \u2014"
+  },
+  {
+   "type": "display",
+   "text": "ahead",
+   "value": "FutureCache.debugInfo.ahead"
+  },
+  {
+   "type": "display",
+   "text": "target",
+   "value": "CacheGov.targetAhead"
+  },
+  {
+   "type": "display",
+   "text": "playhead",
+   "value": "FutureCache.debugInfo.playhead"
+  },
+  {
+   "type": "display",
+   "text": "frontier",
+   "value": "FutureCache.debugInfo.frontier"
+  },
+  {
+   "type": "display",
+   "text": "hit rate",
+   "value": "FutureCache.debugInfo.hitRate"
+  },
+  {
+   "type": "display",
+   "text": "hits / misses",
+   "value": "FutureCache.debugInfo.hitsMisses"
+  },
+  {
+   "type": "display",
+   "text": "mode",
+   "value": "CacheGov.label"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 dormancy (measure) \u2014"
+  },
+  {
+   "type": "display",
+   "text": "cold",
+   "value": "Dormancy.debugInfo.cold"
+  },
+  {
+   "type": "display",
+   "text": "cold %",
+   "value": "Dormancy.debugInfo.coldPct"
+  },
+  {
+   "type": "display",
+   "text": "horizon",
+   "value": "Dormancy.debugInfo.horizon"
+  },
+  {
+   "type": "display",
+   "text": "margin",
+   "value": "Dormancy.debugInfo.margin"
+  },
+  {
+   "type": "display",
+   "text": "scan",
+   "value": "Dormancy.debugInfo.scanMs"
+  },
+  {
+   "type": "display",
+   "text": "status",
+   "value": "Dormancy.debugInfo.status"
+  },
+  {
+   "type": "buttons",
+   "text": "Wake Lead",
+   "variable": "ManualOverrides.dormancyMargin.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 400,
+    "step": 10
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Radius \u00d7",
+   "variable": "ManualOverrides.dormancyRadiusK.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0.5,
+    "max": 3,
+    "step": 0.1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Sun Pad",
+   "variable": "ManualOverrides.dormancySunPad.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 400,
+    "step": 20
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Scan Horizon",
+   "variable": "ManualOverrides.dormancyHorizon.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 8,
+    "max": 1000,
+    "step": 8
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Tween Witness",
+   "variable": "ManualOverrides.dormancyTween.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Tween Lock",
+   "variable": "ManualOverrides.dormancyTweenLock.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 2,
+    "max": 60,
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 controls \u2014"
+  },
+  {
+   "type": "buttons",
+   "text": "Target Ahead",
+   "variable": "ManualOverrides.cacheTargetAhead.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1000,
+    "step": 10
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Ms Budget",
+   "variable": "ManualOverrides.cacheMsBudget.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 10,
+    "step": 0.5
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Cache Dirt",
+   "variable": "ManualOverrides.cacheDirtySubsteps.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 8,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Enabled",
+   "variable": "ManualOverrides.cacheEnabled.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "resetButton",
+   "text": "Reset Ms Budget",
+   "variable": "ManualOverrides.cacheMsBudget.value",
+   "color": "rgba(255,70,70,0.85)"
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 vault (render interpolation) \u2014"
+  },
+  {
+   "type": "display",
+   "text": "vault used",
+   "value": "StateCache.debugInfo.used"
+  },
+  {
+   "type": "display",
+   "text": "vault max",
+   "value": "StateCache.debugInfo.max"
+  },
+  {
+   "type": "display",
+   "text": "fill",
+   "value": "StateCache.debugInfo.fill"
+  },
+  {
+   "type": "display",
+   "text": "ready",
+   "value": "StateCache.debugInfo.ready",
+   "format": "onoff"
+  },
+  {
+   "type": "display",
+   "text": "bodies",
+   "value": "StateCache.debugInfo.bodies"
+  },
+  {
+   "type": "display",
+   "text": "loose",
+   "value": "StateCache.debugInfo.loose"
+  }
+ ],
+ "minimized": true,
+ "maxHeight": 280,
+ "background": null
+}
