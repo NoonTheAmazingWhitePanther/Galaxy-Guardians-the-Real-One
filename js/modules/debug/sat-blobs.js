@@ -76,15 +76,29 @@ export const SatBlobs = {
       { x: sx + sw, y: sy      },   // TR
     ];
 
-    // For a corner: blobs run outward from the panel centre through it.
+    // For a corner: blobs spread RADIALLY around it (sun-fan pattern).
+    // Direction points OUTWARD (away from panel, into the safe corner space).
+    // Radius matches debug satellites' tight pattern: 1.05× button size (pulled in close).
     const place = (corner) => {
       let dx = corner.x - cx, dy = corner.y - cy;
       const d = Math.hypot(dx, dy) || 1;
       dx /= d; dy /= d;
+      
+      // Base angle pointing OUTWARD (from center through corner, away from panel)
+      const baseAngle = Math.atan2(dy, dx);
+      
+      // Spread 3 buttons at ±75° around the base angle — wider fan for good spacing
+      const spread = 75 * Math.PI / 180;  // ±75° radial spread
+      const radius = BLOB * 1.05;  // Pulled in close, like debug satellites (1.05× button size)
+      
       const pts = [];
       for (let i = 0; i < items.length; i++) {
-        const t = PAD + BLOB / 2 + i * (BLOB + GAP);
-        pts.push({ x: corner.x + dx * t - BLOB / 2, y: corner.y + dy * t - BLOB / 2 });
+        // Angles: center ± spread (3 buttons at -75°, 0°, +75° relative to outward direction)
+        const relAngle = (i - 1) * spread;
+        const angle = baseAngle + relAngle;
+        const px = corner.x + radius * Math.cos(angle) - BLOB / 2;
+        const py = corner.y + radius * Math.sin(angle) - BLOB / 2;
+        pts.push({ x: px, y: py });
       }
       return pts;
     };

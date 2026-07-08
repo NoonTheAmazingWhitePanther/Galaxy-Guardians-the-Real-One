@@ -6,6 +6,7 @@ import { Panel } from './panel.js';
 import { MasterGovernor } from './master-governor.js';
 import { DEBUG_STATE } from './debug-state.js';
 import { DebugRenderer } from '../rendering/debug-renderer.js';
+import { PanelSnapGuides } from './panel-snap-guides.js';
 import { Accumulator } from '../rendering/accumulator.js';
 import { PhysicsCounter } from './physics-counter.js';
 import { DrawCallCounter } from './draw-call-counter.js';
@@ -152,6 +153,20 @@ export const DebugRouter = {
     for (const panel of this.panels) {
       if (!panel.visible) continue;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
+    }
+
+    // Snap guides — visual-only alignment lines while a panel title-bar
+    // drag is active. Drawn in the SAME panel-space transform as the
+    // panels themselves, so a guide at panel.x really does line up with
+    // that panel's edge on screen at any zoom/pan. Real snapping still
+    // happens entirely in PanelArrange.settle() on release.
+    if (DEBUG_STATE.dragGuide) {
+      const guideImg = PanelSnapGuides.getImage(
+        DEBUG_STATE.dragGuide.panel,
+        window.innerWidth || 1920,
+        window.innerHeight || 1080
+      );
+      ctx.drawImage(guideImg, 0, 0);
     }
 
     // Marquee + selection share one look: the dashed cyan rectangle, with the

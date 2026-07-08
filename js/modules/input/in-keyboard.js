@@ -14,6 +14,7 @@
 import { clamp } from '../../core/math.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { ConfigMenuModule } from '../ui/config-menu.js';
+import { ButtonRegistry } from '../../core/button-registry.js';
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const TICK_MS = 33;   // hold-action repeat rate (~30fps)
@@ -74,6 +75,13 @@ const _tick = () => {
 // ── Raw Listeners ──────────────────────────────────────────────────────────
 const _onDown = (e) => {
   if (!_enabled) return;
+  
+  // Check if this is a button hotkey first
+  if (ButtonRegistry.dispatchHotkey(e.key)) {
+    e.preventDefault();
+    return;
+  }
+  
   const raw = _norm(e.key);
   if (!held.has(raw)) held.set(raw, { since: performance.now() });
   const combo = _activeCombo();

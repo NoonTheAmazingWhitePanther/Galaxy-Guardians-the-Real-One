@@ -121,6 +121,26 @@ export const InPlanet = {
     // GATE: Only plant if painting is enabled
     if (!PaintingState.isAllowed()) return;
 
+    // Spray mode: scatter several stamps in a radius around (sx,sy) instead
+    // of one at the exact point — an airbrush pass instead of a pen tooth.
+    // Count + radius both grow with the spread level (paint-sat-spray long-press).
+    if (PaintingState.spray.enabled) {
+      const n = PaintingState.sprayCount;
+      const r = PaintingState.sprayRadius;
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = Math.random() * r;
+        this._plantOne(sx + Math.cos(ang) * dist, sy + Math.sin(ang) * dist);
+      }
+      return;
+    }
+
+    this._plantOne(sx, sy);
+  },
+
+  // Single-stamp plant — the original _plantBrush body, factored out so
+  // spray mode can call it multiple times per trigger.
+  _plantOne(sx, sy) {
     const lo = Math.min(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
     const hi = Math.max(_ov('brushSizeMin', 24), _ov('brushSizeMax', 60));
     const rf = Math.max(0, Math.min(1, _ov('brushRandom', 1)));

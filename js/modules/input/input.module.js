@@ -9,8 +9,10 @@
 import { InConfigMenu } from './in-config-menu.js';
 import { InUI }         from './in-ui.js';
 import { InDebug }      from './in-debug.js';
+import { InButtons }    from './in-buttons.js';
 import { InCamera }     from './in-camera.js';
 import { InPlanet }     from './in-planet.js';
+import { SelectionTool } from './in-selection-tool.js';
 import { InKeyboard }   from './in-keyboard.js';
 import { InAims }      from './in-aims.js';
 import { Aims }        from '../../core/aims.js';
@@ -49,12 +51,15 @@ export const InputModule = {
       Aims.aim.x = e.clientX; Aims.aim.y = e.clientY;
 
       if (InDebug.handleDown(e))     return;  // Debug panels first
-      if (InAims.handleDown(e))      return;  // AIMS second
+      if (InButtons.handleDown(e))   return;  // Buttons second
+      if (InAims.handleDown(e))      return;  // AIMS third
       if (InConfigMenu.handleDown(e)) return;
       if (InUI.handleDown(e))        return;
       if (InCamera.handleDown(e))    return;
-      // Planet planting disabled when debug is on — debug mode = tuning, not playing
-      if (!DebugRouter.masterEnabled) InPlanet.handleDown(e);
+      if (SelectionTool.handleDown(e)) return;  // Capturing planets takes over from brush painting
+      // Planet planting disabled when debug is on, or while selecting — one
+      // gesture, one job — debug = tuning, selecting = capturing, else = playing
+      if (!DebugRouter.masterEnabled && !SelectionTool.enabled) InPlanet.handleDown(e);
     });
 
     // POINTER MOVE
@@ -76,6 +81,7 @@ export const InputModule = {
       if (InAims.handleMove(e))   return;
       if (InUI.handleMove(e))     return;
       if (InCamera.handleMove(e)) return;
+      if (SelectionTool.handleMove(e)) return;
       InPlanet.handleMove(e);
     });
 
@@ -83,10 +89,12 @@ export const InputModule = {
     const handleGlobalUp = (e) => {
       InputState.isPointerDown = false;
 
-      if (InDebug.handleUp(e))  return;  // Release debug drag first
+      if (InDebug.handleUp(e))   return;  // Release debug drag first
+      if (InButtons.handleUp(e)) return;  // Handle buttons
       InAims.handleUp(e);
-      if (InUI.handleUp(e))     return;
+      if (InUI.handleUp(e))      return;
       if (InCamera.handleUp(e)) return;
+      if (SelectionTool.handleUp(e)) return;
       InPlanet.handleUp(e);
     };
 

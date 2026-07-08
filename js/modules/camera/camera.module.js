@@ -40,6 +40,15 @@ export const CameraModule = {
         };
     },
 
+    // Inverse of screenToWorld — needed by anything drawing a screen-space
+    // overlay (rectangle, marker) at a WORLD position, e.g. the selection tool.
+    worldToScreen(wx, wy) {
+        return {
+            x: (wx - this.cam.x) * this.cam.zoom + this.width / 2,
+            y: (wy - this.cam.y) * this.cam.zoom + this.height / 2
+        };
+    },
+
     frameBodies() {
         const pad = 300;
         let minX = -SUN.radius * 6, maxX = SUN.radius * 6;

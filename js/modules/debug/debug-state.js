@@ -41,6 +41,15 @@ export const DEBUG_STATE = {
   // where the panels move. null / empty = no selection.
   selection: null,
 
+  // ── DRAG GUIDES (Adobe/Canva-style snap guides) ──
+  // Written by in-debug.js while a panel title-bar drag is active, read by
+  // DebugRouter.drawAll (same panel-space transform as marquee, above).
+  // null when idle; { panel } while dragging — the dragged panel itself is
+  // read directly since its live x/y/w/h are exactly what PanelSnapGuides
+  // needs each frame. Guides are visual only — they never move panels;
+  // the actual snap-on-release still belongs entirely to PanelArrange.
+  dragGuide: null,
+
   // Device pixel ratio — set by main.js resize(), read by renderer + hit-test
   dpr: 1,
   setDpr(v) { this.dpr = v; },

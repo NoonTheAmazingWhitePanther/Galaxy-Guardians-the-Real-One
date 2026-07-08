@@ -220,6 +220,7 @@ export class Panel {
 
   pin() {
     this.pinned = true;
+    this._chromeDirty = true;   // golden title line (debug-renderer._drawChrome) depends on .pinned
     if (window._TuningLayer) {
       window._TuningLayer.add(this);
     } else {
@@ -231,6 +232,7 @@ export class Panel {
 
   unpin() {
     this.pinned = false;
+    this._chromeDirty = true;
     if (window._TuningLayer) window._TuningLayer.remove(this);
   }
 

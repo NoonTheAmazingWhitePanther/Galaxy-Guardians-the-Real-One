@@ -13,13 +13,12 @@
  *        Tetris). LONG PRESS: the last known BAKED layout (config defaults).
  *   3 ↶  layout undo (panels arrangement ONLY). LONG PRESS: session start.
  *   4 ↷  layout redo. LONG PRESS: first recorded step of this session.
- *   5 ⊕  increase ALL panels + buttons — ratio locked, every state included.
- *   6 ⊖  decrease — same, opposite.
- *   7 ⇅  SORT — opens its own sun-like text blobs beneath:
- *        7.1 Ms  — heavy → cheap by each panel's subsystem probe avg.
- *        7.2 ⚡  — sudden spikes / bottlenecks (max ÷ avg pressure).
- *        7.3 1k  — the 1000 deal: panels ordered by distance from the law.
- *   8 ▤  CATEGORIZED — Rendering · Physics · Input · Debugging · Theme · Else,
+ *   5 ±  sizing — opens radial sun-fan ⊕/⊖ (matching debug satellites spread).
+ *   6 ⇅  SORT — opens its own sun-like text blobs beneath:
+ *        6.1 Ms  — heavy → cheap by each panel's subsystem probe avg.
+ *        6.2 ⚡  — sudden spikes / bottlenecks (max ÷ avg pressure).
+ *        6.3 1k  — the 1000 deal: panels ordered by distance from the law.
+ *   7 ▤  CATEGORIZED — Rendering · Physics · Input · Debugging · Theme · Else,
  *        arranged in category rows, announced through the UpdateFeed.
  *
  * Dismissal: any tap that is not a fan blob closes everything.
@@ -157,12 +156,9 @@ export const TetrisFan = {
       R.redoLayout(false);
     }, () => R.redoLayout(true)); step();
 
-    this._blob(bx, yBot, '⊕', 'Increase ALL panels + buttons — ratio locked', () => {
-      this._ratioStep(+0.25);
-    }); step();
-
-    this._blob(bx, yBot, '⊖', 'Decrease ALL — ratio locked', () => {
-      this._ratioStep(-0.25);
+    const sizeX = bx;
+    this._blob(bx, yBot, '±', 'Sizing — opens sun-fan ⊕/⊖', () => {
+      this._openSizing(sizeX, yBot - BLOB - GAP * 2);
     }); step();
 
     const sortX = bx;
@@ -203,6 +199,32 @@ export const TetrisFan = {
         const ms = MsProbe.stats(PROBE_OF[p.id] || '__none').avg || 0;
         return CycleMeter.stats.lawPct < 100 ? -ms : ms;
       }, `THE 1000 DEAL (${CycleMeter.stats.physSec}/${CycleMeter.stats.target} c/s · ${CycleMeter.stats.lawPct}%)`);
+  },
+
+  // ── sizing sub-fan (⊕ / ⊖) — radial sun-ray spread matching debug satellites ──
+  _openSizing(cx, cy) {
+    // Two buttons, spread radially at ±40° from vertical (matching debug button's ~24° steps).
+    // Radius scaled to BLOB size — ~1.2× so they sit nicely spaced.
+    const radius = BLOB * 1.2;
+    const angle1 = -40 * Math.PI / 180;   // ⊕ up-right
+    const angle2 = 40 * Math.PI / 180;    // ⊖ down-right
+    
+    const mk = (angle, glyph, title, fn) => {
+      const x = cx + radius * Math.cos(angle) - BLOB / 2;
+      const y = cy + radius * Math.sin(angle) - BLOB / 2;
+      this._blob(x, y, glyph, title, fn);
+    };
+    
+    mk(angle1, '⊕', 'Increase ALL panels + buttons — ratio locked', () => {
+      this._ratioStep(+0.25);
+      try { window.UpdateFeed?.push('SIZE: INCREASE +0.25'); } catch (_) {}
+      this.close();
+    });
+    mk(angle2, '⊖', 'Decrease ALL — ratio locked', () => {
+      this._ratioStep(-0.25);
+      try { window.UpdateFeed?.push('SIZE: DECREASE -0.25'); } catch (_) {}
+      this.close();
+    });
   },
 
   // ── arrangers ──

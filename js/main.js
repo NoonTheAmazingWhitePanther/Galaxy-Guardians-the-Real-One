@@ -2,7 +2,7 @@
  * js/main.js
  * FIXED: Imports unified governors.
  */
-import { CONFIG, setTheme } from './config/config-index.js';
+import { CONFIG } from './config/config-index.js';
 import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { FutureCache } from './core/future-cache.js';
@@ -236,8 +236,7 @@ export function init() {
   requestAnimationFrame(mainLoop);
 }
 
-export function resetGame(newThemeName = null) {
-  if (newThemeName) setTheme(newThemeName);
+export function resetGame() {
   state.physicsStep = CONFIG.physics.TIMESTEP;
   state.vaultSize = CONFIG.physics.VAULT_SIZE;
   state.maxBodies = CONFIG.physics.MAX_BODIES;

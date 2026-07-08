@@ -14,6 +14,12 @@
 
 ---
 
+> ⚠️ **Read `rules.md` first** — the working agreement for how sessions,
+> summaries, and docs are organized in this repo. *(temporary note, will
+> remove once this is habitual)*
+
+---
+
 ## 🏴‍☠️ The Short Version
 
 Spawn planets. Break planets. Fling them at a sun. Watch soft-body blobs wobble, collide, tear apart into loose particles, and leave phosphor trails across the void — **on an entry-level Android phone.**
@@ -119,7 +125,7 @@ A profiler wired straight into the physics / queue-ops / render hot paths, so ev
 
 **A fixed-timestep heartbeat.** The main loop integrates at a rock-steady `1/60s`. An accumulator banks real wall-clock time and never discards it except on true overload — so motion is a function of *time*, never of frame rate. Speed it up to **12×** and it runs 12 honest ticks back-to-back per frame; it never cheats by taking bigger steps.
 
-**Config as data, themes as folders.** A configuration router (`config-index.js`) with a bulletproof safe-fallback, feeding three swappable themes — **`base` · `origin` · `seasonal-winter`** — each split cleanly into `physics / render / overlay / game / audio`. Reskin the universe by swapping a folder.
+**Config as data, one source of truth.** A configuration loader (`config-index.js`) with a bulletproof safe-fallback, feeding a single Base (Factory Defaults) config split cleanly into `physics / render / overlay / game / audio`. Themes/multi-profile config are out of use — live tuning (Base + your saved profile, benchmarked "best" results) is a separate system, see `governor-profiles.js` / `prefs-store.js`.
 
 **79 ES-modules, ~300–600 lines each.** No build step. No framework. No bundler. Open `index.html` and it *is* the engine — every module a plain `import`, every system inspectable.
 
@@ -135,7 +141,7 @@ js/
 │   ├── debug/       console-view · governors · benchmark · panels · profiles
 │   ├── camera/ · tuning/ · ui/ · monetization/
 │   └── ...
-└── config/      base/ · origin/ · seasonal-winter/   (each: physics·render·overlay·game·audio)
+└── config/      base/   (physics·render·overlay·game·audio — the only config source)
 ```
 
 ---

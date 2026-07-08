@@ -34,6 +34,7 @@ import { TuningLayer } from '../tuning/tuning-layer.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { PanelArrange } from '../debug/panel-arrange.js';
+import { PanelSnapGuides } from '../debug/panel-snap-guides.js';
 import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
 import { InputState } from './input.module.js';
@@ -468,6 +469,11 @@ export const InDebug = {
           this._prevMoveY = y;
           PanelArrange.cancel(panel);
           PanelArrange.clearTraj();
+          // Snap guides — visual only, rebuilt once from every OTHER panel's
+          // current bounds. Shown from the first 4px of real movement, same
+          // threshold as _dragStarted below, via DEBUG_STATE.dragGuide.
+          PanelSnapGuides.rebuild(this._activePanels(), panel, window.innerWidth || 1920, window.innerHeight || 1080);
+          DEBUG_STATE.dragGuide = { panel };
           try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -732,6 +738,10 @@ export const InDebug = {
       if (this._dragStarted) {
         this.activePanel.x = this.startPanelX + dx;
         this.activePanel.y = this.startPanelY + dy;
+        // Highlight recompute — the guide LINES (from other panels) don't
+        // change mid-drag, but which ones count as "hit" depends on the
+        // dragged panel's live position, so re-flag dirty every move.
+        PanelSnapGuides.invalidate();
         // Shrunk bar pulled OUT (up past the threshold) → becomes MINIMIZED
         // and the drag continues, waiting for release. Until it's grabbed out
         // it is still considered shrunk.
@@ -845,6 +855,10 @@ export const InDebug = {
       const dropped = this.activePanel;
       const didMove = this._dragStarted;
       this._releaseAll();
+
+      // Snap guides only live for the duration of the drag.
+      DEBUG_STATE.dragGuide = null;
+      PanelSnapGuides.clear();
 
       // Settle: grid-snap or free-form min-spacing eject, then an eased glide.
       // Only when an actual drag happened — a tap must never nudge a panel.

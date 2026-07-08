@@ -171,6 +171,23 @@ export const DebugRenderer = {
       ctx.stroke();
     }
 
+    // Golden TITLE line — the manual-edit indicator, shown INSIDE debug too.
+    // Distinct from the amber whole-panel border above (which is deliberately
+    // an outside-debug-only "this is pinned to the live tuning surface" cue).
+    // This is the "is this panel background/auto, or has it been touched"
+    // signal the amber border can't give while debug is on: a slim gold line
+    // across the top of the title bar, present whenever ANY control on this
+    // panel is manually overridden (panel.pinned already tracks exactly that —
+    // see Panel._onManualChange, which pins on the first manual touch).
+    if (panel.pinned) {
+      ctx.strokeStyle = 'rgba(255,200,80,0.9)';
+      ctx.lineWidth   = 3;
+      ctx.beginPath();
+      ctx.moveTo(radius, 1.5);
+      ctx.lineTo(pw - radius, 1.5);
+      ctx.stroke();
+    }
+
     // Title bar — drag handle highlight + buttons (expanded only)
     if (!minimized) {
       ctx.fillStyle = 'rgba(255,255,255,0.04)';

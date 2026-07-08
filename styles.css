@@ -280,6 +280,91 @@ body.dbg-console .dbg-sat { display: none; }
     color: rgba(255, 130, 200, 0.95);
     box-shadow: 0 0 12px rgba(255, 130, 200, 0.2), 0 4px 12px rgba(0,0,0,0.4);
 }
+
+/* SELECTION TOOL BUTTON — beneath painting-btn's full satellite fan (which
+   reaches down to y≈233 at pad=44/safe=16 — see the paint-sat fan comment
+   above), not just beneath painting-btn itself. +48px literal instead of
+   the column's usual +6px-per-step rhythm, specifically to clear that fan. */
+#selection-btn {
+    position: fixed;
+    top: calc(var(--safe) + var(--pad-size) * 4 + 48px);
+    right: var(--safe);
+    z-index: 55;
+    width: var(--pad-size); height: var(--pad-size);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#selection-btn:active { transform: scale(0.92); }
+#selection-btn.active {
+    background: rgba(90, 70, 20, 0.9);
+    border-color: rgba(255, 200, 80, 0.7);
+    color: rgba(255, 200, 80, 0.95);
+    box-shadow: 0 0 12px rgba(255, 200, 80, 0.25), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* ── AIMS / PAINTING satellites — same chrome family as .dbg-sat, hidden
+      until their parent toggle is ON. Gated with the CSS sibling combinator
+      directly off the parent button's own .active class (#aims-btn.active ~
+      .aims-sat) rather than a body-level class — one less state to keep in
+      sync, tied straight to the exact class that's already proven to toggle
+      correctly (painting-btn.active has always worked). Fanned LEFT from
+      their anchor buttons since both sit on the right screen edge. */
+.aims-sat, .paint-sat {
+    position: fixed;
+    z-index: 55;
+    width: calc(var(--pad-size) / 3);
+    height: calc(var(--pad-size) / 3);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: none; align-items: center; justify-content: center;
+    font-size: 9px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#aims-btn.active ~ .aims-sat     { display: flex; }
+#painting-btn.active ~ .paint-sat { display: flex; }
+.aims-sat:active, .paint-sat:active { transform: scale(0.9); }
+.aims-sat:hover, .paint-sat:hover  { background: rgba(30, 30, 50, 0.85); color: rgba(255,255,255,0.9); }
+.aims-sat.active, .paint-sat.active {
+    background: rgba(30, 80, 50, 0.9);
+    border-color: rgba(130, 255, 160, 0.5);
+    color: rgba(130, 255, 160, 0.95);
+}
+
+/* AIMS fan — angles -15°/10°/35°, radius 0.70×--pad-size. Verified against
+   real pixel math (pad=44, safe=16): pan-pad ends at y=104, painting-btn
+   starts at y=160 — aims-btn's own row (110-154) leaves only ~6px of slack
+   on EITHER side, so this fan is shifted shallower/narrower than a symmetric
+   spread would allow. Satellite spans: -15°→[116.7,131.4], 10°→[130.0,144.7],
+   35°→[142.3,157.0] — all clear of both neighbours by 3px+. */
+#aims-sat-refresh { right: calc(var(--safe) + var(--pad-size) * 1.010); top: calc(var(--safe) + var(--pad-size) * 2.152 + 6px); }
+#aims-sat-showmap { right: calc(var(--safe) + var(--pad-size) * 1.023); top: calc(var(--safe) + var(--pad-size) * 2.455 + 6px); }
+#aims-sat-zoom    { right: calc(var(--safe) + var(--pad-size) * 0.907); top: calc(var(--safe) + var(--pad-size) * 2.735 + 6px); }
+
+/* Painting fan — angles 0°/35°/70°, radius 1.05×--pad-size. Spans
+   [174.7,189.3], [201.2,215.8], [218.1,232.8] — selection-btn (below) starts
+   at y=240, giving the widest satellite (70°) ~7px clearance. */
+#paint-sat-pause { right: calc(var(--safe) + var(--pad-size) * 1.383); top: calc(var(--safe) + var(--pad-size) * 3.333 + 12px); }
+#paint-sat-spray { right: calc(var(--safe) + var(--pad-size) * 1.194); top: calc(var(--safe) + var(--pad-size) * 3.936 + 12px); }
+#paint-sat-size  { right: calc(var(--safe) + var(--pad-size) * 0.692); top: calc(var(--safe) + var(--pad-size) * 4.320 + 12px); }
 #debug-btn.active  {
     background: rgba(30, 60, 90, 0.9);
     border-color: rgba(130, 210, 255, 0.5);
@@ -448,4 +533,15 @@ body.dbg-console .dbg-sat { display: none; }
 .about-version { font-size: 9px; opacity: 0.5; margin-top: 4px; }
 .about-section { font-size: 10px; line-height: 1.4; }
 .section-label { font-weight: bold; color: var(--ui-accent); margin-bottom: 4px; opacity: 0.8; font-size: 9px; }
+
+/* ========================================
+UNIFIED BUTTON SYSTEM FEEDBACK
+======================================== */
+[role="button"].btn-pressed,
+[id*="btn"].btn-pressed {
+  transition: transform 0.1s, opacity 0.1s, filter 0.1s;
+  transform: scale(0.95);
+  opacity: 0.75;
+  filter: brightness(0.9);
+}
 .about-footer { margin-top: auto; text-align: center; font-size: 9px; opacity: 0.4; padding-bottom: 10px; }

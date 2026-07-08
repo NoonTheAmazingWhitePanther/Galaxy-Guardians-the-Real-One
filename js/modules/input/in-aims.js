@@ -262,6 +262,17 @@ export const InAims = {
 
   get enabled() { return _enabled; },
 
+  // Show/Hide Map — debug-only overlay toggle for aims-sat-showmap. The
+  // render call site (main.js) is already gated to debug/tuning-active
+  // contexts, so this flag only ever has a visible effect there — no extra
+  // gating needed here. Defaults true, matching the overlay's prior
+  // hardcoded-on behaviour before this toggle existed.
+  showMap: true,
+  toggleShowMap() {
+    InAims.showMap = !InAims.showMap;
+    return InAims.showMap;
+  },
+
   init(canvas, InputState, InUI, InDebug) {
     _canvas     = canvas;
     _InputState = InputState;
@@ -300,6 +311,21 @@ export const InAims = {
     if (!_built) return;
     _registerDebugPanels();
     Aims.rebuild(window.innerWidth, window.innerHeight);
+  },
+
+  /**
+   * Refresh Map — aims-sat-refresh. A full clean re-registration: every
+   * HUD/debug-panel element is re-read (fresh getBoundingClientRect(), so
+   * anything that moved/resized while AIMS was already built gets corrected)
+   * and the pixel lookup grid is rebuilt from scratch. Aims.register() keys
+   * by id and overwrites on re-registration, so calling this is always safe
+   * — no duplicate/stale entries accumulate.
+   */
+  refresh() {
+    if (!_built) return;
+    _registerAll();
+    Aims.rebuild(window.innerWidth, window.innerHeight);
+    console.log('[InAims] Map refreshed | items:', Aims.debugInfo.items, '| map:', Aims.debugInfo.mapSize);
   },
 
   onResize() {

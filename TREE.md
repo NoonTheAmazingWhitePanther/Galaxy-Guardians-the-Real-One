@@ -9,16 +9,6 @@ js/config/base/config-overlay.js
 js/config/base/config-physics.js
 js/config/base/config-render.js
 js/config/config-index.js
-js/config/origin/config-audio.js
-js/config/origin/config-game.js
-js/config/origin/config-overlay.js
-js/config/origin/config-physics.js
-js/config/origin/config-render.js
-js/config/seasonal-winter/config-audio.js
-js/config/seasonal-winter/config-game.js
-js/config/seasonal-winter/config-overlay.js
-js/config/seasonal-winter/config-physics.js
-js/config/seasonal-winter/config-render.js
 js/core/aims.js
 js/core/config-loader.js
 js/core/config.js

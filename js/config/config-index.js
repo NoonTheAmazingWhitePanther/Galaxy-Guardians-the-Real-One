@@ -1,7 +1,17 @@
 /**
- * js/Config/config-index.js
- * CONFIGURATION ROUTER & FAILSAFE
- * Rewritten with 100% standard syntax to prevent clipboard/parser errors.
+ * js/config/config-index.js
+ * CONFIGURATION LOADER & FAILSAFE
+ *
+ * Themes/multi-profile config are OUT OF USE. There is exactly one config
+ * source now — Base (Factory Defaults) — merged against a hard-coded
+ * SAFE_FALLBACK so a corrupted or incomplete Base file can never crash boot.
+ *
+ * This is NOT where user tuning lives. Live performance/tuning profiles
+ * (Base/BALANCE, MAX, MIN, the user's saved profile, benchmarked "best"
+ * results) are a separate system — see js/modules/debug/governor-profiles.js
+ * and js/core/prefs-store.js. That system already is the real two-profile
+ * model: Base (Factory Defaults) + the user profile created on startup if
+ * none is found. This file has nothing to do with that and never should.
  */
 
 // 1. THE ULTIMATE SAFE FALLBACK
@@ -38,11 +48,11 @@ var SAFE_FALLBACK = {
 };
 
 // 2. TOAST NOTIFICATION SYSTEM (Standard JS, no template literals)
-function showConfigErrorToast(profileName, errorMsg) {
+function showConfigErrorToast(errorMsg) {
     if (typeof document === 'undefined') return;
     var toast = document.createElement('div');
     toast.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);background:rgba(220,50,50,0.95);color:#fff;padding:14px 28px;border-radius:8px;font-family:monospace;font-size:13px;font-weight:bold;box-shadow:0 8px 24px rgba(0,0,0,0.4);z-index:99999;text-align:center;border:1px solid rgba(255,255,255,0.2);backdrop-filter:blur(8px);';
-    toast.innerHTML = '⚠️ CONFIG ERROR: Failed to load "' + profileName + '".<br><span style="font-weight:normal;font-size:11px;opacity:0.9;">Engine reverted to safe defaults. (' + errorMsg + ')</span>';
+    toast.innerHTML = '⚠️ CONFIG ERROR: Failed to load Base config.<br><span style="font-weight:normal;font-size:11px;opacity:0.9;">Engine reverted to safe defaults. (' + errorMsg + ')</span>';
     document.body.appendChild(toast);
     setTimeout(function() {
         toast.style.opacity = '0';
@@ -62,60 +72,38 @@ function getSafeProfile(profile) {
     };
 }
 
-// 4. IMPORT ALL PROFILES
-var ACTIVE_PROFILE = "base";
-
+// 4. IMPORT BASE — the only config source
 import BasePhysics from './base/config-physics.js';
 import BaseRender from './base/config-render.js';
 import BaseOverlay from './base/config-overlay.js';
 import BaseGame from './base/config-game.js';
 import BaseAudio from './base/config-audio.js';
 
-import OriginPhysics from './origin/config-physics.js';
-import OriginRender from './origin/config-render.js';
-import OriginOverlay from './origin/config-overlay.js';
-import OriginGame from './origin/config-game.js';
-import OriginAudio from './origin/config-audio.js';
-
-import WinterPhysics from './seasonal-winter/config-physics.js';
-import WinterRender from './seasonal-winter/config-render.js';
-import WinterOverlay from './seasonal-winter/config-overlay.js';
-import WinterGame from './seasonal-winter/config-game.js';
-import WinterAudio from './seasonal-winter/config-audio.js';
-
-var PROFILES = {
-    "origin": { physics: OriginPhysics, render: OriginRender, overlay: OriginOverlay, game: OriginGame, audio: OriginAudio },
-    "base": { physics: BasePhysics, render: BaseRender, overlay: BaseOverlay, game: BaseGame, audio: BaseAudio },
-    "seasonal-winter": { physics: WinterPhysics, render: WinterRender, overlay: WinterOverlay, game: WinterGame, audio: WinterAudio }
-};
+var BASE = { physics: BasePhysics, render: BaseRender, overlay: BaseOverlay, game: BaseGame, audio: BaseAudio };
 
 // 5. SAFE LOADING & EXPORT
-function loadProfile(profileName) {
+function loadBase() {
     try {
-        var profile = PROFILES[profileName];
-        if (!profile) {
-            throw new Error('Profile "' + profileName + '" not found in registry.');
-        }
-                var safeProfile = getSafeProfile(profile);
-        
+        var safeProfile = getSafeProfile(BASE);
+
         if (!safeProfile.physics.TIMESTEP || !safeProfile.game.SUN_MASS) {
             throw new Error("Critical config values are missing or null after merge.");
         }
 
-        console.log('[Config Router] Successfully loaded profile: "' + profileName + '"');
+        console.log('[Config] Base loaded (Factory Defaults).');
         return safeProfile;
-        
+
     } catch (error) {
-        console.error('[Config Router] Fallback triggered for "' + profileName + '":', error);
-        showConfigErrorToast(profileName, error.message);
+        console.error('[Config] Fallback triggered:', error);
+        showConfigErrorToast(error.message);
         return getSafeProfile(SAFE_FALLBACK);
     }
 }
 
-export var CONFIG = loadProfile(ACTIVE_PROFILE);
+export var CONFIG = loadBase();
 
 // 6. CSS INJECTION
-function applyThemeToCSS() {
+function applyConfigToCSS() {
     var root = document.documentElement;
     var ui = CONFIG.overlay;
     root.style.setProperty('--glass-blur', ui.GLASS_BLUR_PX + 'px');
@@ -131,18 +119,4 @@ function applyThemeToCSS() {
     root.style.setProperty('--ui-text', ui.TEXT_COLOR);
     root.style.setProperty('--ui-accent', ui.ACCENT_COLOR);
 }
-applyThemeToCSS();
-
-// 7. DYNAMIC THEME SWITCHER
-export function setTheme(profileName) {
-    try {
-        var newConfig = loadProfile(profileName);
-        Object.assign(CONFIG, newConfig);
-        applyThemeToCSS();
-        console.log('[Config Router] Dynamically switched to profile: "' + profileName + '"');
-        return true;
-    } catch (error) {
-        console.error('[Config Router] Failed to switch theme to "' + profileName + '":', error);
-        return false;
-    }
-}
+applyConfigToCSS();
