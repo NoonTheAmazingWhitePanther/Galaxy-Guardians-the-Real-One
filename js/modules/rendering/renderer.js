@@ -114,10 +114,9 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
 
   // 2. Prepare the accumulator stage — fades ghost, ready for new scene.
   // Sync the phosphor glow (soft persistence behind the trail) from TrailGov:
-  // fade is a live field; depth and downscale re-init the ring, so only touch
-  // them on change.
+  // fade is a live field; depth re-inits the ring, so only touch it on change.
+  // (Resolution ramp removed — every trail layer is full-res now, same as prime.)
   if (Accumulator.trailDepth !== TrailGov.glowDepth) Accumulator.setTrailDepth(TrailGov.glowDepth);
-  if (Accumulator.downscalePow !== TrailGov.downscale) Accumulator.setDownscale(TrailGov.downscale);
   Accumulator.fadeAlpha = TrailGov.glowFade;
   // Pass ticks-this-frame so the glow window is measured in physics ticks, not
   // rendered frames: same persistence at any speed and any frame rate.

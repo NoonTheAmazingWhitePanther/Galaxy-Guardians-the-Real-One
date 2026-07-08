@@ -144,6 +144,3 @@ export const GovernorProfiles = {
 };
 
 export default GovernorProfiles;
-
-// Apply BALANCE on startup — all governors start at balanced settings
-GovernorProfiles.applyProfile('BALANCE');

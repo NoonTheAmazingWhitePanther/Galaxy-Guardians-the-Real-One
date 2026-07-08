@@ -189,22 +189,6 @@
   },
   {
    "type": "buttons",
-   "text": "Res Ramp",
-   "variable": "ManualOverrides.trailDownscale.value",
-   "buttons": [
-    "+",
-    "=",
-    "\u2212"
-   ],
-   "governor": {
-    "mode": "add",
-    "min": 0,
-    "max": 8,
-    "step": 1
-   }
-  },
-  {
-   "type": "buttons",
    "text": "Glow Depth",
    "variable": "ManualOverrides.trailGlowDepth.value",
    "buttons": [
@@ -263,11 +247,6 @@
    "type": "display",
    "text": "prime",
    "value": "Accumulator.debugInfo.primeRes"
-  },
-  {
-   "type": "display",
-   "text": "ramp floor",
-   "value": "Accumulator.debugInfo.rampFloor"
   }
  ],
  "minimized": true,

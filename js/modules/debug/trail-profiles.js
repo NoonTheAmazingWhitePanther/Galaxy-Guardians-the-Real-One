@@ -24,22 +24,22 @@ const TRAIL_PROFILES = {
   LONG: {
     trailEnabled: 1, trailMax: 130, trailDensity: 64, trailAlpha: 0.5,
     trailSpeedScale: 0.5, trailSkip: 1, trailShrink: 0.4, trailBloom: 0.5,
-    trailDownscale: 0, trailGlowDepth: 16, trailGlowFade: 0.12,
+    trailGlowDepth: 16, trailGlowFade: 0.12,
   },
   NORMAL: {
     trailEnabled: 1, trailMax: 48, trailDensity: 24, trailAlpha: 0.55,
     trailSpeedScale: 0.25, trailSkip: 1, trailShrink: 0.25, trailBloom: 0.25,
-    trailDownscale: 0, trailGlowDepth: 10, trailGlowFade: 0.4,
+    trailGlowDepth: 10, trailGlowFade: 0.4,
   },
   SHORT: {
     trailEnabled: 1, trailMax: 16, trailDensity: 12, trailAlpha: 0.6,
     trailSpeedScale: 0, trailSkip: 1, trailShrink: 0.15, trailBloom: 0.1,
-    trailDownscale: 0, trailGlowDepth: 6, trailGlowFade: 0.6,
+    trailGlowDepth: 6, trailGlowFade: 0.6,
   },
   EASE: {
     trailEnabled: 1, trailMax: 10, trailDensity: 10, trailAlpha: 0.4,
     trailSpeedScale: 0, trailSkip: 1, trailShrink: 0.6, trailBloom: 0.15,
-    trailDownscale: 0, trailGlowDepth: 8, trailGlowFade: 0.3,
+    trailGlowDepth: 8, trailGlowFade: 0.3,
   },
 };
 

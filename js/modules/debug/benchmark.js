@@ -52,7 +52,6 @@ const KNOBS = [
   { key: 'physicsSubsteps',  values: [2, 3, 4, 6, 8, 12] },
   { key: 'renderFrameSkip',  values: [50, 40, 30, 20, 10, 0] },   // rich = skip nothing
   { key: 'physicsFrameSkip', values: [30, 20, 10, 0] },           // rich = skip nothing
-  { key: 'trailDownscale',   values: [3, 2, 1, 0] },              // rich = full res
   { key: 'trailGlowDepth',   values: [4, 6, 8, 10, 12] },
   { key: 'trailMax',         values: [6, 8, 12, 16, 24, 32] },
   { key: 'trailDensity',     values: [8, 16, 32, 64, 120, 240] },

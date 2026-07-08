@@ -102,6 +102,20 @@ function _init(userConfig = {}) {
 // tick is actually played.
 let _ghostCapture = null;
 
+// ── Shared frame-time ledger ─────────────────────────────────────────────
+// QueOps.tick() is the first thing mainLoop calls each frame, so it's the
+// natural place to open the ledger for the whole frame. Anything that runs
+// AFTER it this frame (FutureCache.topUp today; more lanes later) can call
+// QueOps.remaining() to see the REAL time left. Wall-clock elapsed vs a
+// shared budget, not self-reported spend — so it automatically reflects
+// whatever ran in between (including physics ticks, which never need to
+// know this ledger exists) with zero extra bookkeeping anywhere else.
+// Before this, every phase measured against its own private stopwatch, as
+// if it were the only thing spending time that frame — they could each
+// individually stay "within budget" while stacking well past the real
+// frame target. This is what makes them actually share one clock.
+const _frame = { budgetMs: 0, startedAt: 0 };
+
 function _add(op) {
   if (_ghostCapture) {
     _ghostCapture.push(op);
@@ -124,11 +138,17 @@ function _tick() {
   _updateFPS();
   _adaptCoolingState();
 
+  // Open the shared ledger for the whole frame — QueOps.tick() runs first
+  // each frame, so this timestamp becomes the reference point everything
+  // downstream (FutureCache.topUp today) measures "remaining" against.
+  _frame.budgetMs  = _state.config.maxFrameTimeMs;
+  _frame.startedAt = performance.now();
+
   const frameStats = { opsProcessed: 0, opsDeferred: 0, opsSkipped: 0, opsStaggered: 0, budgetUsed: 0, subjectBreakdown: {} };
   const autoBudget = COOLING_STATES[_state.stats.coolingStateIndex];
   const budget = ManualOverrides.get('queOpsBudget', autoBudget);
   const maxTime = _state.config.maxFrameTimeMs;
-  const frameStart = performance.now();
+  const frameStart = _frame.startedAt;
   const currentFrame = _state.stats.frameCount;
 
   _state.queue.sort((a, b) => { if (a.priority !== b.priority) return a.priority - b.priority; if (a.delayMs !== b.delayMs) return a.delayMs - b.delayMs; return a.cycleEvery - b.cycleEvery; });
@@ -209,13 +229,21 @@ export const QueOps = {  init: _init, add: _add, tick: _tick,
   // Begin/end ghost capture — see _ghostCapture comment above _add().
   beginGhostCapture(list) { _ghostCapture = list; },
   endGhostCapture() { _ghostCapture = null; },
+  // Shared frame-time ledger — see _frame comment above. Normally opened
+  // automatically by tick() each frame; exposed as beginFrame() too in
+  // case something ever needs its own sub-ledger (e.g. a phase that runs
+  // before QueOps.tick() one day).
+  beginFrame(totalMs) { _frame.budgetMs = totalMs; _frame.startedAt = performance.now(); },
+  remaining() { return Math.max(0, _frame.budgetMs - (performance.now() - _frame.startedAt)); },
+  get frameBudget()  { return _frame.budgetMs; },
+  get frameElapsed() { return performance.now() - _frame.startedAt; },
   updateConfig(subjectOrKey, value) {
     if (typeof subjectOrKey === 'string' && SUBJECTS[subjectOrKey]) { if (typeof value === 'object') Object.assign(SUBJECTS[subjectOrKey], value); }
     else if (typeof subjectOrKey === 'object') { Object.assign(_state.config, subjectOrKey); }
   },
   getDebugInfo() {
     const autoBudget = COOLING_STATES[_state.stats.coolingStateIndex];
-    return { fps: _state.stats.fps, coolingState: autoBudget, maxOpsPerFrame: ManualOverrides.get('queOpsBudget', autoBudget), maxFrameTimeMs: _state.config.maxFrameTimeMs, enableStagger: _state.config.enableStagger, queueSize: _state.queue.length, budgetUsed: _state.stats.budgetUsed, opsProcessed: _state.stats.opsProcessed, opsDeferred: _state.stats.opsDeferred, opsSkipped: _state.stats.opsSkipped, opsStaggered: _state.stats.opsStaggered, subjectBreakdown: { ..._state.stats.subjectBreakdown }, config: { ..._state.config }, subjects: Object.fromEntries(Object.entries(SUBJECTS).map(([k, v]) => [k, { maxPerFrame: v.maxPerFrame, delayMs: v.delayMs }])) };
+    return { fps: _state.stats.fps, coolingState: autoBudget, maxOpsPerFrame: ManualOverrides.get('queOpsBudget', autoBudget), maxFrameTimeMs: _state.config.maxFrameTimeMs, enableStagger: _state.config.enableStagger, queueSize: _state.queue.length, budgetUsed: _state.stats.budgetUsed, opsProcessed: _state.stats.opsProcessed, opsDeferred: _state.stats.opsDeferred, opsSkipped: _state.stats.opsSkipped, opsStaggered: _state.stats.opsStaggered, subjectBreakdown: { ..._state.stats.subjectBreakdown }, config: { ..._state.config }, subjects: Object.fromEntries(Object.entries(SUBJECTS).map(([k, v]) => [k, { maxPerFrame: v.maxPerFrame, delayMs: v.delayMs }])), frameBudgetMs: _frame.budgetMs, frameRemainingMs: Math.max(0, _frame.budgetMs - (performance.now() - _frame.startedAt)) };
   },
   flush(priorityLevelToKeep = 0) { _state.queue = _state.queue.filter(op => op.priority <= priorityLevelToKeep); },
   clearSubject(subject) { _state.queue = _state.queue.filter(op => op.subject !== subject); },

@@ -238,6 +238,19 @@ export class Panel {
     this.pinned ? this.unpin() : this.pin();
   }
 
+  // A manual value change (button, slider, knob, dropdown, checkbox, or
+  // color pick) pins this panel and shrinks it to the compact form — the
+  // tuning session narrows down to just what's actively being touched
+  // instead of staying sprawled across the debug view. Reuses the real
+  // pin() method so TuningLayer registration stays correct, not just the
+  // flag. Deliberately NOT called for profile-switch buttons or the "="
+  // reset-to-auto action — those are bigger, different-in-kind moves.
+  _onManualChange() {
+    if (!this.pinned) this.pin();
+    this.shrunk = true;
+    this._chromeDirty = true;
+  }
+
   // ── Minimized mixer ─────────────────────────────────────────────────────
   // The adjustable controls that become mixer "channels" when the panel is
   // minimized: buttons (governor min/max), knobs and sliders. Each yields a
@@ -932,6 +945,7 @@ export class Panel {
       if (ctrl.type === ControlType.RESET_BUTTON) {
         if (ctrl.variable?.set) ctrl.variable.set(0);
         console.log(`[Panel] Reset ${ctrl.config?.text || 'value'} → 0`);
+        this._onManualChange();
       } else if (ctrl.isBaseSelector) {
         const btn = ctrl.config.buttons[hit.btnIdx];
         if (btn && ctrl.baseVar) {
@@ -949,6 +963,7 @@ export class Panel {
               ManualOverridesRef.set(clampKey, newBase);
             }
           }
+          this._onManualChange();
         }
       } else if (ctrl.isProfileButtons) {
         const btn = ctrl.config.buttons[hit.btnIdx];
@@ -961,9 +976,9 @@ export class Panel {
           }
         }
       } else {
-        if (hit.btnIdx === 0) ctrl.governor.multiply();
-        else if (hit.btnIdx === 1) ctrl.governor.idle();
-        else if (hit.btnIdx === 2) ctrl.governor.divide();
+        if (hit.btnIdx === 0) { ctrl.governor.multiply(); this._onManualChange(); }
+        else if (hit.btnIdx === 1) ctrl.governor.idle();   // "=" → reset to auto, not a manual change
+        else if (hit.btnIdx === 2) { ctrl.governor.divide(); this._onManualChange(); }
       }
       return true;
     }
@@ -992,6 +1007,7 @@ export class Panel {
         ctrl.variable.set(value);
         ctrl.state.value = value;
         ctrl.state.open = false;
+        this._onManualChange();
       }
       return true;
     }
@@ -1001,6 +1017,7 @@ export class Panel {
       const newValue = !ctrl.variable.get();
       ctrl.variable.set(newValue);
       ctrl.state.value = newValue;
+      this._onManualChange();
       return true;
     }
 
@@ -1013,6 +1030,7 @@ export class Panel {
         ctrl.variable.set(color);
         ctrl.state.value = color;
         ctrl.state.open = false;
+        this._onManualChange();
       }
       return true;
     }
@@ -1078,6 +1096,7 @@ export class Panel {
         const newValue = ctrl.state.dragStartValue + delta;
         const snapped = Math.round(newValue / step) * step;
         ctrl.variable.set(Math.max(ctrl.config.min, Math.min(ctrl.config.max, snapped)));
+        this._onManualChange();
         this._chromeDirty = true;
         return true;
       }
@@ -1100,6 +1119,7 @@ export class Panel {
     const raw = min + frac * (max - min);
     const snapped = Math.round(raw / step) * step;
     ctrl.variable.set(Math.max(min, Math.min(max, snapped)));
+    this._onManualChange();
   }
 
   cycleRefreshRate() {

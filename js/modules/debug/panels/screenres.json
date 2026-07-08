@@ -14,7 +14,6 @@
    "type": "header",
    "text": "SCREEN RES",
    "value": "Accumulator.debugInfo.deviceRes",
-   "suffix": "Accumulator.debugInfo.rampFloor",
    "color": "accent",
    "bold": true
   },
@@ -41,36 +40,6 @@
    "type": "display",
    "text": "prime",
    "value": "Accumulator.debugInfo.primeRes"
-  },
-  {
-   "type": "divider",
-   "text": "\u2014 per-trail res ramp \u2014"
-  },
-  {
-   "type": "display",
-   "text": "ramp floor",
-   "value": "Accumulator.debugInfo.rampFloor"
-  },
-  {
-   "type": "display",
-   "text": "ladder",
-   "value": "Accumulator.debugInfo.resLadder"
-  },
-  {
-   "type": "buttons",
-   "text": "Res Ramp",
-   "variable": "ManualOverrides.trailDownscale.value",
-   "buttons": [
-    "+",
-    "=",
-    "\u2212"
-   ],
-   "governor": {
-    "mode": "add",
-    "min": 0,
-    "max": 8,
-    "step": 1
-   }
   },
   {
    "type": "divider",
@@ -109,14 +78,14 @@
   }
  ],
  "minimizedKnob": {
-  "variable": "ManualOverrides.trailDownscale.value",
-  "min": 0,
-  "max": 8,
+  "variable": "ManualOverrides.trailGlowDepth.value",
+  "min": 2,
+  "max": 16,
   "step": 1,
   "label": "",
   "integer": true
  },
- "summaryExtra": "Accumulator.debugInfo.rampFloor",
+ "summaryExtra": "Accumulator.debugInfo.primeRes",
  "maxHeight": 320,
  "background": null
 }

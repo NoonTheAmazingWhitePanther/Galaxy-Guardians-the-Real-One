@@ -7,21 +7,40 @@ import { QueOps } from '../../core/que-ops.js';
 import { config } from '../../core/config.js';
 import { state, SUN, RING_MIN_RADIUS, RING_PARTICLES } from '../../core/state.js';
 
+// Visual burst on a discrete event (ring spawn, planet death) — a NEW EVENT
+// riding on top of the ongoing simulation, not part of the deterministic
+// tick itself. Queued as one atomic op (all of a burst's rings/fills/core
+// together) so a cluster of simultaneous events — a burn-death chain
+// reaction, several rings spawned at once — smears across a couple of
+// frames like the particle trickle below already does, instead of every
+// flash in the batch popping in on the exact same frame. Ghost-mode safe
+// for free: QueOps._ghostCapture already redirects any .add() made during
+// FutureCache's pre-compute pass and re-fires it for real at playback —
+// the same guarantee spawnRing's particle loop already relies on.
 const addFlash = (x, y, r, gc) => {
-    // SAFETY: Ensure gc is always valid
     const validGc = gc || '255,255,255';
-    state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc: validGc, life: 0.55, speed: 0.14, kind: "ring" });
-    state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc: validGc, life: 0.45, speed: 0.12, kind: "fill" });
-    state.flashes.push({ x, y, r: 0, maxR: r * 0.8, gc: validGc, life: 0.60, speed: 0.10, kind: "core" });
+    QueOps.add({
+        subject: 'rendering', priority: 2, cost: 1,
+        fn: () => {
+            state.flashes.push({ x, y, r: r * 0.05, maxR: r * 3, gc: validGc, life: 0.55, speed: 0.14, kind: "ring" });
+            state.flashes.push({ x, y, r: r * 0.1, maxR: r * 2, gc: validGc, life: 0.45, speed: 0.12, kind: "fill" });
+            state.flashes.push({ x, y, r: 0, maxR: r * 0.8, gc: validGc, life: 0.60, speed: 0.10, kind: "core" });
+        }
+    });
 };
 
 const addNova = (x, y, r, gc) => {
     const validGc = gc || '255,255,255';
-    state.flashes.push({ x, y, r: r * 0.9, maxR: r * 1.6, gc: validGc, life: 0.9, speed: 0.18, kind: "white" });
-    state.flashes.push({ x, y, r: r * 0.04, maxR: r * 3.5, gc: validGc, life: 0.70, speed: 0.11, kind: "ring" });
-    state.flashes.push({ x, y, r: r * 0.08, maxR: r * 2.2, gc: validGc, life: 0.55, speed: 0.10, kind: "fill" });
-    state.flashes.push({ x, y, r: r * 0.15, maxR: r * 1.3, gc: validGc, life: 0.65, speed: 0.09, kind: "fill" });
-    state.flashes.push({ x, y, r: 0, maxR: r * 0.9, gc: validGc, life: 0.75, speed: 0.08, kind: "core" });
+    QueOps.add({
+        subject: 'rendering', priority: 2, cost: 1,
+        fn: () => {
+            state.flashes.push({ x, y, r: r * 0.9, maxR: r * 1.6, gc: validGc, life: 0.9, speed: 0.18, kind: "white" });
+            state.flashes.push({ x, y, r: r * 0.04, maxR: r * 3.5, gc: validGc, life: 0.70, speed: 0.11, kind: "ring" });
+            state.flashes.push({ x, y, r: r * 0.08, maxR: r * 2.2, gc: validGc, life: 0.55, speed: 0.10, kind: "fill" });
+            state.flashes.push({ x, y, r: r * 0.15, maxR: r * 1.3, gc: validGc, life: 0.65, speed: 0.09, kind: "fill" });
+            state.flashes.push({ x, y, r: 0, maxR: r * 0.9, gc: validGc, life: 0.75, speed: 0.08, kind: "core" });
+        }
+    });
 };
 
 let _idCounter = 0;

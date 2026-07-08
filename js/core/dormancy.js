@@ -73,8 +73,21 @@ export const Dormancy = {
   _lastScan: 0,
   _rad: [],             // per-index bounding radius (for the witness overlay)
   _coldIdx: [],         // indices currently classified cold
-  _tweenA: 0,           // locked tween phase (advances a fixed step per frame)
+  _tweenA: 0,            // locked tween phase (advances a fixed step per frame)
   _info: { bodies: 0, cold: 0, hot: 0, coldPct: 0, horizon: 0, scanMs: 0, reason: 'idle' },
+
+  // ── Stage 2 — id-keyed (index-drift-safe) ─────────────────────────────
+  // _states[] above is index-aligned WITHIN one classify() pass only (it
+  // self-validates: a sampled snapshot whose body count doesn't match N is
+  // excluded). But nothing re-validates it AFTER the pass — if a body dies
+  // and the array compacts before the NEXT scan (self-throttled every
+  // SCAN_INTERVAL_MS), _states[i] now refers to the wrong body at index i.
+  // Stage 1 (classify + witness overlay) only ever READS this for visuals,
+  // so a stale index was a cosmetic risk at worst. Stage 2 touches live
+  // physics cadence, so it cannot take that risk — it looks up by the
+  // body's stable .id instead, rebuilt fresh at the end of every classify().
+  _byId: new Map(),        // body.id -> { cold, wakeTick, reason }
+  _coastPhase: new Map(),  // body.id -> phase counter for the coast cadence
 
   // Stage-2 hooks (unused for now, ready for the live tick to consult):
   isCold(i)   { return this._states[i]?.cold === true; },
@@ -198,6 +211,19 @@ export const Dormancy = {
       scanMs: +(performance.now() - t0).toFixed(2),
       reason: 'ok',
     };
+
+    // Rebuild the id-keyed view — Stage 2's only safe read (see comment on
+    // _byId above). Cheap: one pass, N entries, already have everything.
+    this._byId.clear();
+    for (let i = 0; i < N; i++) {
+      const b = snaps[0].bodies[i];
+      if (b && b.id != null) this._byId.set(b.id, states[i]);
+    }
+    // Hygiene: drop coast-phase counters for ids no longer tracked (body
+    // died, or aged out) — keeps the map from growing over a long session.
+    for (const id of this._coastPhase.keys()) {
+      if (!this._byId.has(id)) this._coastPhase.delete(id);
+    }
   },
 
   _reset(n, reason) {
@@ -205,6 +231,67 @@ export const Dormancy = {
     this._coldIdx = [];
     this._info = { bodies: n, cold: 0, hot: n, coldPct: 0, horizon: FutureCache.bufferedAhead, pairTests: 0, scanMs: 0, reason };
   },
+
+  // ── Stage 2 — coarser cadence for provably-coasting bodies ─────────────
+  // OFF by default (ManualOverrides 'dormancyStage2', 0) — this is the one
+  // piece in this whole pass that changes what gets COMPUTED, not just
+  // what gets drawn or how often it's presented. Everything before this
+  // (billboard cadence, frustum cull, the QueOps ledger) was presentation-
+  // only or a pure bug fix; this is a genuine physics approximation and
+  // should be tested deliberately before relying on it.
+  get stage2Enabled() { return ManualOverrides.get('dormancyStage2', 0) !== 0; },
+  get coastK() { return Math.max(1, Math.min(8, Math.round(ManualOverrides.get('dormancyCoastK', 4)))); },
+
+  /**
+   * Stage 2 decision for one body, for THIS tick. Call EXACTLY ONCE per
+   * body per real tick, from tickBodies() only (never from rendering or
+   * overlay code) — it mutates a phase counter and must fire exactly once
+   * per logical tick, the same "computed once, replayed exact" guarantee
+   * the rest of FutureCache already relies on for flashes/queueOps. Since
+   * tickBodies() itself only ever runs once per logical tick (live XOR
+   * ghost, never both — QueOps.beginGhostCapture enforces the same rule
+   * for side effects), that guarantee carries over here for free.
+   *
+   * id-keyed against _byId, not array index — safe even if a body died and
+   * the array shifted since the last classify() scan. A body classify()
+   * doesn't know about (or has aged out of _byId) just reads as "not
+   * found" and runs at full cadence — the always-safe default.
+   *
+   * Returns:
+   *   1 = normal full-cadence step (hot, unclassified, near wake, or off)
+   *   0 = skip this tick entirely — no force, no motion, position holds
+   *   K = catch-up step — integrate with K×dt, folding in the skipped ticks
+   *
+   * This is REAL physics run at a coarser timestep for a body Dormancy has
+   * already proven has no predicted event in the whole cached horizon —
+   * not skipped physics, and not an unbounded approximation. Cached
+   * [bounded]: the error is bounded by exactly that same "no predicted
+   * event" guarantee. Not claimed bit-identical to full-cadence output.
+   */
+  coastMultiplier(body) {
+    if (!this.stage2Enabled) return 1;
+    const st = this._byId.get(body.id);
+    if (!st || !st.cold) return 1;
+
+    // Wake margin — never coast within 4 ticks of the predicted event,
+    // even if the periodic scan (every SCAN_INTERVAL_MS) is a little
+    // stale. refTick is the tick actually being computed right now,
+    // whether that's happening live or ahead of time in the ghost pass —
+    // FutureCache.frontierTick tracks the playhead when nothing is
+    // buffered ahead, and the ghost frontier when it is.
+    const refTick = FutureCache.frontierTick + 1;
+    if (refTick + 4 >= st.wakeTick) return 1;
+
+    const k = this.coastK;
+    if (k <= 1) return 1;
+    const phase = (this._coastPhase.get(body.id) || 0) + 1;
+    if (phase >= k) { this._coastPhase.set(body.id, 0); return k; }
+    this._coastPhase.set(body.id, phase);
+    return 0;
+  },
+
+  /** Reset a body's coast phase — call on anything that teleports/respawns it. */
+  resetCoastPhase(bodyId) { this._coastPhase.delete(bodyId); },
 
   // ── Witness overlay (Stage 2 front-half) ────────────────────────────────
   // Draws each COLD body gliding between its two nearest cached keyframes at a

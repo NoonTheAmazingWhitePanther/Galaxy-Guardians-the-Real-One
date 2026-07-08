@@ -32,9 +32,20 @@ export const PhysicsCounter = {
     looseTicked:         'Loose bodies',
   },
 
-  // add() — single increment point, gated by masterEnabled
+  // BUG FIX: these two feed PhysicsGov.feedChaos() every frame (see
+  // main.js — _phChaos reads them unconditionally, not just when debug is
+  // open) to drive the AUTO substep count (4 → 16) that's supposed to
+  // scale physics fidelity up during collision-heavy moments. Gating them
+  // behind _debugOn() meant that adaptation silently never ran for any
+  // real player — only while a developer happened to have the debug
+  // console open. They must always count, in every game.
+  _LIVE_KEYS: new Set(['collisionsResolved', 'springsSolved']),
+
+  // add() — single increment point. Load-bearing keys (see _LIVE_KEYS)
+  // always count; the rest are debug-display-only and stay gated by
+  // masterEnabled so they cost nothing in a normal game.
   add(key, n = 1) {
-    if (!_debugOn()) return;
+    if (!this._LIVE_KEYS.has(key) && !_debugOn()) return;
     if (this.stats[key] !== undefined) this.stats[key] += n;
   },
 

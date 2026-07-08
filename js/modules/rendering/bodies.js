@@ -14,6 +14,7 @@ import { CameraModule } from '../camera/camera.module.js';
 import { renderParticles } from '../rendering/particle-management.js';
 import { DotAtlasRenderer } from './dot-atlas-renderer.js';
 import { HeatSparkles } from '../../core/heat-sparkles.js';
+import { AshOverlay } from '../../core/ash-overlay.js';
 
 export const BodiesModule = {
   drawBodies: (ctx) => {
@@ -103,6 +104,12 @@ export const BodiesModule = {
       targetCtx.globalAlpha = 1;
 
       renderParticles(targetCtx, alive, pal, burnFactor, config.PARTICLE_R, lerp);
+
+      // ─── ASH / EMBER OVERLAY (fire palette, texture-based) ───
+      // Real body.heat drives this, not the per-particle p.heat used above.
+      if (body.heat && body.heat > 0.1) {
+        AshOverlay.draw(targetCtx, body, body.heat);
+      }
 
       // ─── PLANET AURA & GLOSS ───
       const auraRadius = body.radius * 1.6;

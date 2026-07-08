@@ -23,6 +23,7 @@
  */
 import { ManualOverrides } from '../modules/debug/governor.js';
 import { DEBUG_STATE } from '../modules/debug/debug-state.js';
+import { GovernorProfiles } from '../modules/debug/governor-profiles.js';
 
 const KEY     = 'gg-user-prefs';
 const KEY_TMP = 'gg-user-prefs.tmp';   // always-duplicated fail-safe copy
@@ -73,6 +74,7 @@ function _isWritableOverride(o) {
 export const PrefsStore = {
   _last: '',
   _timer: null,
+  _revision: 0,
 
   collect() {
     const overrides = {};
@@ -90,6 +92,18 @@ export const PrefsStore = {
     return {
       _about: 'Galaxy Guardians user preferences — readable, editable, re-importable.',
       savedAt: new Date().toISOString(),
+      // Profile identity. There is one live profile right now — "user" —
+      // which always inherits from "base" (GovernorProfiles.BALANCE, the
+      // production-tuned starting point). Base only ever seeds a genuinely
+      // fresh session (see PrefsStore.init); once this profile exists, it
+      // is the sole source of truth and is never re-stomped by Base again.
+      // revision grows +1 every save — a running trail of how long this
+      // profile has been continuously tuned, same idea as a chat history
+      // that only ever appends. A future multi-profile picker can read
+      // this shape directly: inheritsFrom is already here.
+      profile: 'user',
+      inheritsFrom: 'base',
+      revision: ++this._revision,
       // Integrity declaration: on load, the ACTUAL counts must match these.
       // A mismatch means the save was cut short (app died mid-write) — the
       // temp duplicate is used instead.
@@ -123,6 +137,9 @@ export const PrefsStore = {
 
   apply(prefs) {
     if (!prefs || typeof prefs !== 'object') return false;
+    // Carry the revision forward — it counts this profile's total tuning
+    // history across every session, not just this one run.
+    if (Number.isFinite(prefs.revision)) this._revision = prefs.revision;
     // Each and every variable checked: must exist, be finite, and sit inside
     // the range that knob can actually receive (from its config governor).
     const ranges = _rangeMap();
@@ -269,6 +286,17 @@ export const PrefsStore = {
     } catch (_) {}
   },
 
+  // Explicit factory reset — wipes the user profile and re-seeds fresh
+  // from Base (GovernorProfiles.BALANCE). The only path back to Base
+  // after the first session; nothing else ever re-applies it silently.
+  resetToBase() {
+    this.clear();
+    GovernorProfiles.resetAll();
+    GovernorProfiles.applyProfile('BALANCE');
+    this._revision = 0;
+    this._toast('RESET TO BASE — FACTORY DEFAULTS', true);
+  },
+
   // Call once at startup AFTER the panels exist: load + validate, announce,
   // then autosave forever — including on sudden closure (pagehide/beforeunload
   // is the fail-safe for the app dying: the last results still land).
@@ -279,7 +307,13 @@ export const PrefsStore = {
       const src = st.source === 'temp' ? ' [TEMP RECOVERY]' : '';
       this._toast(`LAST SESSION PREFERENCES LOADED ✓ ${st.count} VARS OK${fx}${src}`, true);
     } else {
-      this._toast('NO SAVED PREFERENCES — FRESH SESSION', false);
+      // Genuinely first-ever session — no user profile exists yet. Seed it
+      // from Base (BALANCE) once, here, explicitly. This is the ONLY place
+      // Base ever gets applied after this point: it bootstraps the user
+      // profile, then gets out of the way permanently. Base itself is
+      // never touched — it's what a factory reset (resetToBase) returns to.
+      GovernorProfiles.applyProfile('BALANCE');
+      this._toast('NO SAVED PREFERENCES — BASE PROFILE APPLIED', false);
     }
     if (this._timer) clearInterval(this._timer);
     this._timer = setInterval(() => this.save(), SAVE_MS);

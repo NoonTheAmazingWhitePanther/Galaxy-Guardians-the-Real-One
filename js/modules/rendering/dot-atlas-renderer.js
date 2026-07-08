@@ -1,6 +1,10 @@
 /**
  * js/modules/rendering/dot-atlas-renderer.js
- * Simplified: Optional caching layer. Default is normal render.
+ * Billboard caching layer. Every body draws through DotAtlas.draw — the
+ * refresh cadence (every frame while hot, throttled while cold) lives
+ * inside DotAtlas itself. No separate "bypass entirely while burning"
+ * path anymore — that bypass was the hole that caused stale sprites to
+ * resurface after burning ended (it skipped refresh-tracking too).
  */
 
 import { DotAtlas } from '../../core/dot-atlas.js';
@@ -25,8 +29,9 @@ export const DotAtlasRenderer = {
   },
 
   /**
-   * Draw with optional caching layer.
-   * Skip if body is tweening, burning, or dead/burnt.
+   * Draw via the billboard. Skip entirely only for dead/burnt bodies or
+   * active position/rotation tweens (shape isn't changing — draw live so
+   * tween motion is never a frame stale) or off-screen bodies.
    */
   draw: (ctx, body, drawNormalFn) => {
     MsProbe.call('dotatlas.draw', () => {
@@ -35,43 +40,52 @@ export const DotAtlasRenderer = {
         return;  // Don't render, planet is gone
       }
 
-      // GATE 2: Skip dot atlas during tween (position/rotation only, no shape change)
+      // GATE 2: Skip billboard during tween (position/rotation only, no
+      // shape change) — draw live so tween motion is never a frame stale.
       if (body.tween && body.tween.active) {
         drawNormalFn();
         return;
       }
 
-      // GATE 3: Skip cache if burning (0.05 < heat < 2.0) — heat changes color every frame
-      // Burning planets must always render particles live to show color shifts
-      if (body.heat && body.heat > 0.05) {
-        drawNormalFn();
-        return;
-      }
-
-      // Frustum cull first
-      const padding = body.radius * 1.5;
+      // Frustum cull first.
+      // BUG FIX: this used to read cam.width/cam.height — those properties
+      // never existed (screen dims live on CameraModule.width/height, not
+      // CameraModule.cam). Every comparison was against undefined → NaN →
+      // always false, so this cull never actually culled anything; every
+      // body drew every frame regardless of camera position. Fixed to
+      // convert the real screen dimensions to world units via cam.zoom.
       const cam = CameraModule.cam;
-      if (body.cx + padding < cam.x - cam.width / 2 ||
-          body.cx - padding > cam.x + cam.width / 2 ||
-          body.cy + padding < cam.y - cam.height / 2 ||
-          body.cy - padding > cam.y + cam.height / 2) {
+      const halfW = (CameraModule.width  / 2) / cam.zoom;
+      const halfH = (CameraModule.height / 2) / cam.zoom;
+      const padding = body.radius * 1.5;
+      if (body.cx + padding < cam.x - halfW ||
+          body.cx - padding > cam.x + halfW ||
+          body.cy + padding < cam.y - halfH ||
+          body.cy - padding > cam.y + halfH) {
         return;  // Off-screen
       }
 
       DotAtlasRenderer.initBody(body);
       const cache = DotAtlasRenderer.caches.get(body.id);
-      
-      if (!cache) return;
 
-      // Use caching layer with stability thresholds
-      DotAtlas.draw(ctx, body, cache, drawNormalFn);
-      
-      // Update debug info
+      if (!cache) {
+        // initCache returned null (dead/burnt edge case) — draw live.
+        drawNormalFn();
+        return;
+      }
+
+      // Screen-space size — the "soldier" signal: a body rendered at a
+      // handful of pixels (peripheral, or just zoomed out) can't be told
+      // apart from a slightly-stale one, so DotAtlas throttles its cold
+      // refresh cadence down the smaller this is. A body you're zoomed
+      // into stays at full cadence. Physics is never touched by this —
+      // it's presentation-only, same guarantee as the cold cadence itself.
+      const screenRadius = body.radius * cam.zoom;
+
+      DotAtlas.draw(ctx, body, cache, drawNormalFn, screenRadius);
+
       DotAtlas.debugInfo.activeCaches = DotAtlasRenderer.caches.size;
       DotAtlas.debugInfo.totalBodies = 0;  // Will be set by panel
-      if (cache.isCached && cache.cacheOpacity > 0.5) {
-        DotAtlas.debugInfo.cachedPlanets++;
-      }
     });
   },
 

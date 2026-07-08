@@ -310,7 +310,16 @@ export const FutureCache = {
     const cap = Math.min(HARD_CAP, targetAhead);
     const start = performance.now();
     let stepsDone = 0;
-    while (this.bufferedAhead < cap && (performance.now() - start) < msBudget) {
+    // Respect the SHARED frame ledger (opened by QueOps.tick() at the top
+    // of this frame) in addition to our own msBudget — whichever runs out
+    // first. Previously this ran its own private clock, unaware of how
+    // much of the frame QueOps (or the physics ticks that ran between
+    // QueOps.tick() and here) had already spent. Two-plus private budgets
+    // stacking instead of sharing one frame is exactly what caused
+    // frame-time spikes under load — this is the fix for that.
+    while (this.bufferedAhead < cap
+        && (performance.now() - start) < msBudget
+        && QueOps.remaining() > 0) {
       this._shadowTick();
       stepsDone++;
     }

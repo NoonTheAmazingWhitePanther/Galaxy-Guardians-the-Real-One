@@ -20,6 +20,7 @@ import { BurnMap } from '../../core/burn-map.js';
 import { TweenGovernor } from '../../core/tween-governor.js';
 import { BurningParticles } from '../../core/burning-particles.js';
 import { BurningSystem } from '../../core/burning-system.js';
+import { Dormancy } from '../../core/dormancy.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -343,7 +344,17 @@ export const tickBodies = (scaledDt) => {
       
       // OPTIMIZATION: Skip tweening bodies entirely
       if (TweenGovernor.shouldPause(body.id)) continue;
-      
+
+      // Dormancy Stage 2 (off by default — see coastMultiplier's doc):
+      // 0 = this body sits out this tick entirely (no force, no motion).
+      // >1 = this is its catch-up tick — integrate with coastMult × dt,
+      // folding in the ticks it sat out since the last real step. Called
+      // exactly once per body per tick, here only — see the "computed
+      // once" guarantee in the doc comment on coastMultiplier itself.
+      const coastMult = Dormancy.coastMultiplier(body);
+      if (coastMult === 0) continue;
+      const bodyDt = coastMult === 1 ? dt : dt * coastMult;
+
       const na = nAlives[bi];
       const particles = body.particles;
       for (let pi = 0; pi < particles.length; pi++) {
@@ -355,10 +366,10 @@ export const tickBodies = (scaledDt) => {
         applyGravity(p, na, gravConst, sunMass, sunX, sunY, bodies, sunGrav);
 
         // 2. Integration (inlined for speed)
-        p.vx = (p.vx + (p.fx / p.mass) * dt) * damping;
-        p.vy = (p.vy + (p.fy / p.mass) * dt) * damping;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
+        p.vx = (p.vx + (p.fx / p.mass) * bodyDt) * damping;
+        p.vy = (p.vy + (p.fy / p.mass) * bodyDt) * damping;
+        p.x += p.vx * bodyDt;
+        p.y += p.vy * bodyDt;
         p.fx = 0;
         p.fy = 0;
 
@@ -368,11 +379,21 @@ export const tickBodies = (scaledDt) => {
         if (sd2 < sunSurfaceSq) {
           p.dead = true;
           p.heat = 1;
+          body._burnDied = true;  // triggers splitDeadParticles below
         } else if (sd2 < burnZoneSq) {
           const dist = Math.sqrt(sd2);
           const proximity = 1 - (dist / burnZoneR);
-          p.heat = Math.min(1, p.heat + (0.004 + proximity * 0.000035));
-          if (p.heat >= 2.0) p.dead = true;
+          // BUG FIX: was capped at min(1, ...) — two lines above a death
+          // check of >= 2.0, which made that threshold unreachable. Heat
+          // climbed to 1.0 and sat there forever; particles never melted
+          // via this path. Cap raised past the new threshold, and the
+          // rate is ~3x faster (hurry up): reaches 1.75 in well under a
+          // second instead of never.
+          p.heat = Math.min(2, p.heat + (0.012 + proximity * 0.0001));
+          if (p.heat >= 1.75) {
+            p.dead = true;
+            body._burnDied = true;  // triggers splitDeadParticles below
+          }
         } else {
           if (p.heat > 0) p.heat = Math.max(0, p.heat - 0.005);
         }
@@ -410,15 +431,19 @@ export const tickBodies = (scaledDt) => {
     if (TweenGovernor.shouldPause(bodies[bi].id)) continue;
     updateCOM(bodies[bi]);
   }
-  // Queue splitDeadParticles only for bodies that had spring breaks this tick
-  // Stable bodies with no breaks skip this entirely — big win at scale
+  // Queue splitDeadParticles for bodies that had spring breaks OR burn
+  // deaths this tick. Stable bodies with neither skip this entirely —
+  // big win at scale.
   for (let bi = 0; bi < numBodies; bi++) {
     const body = bodies[bi];
     const ss = body.springs;
     if (!ss) continue; // body not yet fully initialized
-    let hasActivity = false;
-    for (let si = 0; si < ss.length; si++) {
-      if (ss[si].broken) { hasActivity = true; break; }
+    let hasActivity = !!body._burnDied;
+    body._burnDied = false;  // consumed — splitDeadParticles rescans fresh
+    if (!hasActivity) {
+      for (let si = 0; si < ss.length; si++) {
+        if (ss[si].broken) { hasActivity = true; break; }
+      }
     }
     if (hasActivity) {
       // Run immediately — split must happen before filter
