@@ -24,10 +24,12 @@ export const PaintingButton = {
   },
 
   /**
-   * Update button visual state to match PaintingState. Satellite visibility
-   * is driven directly off this .active class in CSS
-   * (#painting-btn.active ~ .paint-sat) — call this after any
-   * PaintingState.toggle()/set(), from any code path (pointerdown, hotkey).
+   * Update button visual state to match PaintingState. Used to also
+   * drive paint-sat visibility via a CSS sibling selector — satellites
+   * are canvas-drawn now (canvas-satellites.js checks PaintingState.enabled
+   * directly, see rules.md §8), so this only affects the button's own
+   * visual highlight now. Still call this after any PaintingState.toggle()/
+   * set(), from any code path (pointerdown, hotkey).
    */
   update: () => {
     if (!PaintingButton.btn) return;

@@ -2,26 +2,24 @@
  * js/modules/input/in-aims.js
  * AIMS binding layer for Galaxy Guardians.
  *
- * Registers every interactive element into the Aims pixel map.
- * Sits at top of InputModule priority chain.
- * Toggle: InAims.enable() / InAims.disable() / Tab key
+ * AIMS is a 2D ray cast (see core/aims-cast.js) applied to touch input:
+ * ONE resolution function, cast(x, y, radius), used every time — never a
+ * separate "different input module" taking over. Only the numbers change.
  *
- * LAYERS:
- *   1 — debug panels (canvas-drawn, highest priority)
- *   2 — HUD: speed, zoom, pan pad, sliders, config menu
- *   3 — canvas world: planet spawn area
+ * SCOPE (rules.md §8 — "HTML buttons are a no-go for AIMS"):
+ *   - satellite buttons (dbg-sat / aims-sat / paint-sat), while active
+ *   - debug panels (canvas-drawn, "virtual space")
+ *   - nothing else. HTML buttons/bars always use plain native touch.
+ *
+ * Toggle: InAims.enable() / InAims.disable() / Tab key.
+ * Long-press aims-btn (main.js): InAims.toggleMode() — 'fake' (default,
+ * tight radius) ⇄ 'real' (full finger-size radius) — same cast() either
+ * way, just a different radius. See rules.md §8.
  */
 
-import { Aims }          from '../../core/aims.js';
-import { CameraModule }  from '../camera/camera.module.js';
-import { DebugRouter }   from '../debug/debug-router.js';
-import { DEBUG_STATE }   from '../debug/debug-state.js';
-import { clamp }         from '../../core/math.js';
-import { Accumulator }   from '../rendering/accumulator.js';
-import { FutureCache }   from '../../core/future-cache.js';
-import {
-  state, setPhysSpeed, togglePause
-} from '../../core/state.js';
+import { Aims }              from '../../core/aims.js';
+import { AimsCast }          from '../../core/aims-cast.js';
+import { CanvasSatellites }  from '../ui/canvas-satellites.js';
 
 // ── Injected deps (no circular imports) ──────────────────────────────────
 let _canvas     = null;
@@ -29,244 +27,61 @@ let _InputState = null;
 let _InUI       = null;
 let _InDebug    = null;
 let _enabled    = false;
-let _built      = false;
 
-const el = (id) => document.getElementById(id);
-
-// ── Safe registration helpers ─────────────────────────────────────────────
-function _safeReg(id, cfg) {
-  const e = el(id);
-  if (!e) return;
-  Aims.registerElement(e, { id, ...cfg });
-}
-
-function _safeRegEl(e, cfg) {
-  if (!e) return;
-  Aims.registerElement(e, cfg);
-}
-
-// ── Registration ──────────────────────────────────────────────────────────
-function _registerAll() {
-  // ── Depth 2: Speed bar ───────────────────────────────────────────────
-  _safeReg('sp-fast', { depth: 2, on: { tap: () => {
-    setPhysSpeed(parseFloat((state.physSpeed + 0.5).toFixed(1)));
-    _InUI?._updateSpeedUI?.();
-  }}});
-
-  _safeReg('sp-slow', { depth: 2, on: { tap: () => {
-    setPhysSpeed(parseFloat((state.physSpeed - 0.5).toFixed(1)));
-    _InUI?._updateSpeedUI?.();
-  }}});
-
-  _safeReg('sp-pause', { depth: 2, on: { tap: () => {
-    togglePause();
-    _InUI?._updateSpeedUI?.();
-  }}});
-
-  _safeRegEl(el('sp-track'), { id: 'sp-track', depth: 2, on: {
-    pointerdown: ({ aim }) => {
-      if (_InputState) _InputState.spDrag = true;
-      _InUI?._spTrackPos?.(aim.ey);
-    },
-    pointermove: ({ aim }) => {
-      if (_InputState?.spDrag) _InUI?._spTrackPos?.(aim.ey);
-    },
-    pointerup: () => {
-      if (_InputState) _InputState.spDrag = false;
-    }
-  }});
-
-  // ── Depth 2: Zoom bar ────────────────────────────────────────────────
-  // Debug + panel mode → the bar drives the DEBUG VIEW (same as the DOM path);
-  // otherwise the camera.
-  _safeReg('zm-in', { depth: 2, on: { tap: () => {
-    if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomBy(1.10); return; }
-    CameraModule.cam.targetZoom = clamp(
-      CameraModule.cam.targetZoom * 1.3,
-      CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
-  }}});
-
-  _safeReg('zm-out', { depth: 2, on: { tap: () => {
-    if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomBy(1 / 1.10); return; }
-    CameraModule.cam.targetZoom = clamp(
-      CameraModule.cam.targetZoom / 1.3,
-      CameraModule.cam.minZoom, CameraModule.cam.maxZoom);
-  }}});
-
-  _safeReg('zm-fit', { depth: 2, on: { tap: () => {
-    if (_InUI?._panelZoomMode?.()) { _InUI._panelViewFit(); return; }
-    CameraModule.frameBodies();
-  }}});
-
-  _safeRegEl(el('zm-track'), { id: 'zm-track', depth: 2, on: {
-    pointerdown: ({ aim }) => {
-      if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomTrack(aim.ey); return; }
-      if (_InputState) _InputState.zmDrag = true;
-      _InUI?._zmTrackPos?.(aim.ey);
-    },
-    pointermove: ({ aim }) => {
-      if (_InUI?._panelZoomMode?.()) { _InUI._panelZoomTrack(aim.ey); return; }
-      if (_InputState?.zmDrag) _InUI?._zmTrackPos?.(aim.ey);
-    },
-    pointerup: () => {
-      if (_InputState) _InputState.zmDrag = false;
-    }
-  }});
-
-  // ── Depth 2: Pan pad ─────────────────────────────────────────────────
-  _safeRegEl(el('pan-pad'), { id: 'pan-pad', depth: 2, on: {
-    pointerdown: ({ aim }) => {
-      if (_InputState) { _InputState.panPadActive = true; _InputState.panPadPower = 0; }
-      el('pan-pad')?.classList.add('active');
-      _InUI?._handlePanPadMove?.({ clientX: aim.ex, clientY: aim.ey });
-    },
-    pointermove: ({ aim }) => {
-      if (_InputState?.panPadActive)
-        _InUI?._handlePanPadMove?.({ clientX: aim.ex, clientY: aim.ey });
-    },
-    pointerup: () => {
-      if (_InputState) {
-        _InputState.panPadActive = false;
-        _InputState.panPadPower  = 0;
-        _InputState.panPadDir    = { x: 0, y: 0 };
-      }
-      el('pan-pad')?.classList.remove('active');
-      // If the pad was panning the debug view, land the tap-map exactly.
-      if (DebugRouter.masterEnabled && !DebugRouter._consoleMode) {
-        try { InAims.syncDebugPanels(); } catch (_) {}
-      }
-    }
-  }});
-
-  // ── Depth 2: Toolbar ─────────────────────────────────────────────────
-  _safeReg('clear-btn', { depth: 2, on: { tap: () => {
-    state.bodies = []; state.loose = []; state.flashes = [];
-    FutureCache.reset();
-    Accumulator.clear();
-    const pc = el('pcount'); if (pc) pc.textContent = '—';
-  }}});
-
-  _safeReg('config-btn', { depth: 2, on: { tap: () => {
-    el('config-btn')?.click();
-  }}});
-
-  _safeRegEl(el('size-slider'),  { id: 'size-slider',  depth: 2, passthrough: false, on: { tap: () => {} }});
-  _safeRegEl(el('grav-slider'),  { id: 'grav-slider',  depth: 2, passthrough: false, on: { tap: () => {} }});
-  _safeRegEl(el('config-menu'),  { id: 'config-menu',  depth: 1, passthrough: false, on: { tap: () => {} }});
-  _safeReg('debug-btn', { depth: 2, on: { tap: () => {
-    const btn = el('debug-btn');
-    DebugRouter.toggleAll();
-    btn?.classList.toggle('active', DebugRouter.masterEnabled);
-  }}});
-  _safeReg('aims-btn', { depth: 2, on: { tap: () => {
-    const btn = el('aims-btn');
-    if (InAims.enabled) InAims.disable();
-    else                InAims.enable();
-    btn?.classList.toggle('active', InAims.enabled);
-  }}});
-
-  // Debug satellites — the sun-ray fan. Only live while debug is on; the guard
-  // stops the canvas hit-map from firing them when they're hidden.
-  // Action satellites are PANEL-mode-only (hidden via body.dbg-console in
-  // console mode) — the tap gate matches: visible ⟺ touchable, no phantom taps.
-  const _satOn = () => DebugRouter.masterEnabled && !DebugRouter._consoleMode;
-  _safeReg('dbg-closeall', { depth: 2, on: { tap: () => { if (_satOn()) window._TetrisFan?.toggle(DebugRouter); } }});
-  _safeReg('dbg-reset',    { depth: 2, on: { tap:  () => { if (_satOn()) DebugRouter.undo(); },
-                                             hold: () => { if (_satOn()) DebugRouter.resetAllToProfile(); } }});
-  _safeReg('dbg-arrange',  { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.toggleGridSnap(); } }});
-  _safeReg('dbg-expand',   { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.expandAll(); } }});
-  _safeReg('dbg-glasses',  { depth: 2, on: { tap: () => { if (_satOn()) DebugRouter.cycleRatio(); } }});
-
-  // ── Depth 1: Debug panels ────────────────────────────────────────────
-  _registerDebugPanels();
-
-  // ── Depth 3: Canvas world ────────────────────────────────────────────
-  const r = _canvas?.getBoundingClientRect?.();
-  const w = r?.width  ?? window.innerWidth;
-  const h = r?.height ?? window.innerHeight;
-
-  Aims.register({
-    id: 'canvas-world', depth: 3, passthrough: false,
-    bounds: { x: 60, y: 60, w: w - 120, h: h - 120 },
-    on: {
-      pointerdown: ({ aim }) => {
-        if (!_InputState) return;
-        _InputState.isHolding = true;
-        _InputState.holdTime  = performance.now();
-        _InputState.mouseX    = aim.ex;
-        _InputState.mouseY    = aim.ey;
-        el('cursor')?.classList.add('holding');
-      },
-      pointermove: ({ aim }) => {
-        if (_InputState?.isHolding) {
-          _InputState.mouseX = aim.ex;
-          _InputState.mouseY = aim.ey;
-        }
-      },
-      pointerup: () => {
-        if (!_InputState?.isHolding) return;
-        _InputState.isHolding = false;
-        el('cursor')?.classList.remove('holding');
-        import('./in-planet.js').then(m => {
-          m.InPlanet?._spawnPlanet?.();
-        });
-      }
-    }
-  });
-
-  _built = true;
-  Aims.rebuild(window.innerWidth, window.innerHeight);
-  console.log('[InAims] registered. Map built. Items:', Aims.debugInfo.items);
-}
-
-function _registerDebugPanels() {
-  // Panels are blitted under translate(viewPan) → scale(viewZoom) — both in
-  // debug+panel mode AND in the pinned tuning layer (panels hold the locked
-  // view). The AIMS map lives in SCREEN space, so registered bounds are the
-  // panel-space rect × viewZoom + viewPan. Identity ONLY in console mode.
-  const on = !(DebugRouter.masterEnabled && DebugRouter._consoleMode);
-  const vz = on ? (DEBUG_STATE.viewZoom || 1) : 1;
-  const ox = on ? (DEBUG_STATE.viewPanX || 0) : 0;
-  const oy = on ? (DEBUG_STATE.viewPanY || 0) : 0;
-  for (const panel of DebugRouter.panels) {
-    const id = `debug-panel-${panel.id}`;
-    Aims.unregister(id);                 // always clear the old region first
-    if (!panel.visible) continue;        // hidden panels leave no phantom bounds
-    // Use the panel's ACTUAL drawn size — not a hardcoded box — so minimized
-    // panels don't leave a giant phantom hit area and expanded ones aren't clipped.
-    let w = 180, h = 60;
-    try {
-      const L = panel.computeLayout(panel.getData?.() ?? {});
-      if (L && Number.isFinite(L.w) && Number.isFinite(L.h)) { w = L.w; h = L.h; }
-    } catch (_) {}
-    Aims.register({
-      id, depth: 1,
-      bounds: { x: panel.x * vz + ox, y: panel.y * vz + oy, w: w * vz, h: h * vz },
-      passthrough: false,
-      on: {
-        pointerdown: ({ aim }) => {
-          _InDebug?.handleDown?.({
-            clientX: aim.ex, clientY: aim.ey,
-            pointerId: 0,
-            preventDefault: () => {},
-            stopImmediatePropagation: () => {}
-          });
-        }
-      }
-    });
-  }
-}
+// Radius presets — the ONLY thing that differs between modes. 'real' reuses
+// the historical AIM_RADIUS (core/aims.js) finger-size constant; 'fake' is
+// deliberately tight (mostly leans on the offset alone, minimal extra
+// forgiveness) so the two feel meaningfully different to hold-switch between.
+const FAKE_RADIUS = 2;
 
 // ── Public API ────────────────────────────────────────────────────────────
 export const InAims = {
 
   get enabled() { return _enabled; },
 
+  _mode: 'fake',
+  get mode() { return InAims._mode; },
+  toggleMode() {
+    InAims._mode = (InAims._mode === 'fake') ? 'real' : 'fake';
+    console.log('[InAims] mode →', InAims._mode, '(radius', InAims.castRadius + 'px)');
+    return InAims._mode;
+  },
+  get castRadius() {
+    return InAims._mode === 'real' ? Aims.aim.radius : FAKE_RADIUS;
+  },
+
+  /**
+   * THE resolution function. One cast, at (x, y) with the current mode's
+   * radius, against every live satellite + debug panel — read fresh, every
+   * single call, straight off the DOM/panel state, never from a cache.
+   * Called from InputModule._deferAimsRetry, already one loop cycle after
+   * the original miss, so doing real, live work here (not reading from
+   * anything pre-built) is "slow but only once": paid exactly once per
+   * unresolved tap, never proactively, never on a timer, nothing to keep
+   * in sync by hand — the reason `syncDebugPanels()` used to have to be
+   * called from a dozen places elsewhere whenever a panel moved.
+   */
+  resolve(x, y) {
+    const hit = AimsCast.cast(x, y, InAims.castRadius);
+    if (!hit) return false;
+
+    if (hit.type === 'satellite') {
+      CanvasSatellites.fireTap(hit.satellite);
+      return true;
+    }
+    if (hit.type === 'panel') {
+      _InDebug?.handleDown?.({
+        clientX: x, clientY: y, pointerId: 0,
+        preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
+      });
+      return true;
+    }
+    return false;
+  },
+
   // Show/Hide Map — debug-only overlay toggle for aims-sat-showmap. The
   // render call site (main.js) is already gated to debug/tuning-active
-  // contexts, so this flag only ever has a visible effect there — no extra
-  // gating needed here. Defaults true, matching the overlay's prior
-  // hardcoded-on behaviour before this toggle existed.
+  // contexts, so this flag only ever has a visible effect there.
   showMap: true,
   toggleShowMap() {
     InAims.showMap = !InAims.showMap;
@@ -283,23 +98,7 @@ export const InAims = {
   enable() {
     if (_enabled) return;
     _enabled = true;
-    const doEnable = () => {
-      try {
-        if (!_built) _registerAll();
-        // Don't bindPointer — InputModule already routes through handleDown/Move/Up
-        // bindPointer would add a second listener causing double-fires
-        console.log('[InAims] AIMS enabled | items:', Aims.debugInfo.items, '| map:', Aims.debugInfo.mapSize);
-      } catch (err) {
-        console.error('[InAims] enable() failed:', err);
-        _enabled = false;
-      }
-    };
-    // If DOM already painted, run now. Otherwise wait.
-    if (document.readyState === 'complete' && _canvas) {
-      requestAnimationFrame(() => requestAnimationFrame(doEnable));
-    } else {
-      window.addEventListener('load', () => requestAnimationFrame(() => requestAnimationFrame(doEnable)), { once: true });
-    }
+    console.log('[InAims] AIMS enabled | mode:', InAims._mode);
   },
 
   disable() {
@@ -307,55 +106,42 @@ export const InAims = {
     console.log('[InAims] AIMS disabled');
   },
 
-  syncDebugPanels() {
-    if (!_built) return;
-    _registerDebugPanels();
-    Aims.rebuild(window.innerWidth, window.innerHeight);
-  },
+  // Legacy no-ops — kept so the many existing `window._InAims?.X?.()`
+  // call sites elsewhere (debug-router.js, in-debug.js, in-ui.js,
+  // panel-arrange.js, prefs-store.js) don't need to change. Under the old
+  // bitmap design these had to proactively re-sync a cache after every
+  // panel move/resize; under AimsCast there's no cache to sync — every
+  // cast() call already reads live state, every time. Not dead code paths
+  // that silently fail — deliberate no-ops with somewhere to point back to.
+  syncDebugPanels() {},
+  onResize() {},
 
   /**
-   * Refresh Map — aims-sat-refresh. A full clean re-registration: every
-   * HUD/debug-panel element is re-read (fresh getBoundingClientRect(), so
-   * anything that moved/resized while AIMS was already built gets corrected)
-   * and the pixel lookup grid is rebuilt from scratch. Aims.register() keys
-   * by id and overwrites on re-registration, so calling this is always safe
-   * — no duplicate/stale entries accumulate.
+   * Refresh — aims-sat-refresh's action. Under the old bitmap design this
+   * force-rebuilt the registration cache; there's no cache left to
+   * rebuild, so this is now a confirmation no-op rather than invented new
+   * behaviour. Logs so the button still visibly does SOMETHING on tap
+   * rather than feeling dead.
    */
   refresh() {
-    if (!_built) return;
-    _registerAll();
-    Aims.rebuild(window.innerWidth, window.innerHeight);
-    console.log('[InAims] Map refreshed | items:', Aims.debugInfo.items, '| map:', Aims.debugInfo.mapSize);
-  },
-
-  onResize() {
-    if (!_built) return;
-    Aims.rebuild(window.innerWidth, window.innerHeight);
-  },
-
-  handleDown(e) {
-    if (!_enabled) return false;
-    const hits = Aims.aim.down(e.clientX, e.clientY);
-    if (Array.isArray(hits) && hits.length > 0) {
-      console.log('[InAims] hit:', hits, 'at', e.clientX.toFixed(0), e.clientY.toFixed(0));
-      return true;
-    }
-    return false;
-  },
-
-  handleMove(e) {
-    if (!_enabled) return false;
-    const hits = Aims.aim.move(e.clientX, e.clientY);
-    return Array.isArray(hits) && hits.length > 0 && !!_InputState?.isPointerDown;
-  },
-
-  handleUp(e) {
-    if (!_enabled) return false;
-    try { Aims.aim.up(e.clientX, e.clientY); } catch (_) {}
-    return false;
+    console.log('[InAims] cast() reads live state on every call — nothing to refresh.');
   },
 
   debugDraw(ctx, showMap = false) {
-    if (_enabled) Aims.debugDraw(ctx, showMap);
+    if (!_enabled || !showMap) return;
+    // Live visualization of the ACTUAL current cast candidates — every
+    // satellite + panel cast() would consider right now — rather than a
+    // rasterized snapshot of a pixel map that could silently go stale.
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const dpr = 1;
+    for (const c of AimsCast.allCandidates()) {
+      ctx.strokeStyle = c.type === 'panel' ? 'rgba(130,210,255,0.6)' : 'rgba(255,200,80,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(c.rect.left * dpr, c.rect.top * dpr, c.rect.width * dpr, c.rect.height * dpr);
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 };

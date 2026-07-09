@@ -18,6 +18,8 @@ import { MsProbe } from '../../core/ms-probe.js';
 import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { Dormancy } from '../../core/dormancy.js';
+import { PaintingState } from '../../core/painting-state.js';
+import { ColorPalette } from '../../core/color-palette.js';
 import { GovernorProfiles } from './governor-profiles.js';
 import { TrailProfiles } from './trail-profiles.js';
 import { GuiGovernor } from './gui-governor.js';
@@ -62,6 +64,23 @@ export const DebugRouter = {
     GovernorRegistry.register('CycleMeter',       CycleMeter);
     GovernorRegistry.register('Gate',             Gate);
     GovernorRegistry.register('TrajectoryPreview', TrajectoryPreview);
+    // FIX: both were referenced by planetbrush.json ("PaintingState.enabled",
+    // "ColorPalette.current") but never registered — every read/write against
+    // either logged "[Governor] resolveVariable: unknown module". PaintingState
+    // is real and live (the module this whole session's painting work runs on)
+    // — this is a clean, complete fix for that half.
+    // ColorPalette is a DIFFERENT situation: it's a fully-built module (6 named
+    // HSL palettes, hex conversion) that nothing else in the entire codebase
+    // reads from — actual brush color comes from ManualOverrides.brushColor
+    // (the "Color" row directly below "Palette" in this same panel, indexing
+    // into PALS/PAL_NAMES in core/state.js). Registering it here only silences
+    // the console warning; the "Palette" buttons will read/write a real value
+    // on a real object, but that object is disconnected from what planets
+    // actually get painted. Left as-is rather than repointing the panel's
+    // binding myself — whether these two color systems should be merged is a
+    // real design question, not mine to decide silently.
+    GovernorRegistry.register('PaintingState',    PaintingState);
+    GovernorRegistry.register('ColorPalette',     ColorPalette);
 
     window._DebugRouter = this;
     window._GovernorProfiles = GovernorProfiles;
@@ -156,17 +175,28 @@ export const DebugRouter = {
     }
 
     // Snap guides — visual-only alignment lines while a panel title-bar
-    // drag is active. Drawn in the SAME panel-space transform as the
-    // panels themselves, so a guide at panel.x really does line up with
-    // that panel's edge on screen at any zoom/pan. Real snapping still
-    // happens entirely in PanelArrange.settle() on release.
+    // drag is active. FIX: this used to pass window.innerWidth/Height
+    // (CSS pixels, not dpr-multiplied like the main canvas) and rely on
+    // the ambient pan/zoom/dpr transform to place the blit correctly —
+    // which only worked at default zoom=1/pan=0, since the offscreen
+    // buffer itself was never built large enough (or transformed) to
+    // cover whatever panel-space region is ACTUALLY visible at other
+    // pan/zoom states. The offscreen image now bakes the real pan/zoom/
+    // dpr transform in at build time (see PanelSnapGuides.getImage), so
+    // it has to be blitted in RAW device-pixel space here — going
+    // through the ambient transform AGAIN would double-apply it. Real
+    // snapping still happens entirely in PanelArrange.settle() on release.
     if (DEBUG_STATE.dragGuide) {
+      const dpr = DEBUG_STATE.dpr || 1;
       const guideImg = PanelSnapGuides.getImage(
         DEBUG_STATE.dragGuide.panel,
-        window.innerWidth || 1920,
-        window.innerHeight || 1080
+        ctx.canvas.width, ctx.canvas.height,
+        px, py, vz, dpr
       );
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.drawImage(guideImg, 0, 0);
+      ctx.restore();
     }
 
     // Marquee + selection share one look: the dashed cyan rectangle, with the
@@ -243,14 +273,14 @@ export const DebugRouter = {
 
   toggleAll() {
     this.masterEnabled = !this.masterEnabled;
-    // Satellites live in the DOM and are gated by body.dbg-on (CSS display:none
-    // when off = no pointer events, no phantom taps). One toggle here covers
-    // every entry point (button / AIMS / keyboard).
+    // body.dbg-on / body.dbg-console used to gate .dbg-sat's CSS
+    // display:none — satellites are canvas-drawn now (canvas-satellites.js
+    // checks DebugRouter.masterEnabled/._consoleMode directly, no CSS
+    // class involved), so these two toggles are vestigial as far as
+    // satellites go. Left in place — harmless, and other code may still
+    // read them — but not what visibility actually runs on anymore.
     if (typeof document !== 'undefined') {
       document.body.classList.toggle('dbg-on', this.masterEnabled);
-      // Keep the console-mode gate in sync too: the 4 action satellites are
-      // panel-mode-only (body.dbg-console hides them; the console/panel ray
-      // #gg-console-mode is NOT a .dbg-sat and stays).
       document.body.classList.toggle('dbg-console', this.masterEnabled && this._consoleMode);
     }
     // Force all panels to redraw — pin button visibility changes with debug state

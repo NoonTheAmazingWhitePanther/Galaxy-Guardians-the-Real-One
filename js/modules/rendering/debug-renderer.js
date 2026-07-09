@@ -89,21 +89,44 @@ export const DebugRenderer = {
     }
 
     // ── Chrome layer — cached offscreen (background, border, amber) ───────
+    // FIX: this cache used to be built at pw×ph RAW panel-space pixels —
+    // never multiplied by dpr (blurry on every phone with dpr>1, which is
+    // nearly all of them) and never invalidated when the debug view's
+    // zoom changed (progressively blurrier the more you zoom in, since
+    // the same low-res bitmap just gets stretched larger). Cache key now
+    // includes both; canvas is sized at the actual EFFECTIVE resolution
+    // (dpr × current zoom) so it's crisp at whatever zoom you're looking
+    // at right now, not just at the zoom level it happened to be built at.
+    const dpr = DEBUG_STATE.dpr || 1;
+    const vz  = DEBUG_STATE.viewZoom || 1;
     const chromeCanvas = panel._chromeCanvas;
     const chromeDirty  = panel._chromeDirty
       || !chromeCanvas
-      || chromeCanvas.width  !== pw
-      || chromeCanvas.height !== ph;
+      || panel._chromeCachedW   !== pw
+      || panel._chromeCachedH   !== ph
+      || panel._chromeCachedDpr !== dpr
+      || panel._chromeCachedVz  !== vz;
 
     if (chromeDirty) {
-      const c = makeCanvas(pw, ph);
-      panel._chromeCanvas = c;
-      this._drawChrome(c, panel, pw, ph, sc, s, minimized);
-      panel._chromeDirty = false;
+      const scale = dpr * vz;
+      const cw = Math.max(1, Math.ceil(pw * scale));
+      const ch = Math.max(1, Math.ceil(ph * scale));
+      const c = makeCanvas(cw, ch);
+      this._drawChrome(c, panel, pw, ph, sc, s, minimized, scale);
+      panel._chromeCanvas    = c;
+      panel._chromeCachedW   = pw;
+      panel._chromeCachedH   = ph;
+      panel._chromeCachedDpr = dpr;
+      panel._chromeCachedVz  = vz;
+      panel._chromeDirty     = false;
     }
 
     // Blit chrome
-    ctx.drawImage(panel._chromeCanvas, panel.x, panel.y);
+    // Explicit destination size (pw,ph, panel-space units) — the source
+    // canvas is now built at dpr×zoom resolution (see above), not pw×ph
+    // raw pixels, so drawImage needs telling what size to map it to
+    // rather than using its native pixel dimensions directly.
+    ctx.drawImage(panel._chromeCanvas, panel.x, panel.y, pw, ph);
 
     if (minimized) {
       // Minimized — PanelMasterSlider draws text/knob on main ctx
@@ -132,8 +155,13 @@ export const DebugRenderer = {
   },
 
   // Chrome = background, border, amber border, buttons — cached
-  _drawChrome(canvas, panel, pw, ph, sc, s, minimized) {
+  // `scale` = dpr × current debug-view zoom (see renderPanel) — applied
+  // once here so every draw call below can keep using pw/ph-relative
+  // "logical" coordinates unchanged; the canvas itself was already sized
+  // to cw×ch = pw×scale, ph×scale by the caller.
+  _drawChrome(canvas, panel, pw, ph, sc, s, minimized, scale = 1) {
     const ctx    = canvas.getContext('2d');
+    ctx.scale(scale, scale);
     const radius = s.radius * sc;
 
     ctx.clearRect(0, 0, pw, ph);

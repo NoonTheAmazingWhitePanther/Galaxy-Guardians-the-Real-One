@@ -40,6 +40,35 @@ export const PaintingState = {
    */
   isAllowed: () => PaintingState.enabled,
 
+  // ── Pause While Painting — paint-sat-pause ──────────────────────────
+  // NOT a one-shot pause. Tapping the satellite only arms/disarms this
+  // mode; it never touches state.paused directly. While armed, physics
+  // is additionally held for exactly as long as the pointer is actively
+  // down with painting mode on (see isBlockingPhysics below, checked
+  // alongside state.paused in main.js's tick gate) — the instant the
+  // pointer lifts, the extra block lifts with it. Because state.paused
+  // itself was never written to, "the simulation rules from before
+  // starting to paint return" automatically — there's nothing to
+  // snapshot or restore, since nothing was ever changed to begin with.
+  pauseWhilePainting: false,
+
+  togglePauseWhilePainting: () => {
+    PaintingState.pauseWhilePainting = !PaintingState.pauseWhilePainting;
+    return PaintingState.pauseWhilePainting;
+  },
+
+  /**
+   * True for exactly the frames physics should be additionally held.
+   * Takes isHolding as a parameter rather than importing InputState
+   * directly — InputState lives in input.module.js, which imports
+   * in-planet.js, which imports THIS file; importing it back here would
+   * be a circular import (this project has hit that exact bug before —
+   * see in-selection-tool.js's history).
+   */
+  isBlockingPhysics: (isHolding) => {
+    return PaintingState.pauseWhilePainting && PaintingState.enabled && !!isHolding;
+  },
+
   /**
    * Spray brush on/off — tap action for paint-sat-spray.
    */

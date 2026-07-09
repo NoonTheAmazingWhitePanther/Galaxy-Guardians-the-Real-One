@@ -123,6 +123,18 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   Accumulator.beginFrame(trailTicks);
   const sCtx = Accumulator.stageCtx;
 
+  // FIX: the accumulator's stage buffers are now built at device-pixel
+  // resolution (CSS px × dpr — see accumulator.js), not CSS-pixel
+  // resolution like before. Everything drawn onto sCtx below (starfield,
+  // sun, trails, bodies, particles, flashes, overlays) was written
+  // assuming CSS-pixel-equivalent coordinates — same convention the main
+  // canvas uses, and same fix: one dpr scale, applied once, covers all
+  // of it. Balanced in the finally block below so it always restores
+  // even if something in the try block throws.
+  const _dpr = Accumulator.dpr || 1;
+  sCtx.save();
+  sCtx.scale(_dpr, _dpr);
+
   // Begin draw call counting for this frame
   DrawCallCounter.beginFrame();
 
@@ -206,6 +218,8 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   } finally {
     // 13. ALWAYS revert tween — even if DOMException was thrown
     TweenRenderer.revertTween();
+    // 14. ALWAYS balance the dpr-scale save from above — even on throw
+    sCtx.restore();
   }
 
   // 15. Flip: blit finished stage to main canvas

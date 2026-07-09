@@ -155,54 +155,13 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 }
 #debug-btn:active  { transform: scale(0.92); }
 
-/* ── Debug satellites — 3 mini buttons (1/3 of debug btn) shooting out like
-      sun-rays to the right & below, at equal 30° steps (15°/45°/75°).
-      Positions derived from the debug button's centre + radius = --pad-size,
-      so they track --safe / --pad-size at any size. Same chrome as #debug-btn,
-      just smaller, and the same left/top spacing rhythm (var(--safe)). */
-.dbg-sat {
-    position: fixed;
-    z-index: 55;
-    width: calc(var(--pad-size) / 3);
-    height: calc(var(--pad-size) / 3);
-    background: var(--ui-bg);
-    border: 1px solid var(--ui-border);
-    border-radius: 6px;
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    display: none; align-items: center; justify-content: center;
-    font-size: 9px; line-height: 1;
-    cursor: pointer;
-    touch-action: none; user-select: none;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-    transition: transform 0.1s, background 0.1s, border-color 0.2s;
-    padding: 0; margin: 0;
-    color: rgba(255,255,255,0.6);
-}
-/* Satellites (and the console-mode ray) exist ONLY while debug is on. Hidden =
-   display:none = no pointer events, so there are no phantom/overlapping taps
-   when debug is off. body.dbg-on is toggled by the 〰️ debug button. */
-body.dbg-on .dbg-sat { display: flex; }
-.dbg-sat:active { transform: scale(0.9); }
-.dbg-sat:hover  { background: rgba(30, 30, 50, 0.85); color: rgba(255,255,255,0.9); }
-
-/* Sun-ray fan — 5 mini buttons arcing down the RIGHT of the 〰️ debug button.
-   Radius 1.05×--pad-size from the debug centre (pulled in close), angle steps
-   24° so the inter-button gaps stay touch-safe (~4.5px at 44px pad). Rays at
-   -8°/16°/40°/64°/88° from horizontal; verified non-overlapping (each other
-   AND the debug button; AIMS ✒️ lives top-right, out of reach). Top ray is
-   the console-mode button (#gg-console-mode, in console-view). */
-#dbg-closeall { left: calc(var(--safe) + var(--pad-size) * 1.343); top: calc(var(--safe) + var(--pad-size) * 1.623); }
-#dbg-reset    { left: calc(var(--safe) + var(--pad-size) * 1.138); top: calc(var(--safe) + var(--pad-size) * 2.008); }
-#dbg-arrange  { left: calc(var(--safe) + var(--pad-size) * 0.794); top: calc(var(--safe) + var(--pad-size) * 2.277); }
-#dbg-expand   { left: calc(var(--safe) + var(--pad-size) * 0.370); top: calc(var(--safe) + var(--pad-size) * 2.383); }
-#dbg-glasses  { left: calc(var(--safe) + var(--pad-size) * 1.224); top: calc(var(--safe) + var(--pad-size) * 0.777); }
-
-/* Console mode: the 4 action satellites are PANEL-mode tools — hidden while
-   the Live Text console owns the screen. Only the console/panel ray
-   (#gg-console-mode — not a .dbg-sat) survives in both debug modes. Must sit
-   AFTER `body.dbg-on .dbg-sat` so it wins the cascade. */
-body.dbg-console .dbg-sat { display: none; }
+/* Debug/AIMS/Painting satellites (.dbg-sat / .aims-sat / .paint-sat) used
+   to live here. Removed — they're canvas-drawn now (see
+   js/modules/ui/canvas-satellites.js) per rules.md §8: satellites are
+   "virtual space" like debug panels, not real DOM elements with an AIMS
+   exception bolted on. Console-mode visibility (body.dbg-console) is
+   handled by that module's own isActive() check now, same logic, just
+   not CSS-driven anymore. */
 
 /* Console row slider — lazy-built on row press, tweened thumb. */
 #gg-console .cslider { padding: 2px 8px 6px; }
@@ -224,70 +183,14 @@ body.dbg-console .dbg-sat { display: none; }
     pointer-events: none;
 }
 
-#aims-btn {
-    position: fixed;
-    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + 6px);
-    right: var(--safe);
-    z-index: 55;
-    width: var(--pad-size); height: var(--pad-size);
-    background: var(--ui-bg);
-    border: 1px solid var(--ui-border);
-    border-radius: 10px;
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; line-height: 1;
-    cursor: pointer;
-    touch-action: none; user-select: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    transition: transform 0.1s, background 0.1s, border-color 0.2s;
-    padding: 0; margin: 0;
-    color: rgba(255,255,255,0.6);
-}
-#aims-btn:active { transform: scale(0.92); }
-#aims-btn.active {
-    background: rgba(30, 80, 50, 0.9);
-    border-color: rgba(130, 255, 160, 0.5);
-    color: rgba(130, 255, 160, 0.95);
-    box-shadow: 0 0 12px rgba(130, 255, 160, 0.2), 0 4px 12px rgba(0,0,0,0.4);
-}
-
-/* PAINTING BUTTON — Below AIMS */
-#painting-btn {
-    position: fixed;
-    top: calc(var(--safe) + var(--pad-size) + var(--pad-size) + var(--pad-size) + 12px);
-    right: var(--safe);
-    z-index: 55;
-    width: var(--pad-size); height: var(--pad-size);
-    background: var(--ui-bg);
-    border: 1px solid var(--ui-border);
-    border-radius: 10px;
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 18px; line-height: 1;
-    cursor: pointer;
-    touch-action: none; user-select: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    transition: transform 0.1s, background 0.1s, border-color 0.2s;
-    padding: 0; margin: 0;
-    color: rgba(255,255,255,0.6);
-}
-#painting-btn:active { transform: scale(0.92); }
-#painting-btn.active {
-    background: rgba(80, 30, 60, 0.9);
-    border-color: rgba(255, 130, 200, 0.5);
-    color: rgba(255, 130, 200, 0.95);
-    box-shadow: 0 0 12px rgba(255, 130, 200, 0.2), 0 4px 12px rgba(0,0,0,0.4);
-}
-
-/* SELECTION TOOL BUTTON — beneath painting-btn's full satellite fan (which
-   reaches down to y≈233 at pad=44/safe=16 — see the paint-sat fan comment
-   above), not just beneath painting-btn itself. +48px literal instead of
-   the column's usual +6px-per-step rhythm, specifically to clear that fan. */
+/* SELECTION TOOL BUTTON — top of the AIMS/Painting/Selection trio (was the
+   bottom one; reordered per direction: Selection → Aims → Painting,
+   top-to-bottom). Takes the exact slot the aims-btn used to occupy — same
+   formula, same 6px gap below pan-pad (pan-pad ends y=104, this starts
+   y=110). No satellites, so no fan-clearance literal needed here. */
 #selection-btn {
     position: fixed;
-    top: calc(var(--safe) + var(--pad-size) * 4 + 48px);
+    top: calc(var(--safe) + var(--pad-size) * 2 + 6px);
     right: var(--safe);
     z-index: 55;
     width: var(--pad-size); height: var(--pad-size);
@@ -313,58 +216,91 @@ body.dbg-console .dbg-sat { display: none; }
     box-shadow: 0 0 12px rgba(255, 200, 80, 0.25), 0 4px 12px rgba(0,0,0,0.4);
 }
 
-/* ── AIMS / PAINTING satellites — same chrome family as .dbg-sat, hidden
-      until their parent toggle is ON. Gated with the CSS sibling combinator
-      directly off the parent button's own .active class (#aims-btn.active ~
-      .aims-sat) rather than a body-level class — one less state to keep in
-      sync, tied straight to the exact class that's already proven to toggle
-      correctly (painting-btn.active has always worked). Fanned LEFT from
-      their anchor buttons since both sit on the right screen edge. */
-.aims-sat, .paint-sat {
+/* AIMS BUTTON — middle of the trio. Takes the exact slot painting-btn used
+   to occupy (same formula), sitting a clean 6px below selection-btn
+   (154 → 160), since selection-btn has no fan to clear. */
+#aims-btn {
     position: fixed;
+    top: calc(var(--safe) + var(--pad-size) * 3 + 12px);
+    right: var(--safe);
     z-index: 55;
-    width: calc(var(--pad-size) / 3);
-    height: calc(var(--pad-size) / 3);
+    width: var(--pad-size); height: var(--pad-size);
     background: var(--ui-bg);
     border: 1px solid var(--ui-border);
-    border-radius: 6px;
+    border-radius: 10px;
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
-    display: none; align-items: center; justify-content: center;
-    font-size: 9px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
     cursor: pointer;
     touch-action: none; user-select: none;
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     transition: transform 0.1s, background 0.1s, border-color 0.2s;
     padding: 0; margin: 0;
     color: rgba(255,255,255,0.6);
 }
-#aims-btn.active ~ .aims-sat     { display: flex; }
-#painting-btn.active ~ .paint-sat { display: flex; }
-.aims-sat:active, .paint-sat:active { transform: scale(0.9); }
-.aims-sat:hover, .paint-sat:hover  { background: rgba(30, 30, 50, 0.85); color: rgba(255,255,255,0.9); }
-.aims-sat.active, .paint-sat.active {
+#aims-btn:active { transform: scale(0.92); }
+/* Long-press mode switch (Real ⇄ Fake AIMS resolution) — a brief gold
+   pulse so the switch is felt even though it's silent otherwise (no
+   change to icon or on/off state, just which resolution mode is active).
+   See rules.md §8. */
+#aims-btn.mode-flash {
+    box-shadow: 0 0 18px rgba(255, 200, 80, 0.7), 0 4px 12px rgba(0,0,0,0.4);
+    border-color: rgba(255, 200, 80, 0.9);
+    transition: box-shadow 0.15s, border-color 0.15s;
+}
+#aims-btn.active {
     background: rgba(30, 80, 50, 0.9);
     border-color: rgba(130, 255, 160, 0.5);
     color: rgba(130, 255, 160, 0.95);
+    box-shadow: 0 0 12px rgba(130, 255, 160, 0.2), 0 4px 12px rgba(0,0,0,0.4);
 }
 
-/* AIMS fan — angles -15°/10°/35°, radius 0.70×--pad-size. Verified against
-   real pixel math (pad=44, safe=16): pan-pad ends at y=104, painting-btn
-   starts at y=160 — aims-btn's own row (110-154) leaves only ~6px of slack
-   on EITHER side, so this fan is shifted shallower/narrower than a symmetric
-   spread would allow. Satellite spans: -15°→[116.7,131.4], 10°→[130.0,144.7],
-   35°→[142.3,157.0] — all clear of both neighbours by 3px+. */
-#aims-sat-refresh { right: calc(var(--safe) + var(--pad-size) * 1.010); top: calc(var(--safe) + var(--pad-size) * 2.152 + 6px); }
-#aims-sat-showmap { right: calc(var(--safe) + var(--pad-size) * 1.023); top: calc(var(--safe) + var(--pad-size) * 2.455 + 6px); }
-#aims-sat-zoom    { right: calc(var(--safe) + var(--pad-size) * 0.907); top: calc(var(--safe) + var(--pad-size) * 2.735 + 6px); }
+/* PAINTING BUTTON — bottom of the trio. FIX: was safe+pad*4+25.3px,
+   pushed down to clear the old satellite fan's reach — that made this
+   gap 13.3px while every other gap in the column (pan-pad→selection,
+   selection→aims) is a clean 6px. Not equally spaced, confirmed by
+   direct calculation. Restored to the SAME +6-per-step rhythm as the
+   rest of the column (selection: +6, aims: +12, painting: +18) — pan-pad
+   is the reference point this whole column's rhythm is built from.
+   Satellite fan clearance is no longer this button's problem to solve —
+   satellites are moving to canvas rendering (see rules.md), where they
+   layer over the HTML buttons instead of needing the buttons themselves
+   pushed out of the way. This is still the button the Master Slider
+   anchors its top edge to (master-slider-renderer.js), since it's the
+   lowest of the three. */
+#painting-btn {
+    position: fixed;
+    top: calc(var(--safe) + var(--pad-size) * 4 + 18px);
+    right: var(--safe);
+    z-index: 55;
+    width: var(--pad-size); height: var(--pad-size);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 10px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+    cursor: pointer;
+    touch-action: none; user-select: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transition: transform 0.1s, background 0.1s, border-color 0.2s;
+    padding: 0; margin: 0;
+    color: rgba(255,255,255,0.6);
+}
+#painting-btn:active { transform: scale(0.92); }
+#painting-btn.active {
+    background: rgba(80, 30, 60, 0.9);
+    border-color: rgba(255, 130, 200, 0.5);
+    color: rgba(255, 130, 200, 0.95);
+    box-shadow: 0 0 12px rgba(255, 130, 200, 0.2), 0 4px 12px rgba(0,0,0,0.4);
+}
 
-/* Painting fan — angles 0°/35°/70°, radius 1.05×--pad-size. Spans
-   [174.7,189.3], [201.2,215.8], [218.1,232.8] — selection-btn (below) starts
-   at y=240, giving the widest satellite (70°) ~7px clearance. */
-#paint-sat-pause { right: calc(var(--safe) + var(--pad-size) * 1.383); top: calc(var(--safe) + var(--pad-size) * 3.333 + 12px); }
-#paint-sat-spray { right: calc(var(--safe) + var(--pad-size) * 1.194); top: calc(var(--safe) + var(--pad-size) * 3.936 + 12px); }
-#paint-sat-size  { right: calc(var(--safe) + var(--pad-size) * 0.692); top: calc(var(--safe) + var(--pad-size) * 4.320 + 12px); }
+/* .aims-sat / .paint-sat CSS used to live here. Removed — canvas-drawn
+   now (js/modules/ui/canvas-satellites.js). The same geometry (radius
+   0.70×pad+7.5px, angles -15°/10°/35°, fanned left) is preserved exactly,
+   just expressed as JS constants (_polarLeft()) instead of calc(). */
 #debug-btn.active  {
     background: rgba(30, 60, 90, 0.9);
     border-color: rgba(130, 210, 255, 0.5);

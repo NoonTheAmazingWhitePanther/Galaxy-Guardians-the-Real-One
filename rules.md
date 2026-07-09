@@ -197,3 +197,120 @@ fastest fix comes from reporting:
 
 "It doesn't work" sends the next session back to re-reading everything.
 One sentence of what you actually saw turns that into a five-minute fix.
+
+---
+
+## 8. AIMS — Scope Boundary & Architecture
+
+**HTML buttons are a no-go for AIMS.** AIMS is for actions inside the
+virtual space. HTML buttons are real browser space.
+
+Native touch already lands correctly on a normal-sized (44px) HTML
+button, bar, or control — that's just how touchscreens work. AIMS
+offsetting the coordinates of an already-correct tap doesn't improve
+it, it *breaks* it. So:
+
+- **Never AIMS-eligible, always plain native touch, no exceptions:**
+  pan-pad, the debug/selection/aims/painting toggle buttons, the zoom
+  bar, the speed bar, the FPS text, the bottom bar (`#ui` — clear-btn,
+  config-btn, sliders), the config menu. Generalizes to every plain
+  HTML button/bar in the app. A future "virtual controller" (joystick-
+  style, continuous input) is explicitly a *different* thing from
+  pan-pad — pan-pad stays excluded either way.
+- **AIMS-eligible, always (not HTML at all — canvas-drawn, "virtual
+  space", same category as debug panels):** the satellite buttons
+  (`js/modules/ui/canvas-satellites.js` — dbg-sat/aims-sat/paint-sat
+  families). These used to be real `<div>` elements with an AIMS
+  exception carved out for them ("HTML, but AIMS anyway") — that was
+  identified as backwards and removed. There is no HTML/AIMS exception
+  anymore, in either direction: satellites moved to the canvas side of
+  the boundary instead of staying HTML with a special case. Each
+  satellite's own `isActive()` gates both rendering and hit-testing —
+  visible ⟺ touchable, same law as everywhere else in this codebase,
+  just enforced in JS now instead of via a CSS `display:none` check on
+  a DOM element that no longer exists.
+- **AIMS-eligible, always (not an HTML button at all):** debug panels
+  (canvas-drawn, not real DOM — "virtual space").
+
+**The core idea — one ray cast, not a different input module.** A 3D
+engine always casts a ray for picking; only the origin/direction/length
+change per use, never the mechanism. AIMS is that, in 2D:
+`AimsCast.cast(x, y, radius)` (`js/core/aims-cast.js`) is the ONE
+function every AIMS resolution goes through, always. Normal touch and
+AIMS-assisted touch are not two different systems — they're the same
+hit-test/collision-check between a touch point and the virtual-space
+objects it might be aiming at, called with different `x`, `y`, and
+`radius`. `radius=0` only hits something you're exactly on top of;
+`radius>0` forgives being that many px away from the nearest edge.
+Deliberately NOT a spatial index or pixel bitmap — there are only ever
+a handful of satellites + panels on screen, so a plain linear scan over
+their LIVE bounds, re-read on every single cast, is cheap enough that a
+pre-built cache buys nothing but a second thing to go stale.
+
+**How a tap actually resolves (immediate pass, then deferred one loop
+cycle later):** normal hit-testing — `InDebug` (panels) →
+`CanvasSatellites` (satellites, exact point, no offset) → `InButtons` →
+`InConfigMenu` → `InUI` → `InCamera` — always runs first,
+unconditionally, exactly as if AIMS didn't exist. This covers every
+HTML button/bar AND gives satellites/panels a normal precise-tap path of
+their own, satisfying "HTML buttons are a no-go for AIMS" by
+construction (HTML never appears in AIMS's resolution at all, in either
+pass) rather than by a special case. Only if ALL of that misses, and
+AIMS is on, does `InputModule._deferAimsRetry()`
+(`js/modules/input/input.module.js`) schedule a real retry one
+`requestAnimationFrame` later: apply the Aims offset, then call
+`InAims.resolve(sx, sy)` — which is just `AimsCast.cast()` at the
+current mode's radius, then either `CanvasSatellites.fireTap()` (calls
+the matched satellite's `onTap()` directly — no DOM element in the
+picture at all anymore) or a coordinate-shimmed call into
+`InDebug.handleDown()` for a matched panel. If that also misses, the tap
+falls through to world interaction (SelectionTool / InPlanet) one frame
+late, at the raw un-offset point — world taps never use the bias, only
+satellites/panels do. One cycle of deferral is cheap at real frame rates
+(see the "1000 law," §5) and invisible to a human; it is not a hack,
+it's the actual mechanism.
+
+**Long-press aims-btn** (`InAims.toggleMode()`) switches 'fake'
+(default, tight ~2px radius) ⇄ 'real' (full finger-size radius, reusing
+the historical `AIM_RADIUS` constant). Same `cast()` call either way —
+mode is a radius choice, not a different code path. Tap still toggles
+AIMS on/off, unchanged.
+
+**Superseded designs, for history — do not resurrect either:**
+1. A same-frame `Proxy`-based coordinate-only retry. Failed silently:
+   `InButtons`/`InUI`/`InConfigMenu` hit-test off `e.target` (the
+   browser's own real hit-test result at the real touch point), which
+   spoofing `clientX/clientY` alone can't touch.
+2. A dual "Real bitmap map, rebuilt fresh every miss" vs "Fake
+   `elementFromPoint`" split — two genuinely different algorithms
+   pretending to be modes of the same thing. `AimsCast` replaced both:
+   one function, one algorithm, parameterized by radius.
+
+**Current state of `core/aims.js`:** its bitmap/registration engine
+(`_items`/`_layers`/`_map`/`register()`/`registerElement()`/
+`_resolve()`) is fully unused now — `AimsCast` never calls any of it.
+Left in place, not deleted, because `Aims.aim.x/y/offsetX/offsetY/ex/ey`
+(the position/offset/radius tracker) are still real and still updated
+every pointermove — `ZoomEnhancer`'s magnifier box and `AimsCast`'s own
+radius/offset both read from it. Whether to physically delete the dead
+bitmap code from that file is a deliberate follow-up decision, not
+something to do as a side effect of an unrelated change.
+
+**Satellites, structurally (`js/modules/ui/canvas-satellites.js`):** one
+registry array (`id`, `icon`, `pos()`, `isActive()`, `isOn()` for
+persistent-highlight buttons like paint-sat-pause, `onTap`, `onHold`),
+one `render(ctx)`, one hit-test + its own tap-vs-hold gesture state
+(`handleDown/Move/Up`). Anchors (debug-btn/aims-btn/painting-btn) stay
+real HTML — only their satellites moved; positions read `--safe`/
+`--pad-size` live off `:root`, same source of truth the CSS used before.
+Geometry: aims-sat/paint-sat share the clean (radius, angle) template
+already established (0.70×pad+7.5px, -15°/10°/35°); dbg-sat kept its
+original hand-tuned absolute factors verbatim — nobody asked for that
+fan reshaped, only moved off HTML. Anything that used to anchor off a
+satellite's `getBoundingClientRect()` (e.g. `tetris-fan.js`'s popup
+position) now calls `CanvasSatellites.getRect(id)` instead — same
+shape, live, no DOM element required. One real side effect worth
+knowing: satellites now render on the canvas (`z-index: 0`) instead of
+as `z-index: 55` DOM elements — harmless given the established layout
+keeps them clear of other HTML, but worth remembering if a future
+element ever needs to sit between them.

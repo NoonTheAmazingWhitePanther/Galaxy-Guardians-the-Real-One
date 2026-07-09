@@ -41,11 +41,13 @@ export const Accumulator = {
   _w: 0, _h: 0,
   _dpr: 1,          // device pixel ratio (set once from main.js resize) — readout only
 
-  init(w, h) {
+  init(w, h, dpr) {
     this._w = w; this._h = h;
+    if (dpr !== undefined) this._dpr = Math.max(0.1, Number(dpr) || 1);
+    const d = this._dpr;
     this._bufs = [];
     for (let i = 0; i < this.trailDepth; i++) {
-      const buf = _make(this._w, this._h);
+      const buf = _make(Math.max(1, Math.ceil(this._w * d)), Math.max(1, Math.ceil(this._h * d)));
       this._bg(buf.ctx);
       this._bufs.push(buf);
     }
@@ -54,11 +56,14 @@ export const Accumulator = {
     this._ready = true;
   },
 
-  resize(w, h) {
-    if (!this._ready) return this.init(w, h);
+  resize(w, h, dpr) {
+    if (!this._ready) return this.init(w, h, dpr);
     this._w = w; this._h = h;
+    if (dpr !== undefined) this._dpr = Math.max(0.1, Number(dpr) || 1);
+    const d = this._dpr;
     for (const buf of this._bufs) {
-      buf.canvas.width = this._w; buf.canvas.height = this._h;
+      buf.canvas.width  = Math.max(1, Math.ceil(this._w * d));
+      buf.canvas.height = Math.max(1, Math.ceil(this._h * d));
       this._bg(buf.ctx);
     }
     this._count = 0;
@@ -67,7 +72,13 @@ export const Accumulator = {
   _bg(ctx) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = CONFIG.render.BACKGROUND_COLOR;
-    ctx.fillRect(0, 0, this._w, this._h);
+    // FIX: used to fillRect(0,0,this._w,this._h) — this._w/h are CSS-px
+    // values, but buffers are now sized at CSS-px × dpr raw pixels (see
+    // init/resize above). Filling only the CSS-px-sized corner left the
+    // rest of the (larger) buffer uncleared. ctx.canvas.width/height are
+    // this buffer's REAL pixel dimensions, always correct regardless of
+    // what this._w/h currently are.
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   },
 
   get stageCtx()    { return this._bufs[this._head]?.ctx ?? null; },
@@ -137,31 +148,40 @@ export const Accumulator = {
     this.init(this._w, this._h);
   },
 
-  // Device pixel ratio — recorded once per resize from main.js. Buffers are
-  // sized in CSS px; the device canvas is _dpr× larger. Readout only.
+  // Device pixel ratio. FIX: this used to be "readout only" — buffers were
+  // always CSS-px sized regardless of what this said. Now it's the real
+  // thing buffer sizing uses (see init/resize above) — pass it there
+  // directly to avoid an ordering hazard (this setter running AFTER
+  // resize() would size that call's buffers off the previous/stale dpr).
+  // Kept as its own method too for anything that wants to just update the
+  // reading without a full resize.
   setDpr(v) { this._dpr = Math.max(0.1, Number(v) || 1); },
   get dpr() { return this._dpr; },
 
   // Bytes held by the whole ring right now: trailDepth stage buffers,
-  // RGBA at the real (CSS) buffer dims.
+  // RGBA at the REAL buffer dims (CSS × dpr — see init/resize), not the
+  // CSS dims alone. FIX: this used to multiply this._w*this._h directly,
+  // under-reporting actual memory by dpr² now that buffers are real
+  // device-pixel sized.
   get _ringBytes() {
-    const perBuf = this._w * this._h * 4;
+    const perBuf = Math.ceil(this._w * this._dpr) * Math.ceil(this._h * this._dpr) * 4;
     return perBuf * this.trailDepth;
   },
 
   get debugInfo() {
+    const bw = Math.ceil(this._w * this._dpr), bh = Math.ceil(this._h * this._dpr);
     return {
       trailDepth: this.trailDepth,
       fadeAlpha:  this.fadeAlpha,
       flipCount:  this._count,
       layers:     Math.min(this._count, this.trailDepth - 1),
       primeRes:   'full · LOCKED',
-      bufferDims: `${this._w}×${this._h}`,
+      bufferDims: `${bw}×${bh}`,
       cssRes:     `${this._w}×${this._h}`,
-      deviceRes:  `${Math.round(this._w * this._dpr)}×${Math.round(this._h * this._dpr)}`,
+      deviceRes:  `${bw}×${bh}`,
       dpr:        this._dpr.toFixed(2),
       ringLayers: `${this.trailDepth}`,
-      bufKB:      `${Math.round(this._w * this._h * 4 / 1024)} KB`,
+      bufKB:      `${Math.round(bw * bh * 4 / 1024)} KB`,
       ringMB:     `${(this._ringBytes / 1048576).toFixed(1)} MB`,
       clearEvery: '∞',
       nextClear:  '∞',

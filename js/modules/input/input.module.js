@@ -15,6 +15,7 @@ import { InPlanet }     from './in-planet.js';
 import { SelectionTool } from './in-selection-tool.js';
 import { InKeyboard }   from './in-keyboard.js';
 import { InAims }      from './in-aims.js';
+import { CanvasSatellites } from '../ui/canvas-satellites.js';
 import { Aims }        from '../../core/aims.js';
 import { DebugRouter } from '../debug/debug-router.js';
 import { InputGov }    from '../debug/governor.js';
@@ -50,12 +51,30 @@ export const InputModule = {
       InputState.pointerButton = e.button;
       Aims.aim.x = e.clientX; Aims.aim.y = e.clientY;
 
-      if (InDebug.handleDown(e))     return;  // Debug panels first
-      if (InButtons.handleDown(e))   return;  // Buttons second
-      if (InAims.handleDown(e))      return;  // AIMS third
-      if (InConfigMenu.handleDown(e)) return;
-      if (InUI.handleDown(e))        return;
-      if (InCamera.handleDown(e))    return;
+      // Real touch, real coordinates, no offset — this is the ONLY pass
+      // for every HTML button/bar in the app (pan-pad, selection/aims/
+      // painting toggles, zoom bar, speed bar, fps text, bottom bar...).
+      // Native touch already lands correctly on 44px targets; AIMS must
+      // never second-guess it here. See rules.md — "HTML buttons are a
+      // no-go for AIMS."
+      if (InDebug.handleDown(e))            return;  // Debug panels first
+      if (CanvasSatellites.handleDown(e))   return;  // Satellites — canvas-drawn, "virtual space", see rules.md §8
+      if (InButtons.handleDown(e))          return;  // Buttons second
+      if (InConfigMenu.handleDown(e))       return;
+      if (InUI.handleDown(e))               return;
+      if (InCamera.handleDown(e))           return;
+
+      // Everything above missed at the real touch point. If AIMS is on,
+      // give it ONE loop cycle to try again with an offset — deferred,
+      // not a same-frame retry (see InputModule._deferAimsRetry below).
+      // This suppresses the immediate world-fallthrough for this tap; the
+      // deferred pass resolves it one frame later, at real coordinates —
+      // a fresh, genuine hit-test, not an approximation of one.
+      if (InAims.enabled) {
+        InputModule._deferAimsRetry(e.clientX, e.clientY, e.pointerId);
+        return;
+      }
+
       if (SelectionTool.handleDown(e)) return;  // Capturing planets takes over from brush painting
       // Planet planting disabled when debug is on, or while selecting — one
       // gesture, one job — debug = tuning, selecting = capturing, else = playing
@@ -78,7 +97,7 @@ export const InputModule = {
       if (!InputGov.shouldProcess()) return;
 
       if (InDebug.handleMove(e))  return;  // Debug drag takes priority
-      if (InAims.handleMove(e))   return;
+      if (CanvasSatellites.handleMove(e)) return;
       if (InUI.handleMove(e))     return;
       if (InCamera.handleMove(e)) return;
       if (SelectionTool.handleMove(e)) return;
@@ -90,8 +109,8 @@ export const InputModule = {
       InputState.isPointerDown = false;
 
       if (InDebug.handleUp(e))   return;  // Release debug drag first
+      if (CanvasSatellites.handleUp(e)) return;
       if (InButtons.handleUp(e)) return;  // Handle buttons
-      InAims.handleUp(e);
       if (InUI.handleUp(e))      return;
       if (InCamera.handleUp(e)) return;
       if (SelectionTool.handleUp(e)) return;
@@ -109,6 +128,44 @@ export const InputModule = {
     }, { passive: false });
 
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+  },
+
+  /**
+   * DEFERRED AIMS RETRY — one loop cycle later, with the offset, as a
+   * completely fresh real hit-test. Not a same-frame approximation of one.
+   *
+   * This is genuinely just "cast a ray with different numbers" (see
+   * core/aims-cast.js and rules.md §8) — InAims.resolve() is the ONE
+   * function that does the actual work, at (x+offset, y+offset), with
+   * whichever radius the current mode implies. There is no separate
+   * "different input module" branching happening here anymore; the mode
+   * switch (long-press aims-btn) only changes the radius resolve() casts
+   * with, never the code path.
+   *
+   * Deliberately single-shot (tap only) — resolves one discrete hit, not
+   * a drag. A satellite wired with hold semantics (satWireHold in
+   * main.js) still gets its tap path correctly (paired synthetic
+   * pointerdown+pointerup — `held` stays false, same as a genuine quick
+   * tap), but a deliberate long-press aimed at a tiny satellite isn't
+   * assisted — land that one for real.
+   */
+  _deferAimsRetry(x, y, pointerId) {
+    requestAnimationFrame(() => {
+      const dx = Aims.aim.offsetX, dy = Aims.aim.offsetY;
+      const sx = x + dx, sy = y + dy;
+
+      if (InAims.resolve(sx, sy)) return;
+
+      // Nothing AIMS covers was there. Fall through to the same world
+      // interaction a normal miss would get, one frame late, at the RAW
+      // (un-offset) point — world/canvas taps never use the bias.
+      const raw = {
+        clientX: x, clientY: y, pointerId,
+        preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
+      };
+      if (SelectionTool.handleDown(raw)) return;
+      if (!DebugRouter.masterEnabled && !SelectionTool.enabled) InPlanet.handleDown(raw);
+    });
   }
 };
 

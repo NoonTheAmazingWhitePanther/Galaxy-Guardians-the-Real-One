@@ -1,19 +1,29 @@
 import { DEBUG_STATE } from './debug-state.js';
 import { MasterGovernor } from './master-governor.js';
 
-// ── FIXED anchor — the right-edge button stack (#pan-pad, #aims-btn) ──────
-// #debug-btn moved to the left edge, but the vertical rhythm is unchanged
-// (aims-btn shifted up to take its old slot), so measuring the gap between
-// debug-btn's bottom and aims-btn's top still gives the correct value —
-// getBoundingClientRect() only cares about vertical position here, so
-// debug-btn's horizontal side doesn't matter for this measurement.
-// #aims-btn ("Toggle AIMS Input") is the last/bottom button in that stack.
-// Everything below is measured live off those real DOM elements — width,
-// x position, and the gap between them — so the slider always matches them
+// ── FIXED anchor — the right-edge button stack (#pan-pad, #selection-btn,
+//    #aims-btn, #painting-btn) ─────────────────────────────────────────────
+// Column order (top→bottom) as of the Selection/Aims/Painting reorder:
+// pan-pad → selection-btn → aims-btn → painting-btn. #painting-btn is now
+// the last/bottom button in that stack (previously this measured off
+// #aims-btn, back when aims-btn was the bottom one — stale after the
+// reorder, and the real bug behind the slider visually running through
+// painting-btn/selection-btn's row). #debug-btn stays the left-edge gap
+// reference; getBoundingClientRect() only cares about vertical position
+// here, so its horizontal side doesn't matter for this measurement.
+// Everything below is measured live off real DOM elements — width, x
+// position, and the gap between them — so the slider always matches them
 // exactly (any breakpoint/CSS change) and is NEVER touched by any debug
 // panel's position, size, minimize state, or visibility.
 const THUMB_H = 16;
 const FALLBACK_GAP = 6;
+// painting-btn's own satellite fan (paint-sat-*) hangs below its own
+// bottom edge — a fixed geometric offset (R·sin(40°) + satH/2 − pad/2 ≈
+// 15.02px at R=1.050×pad, pad=44 — the fans now exactly mirror the dbg
+// fan, see canvas-satellites.js's _mirrorFan) that's independent of the
+// button's absolute screen position, only of the fan's shape. Rounded up
+// to 16 for a hair of safety margin.
+const FAN_CLEARANCE_PAST_BTN = 16;
 
 export const MasterSliderRenderer = {
   _bounds: null,
@@ -49,24 +59,31 @@ export const MasterSliderRenderer = {
   computeBounds() {
     if (typeof document === 'undefined') return this._bounds;
 
-    const aimsBtn  = document.getElementById('aims-btn');
-    const debugBtn = document.getElementById('debug-btn');
-    if (!aimsBtn) return this._bounds;
+    const paintingBtn  = document.getElementById('painting-btn');
+    const selectionBtn = document.getElementById('selection-btn');
+    const debugBtn     = document.getElementById('debug-btn');
+    if (!paintingBtn) return this._bounds;
 
-    const aimsRect = aimsBtn.getBoundingClientRect();
+    const paintingRect = paintingBtn.getBoundingClientRect();
 
-    // Gap between the 3 buttons — measured live between debug-btn and
-    // aims-btn, so it's always the exact same spacing, at any screen size.
+    // Gap rhythm — measured live between debug-btn and selection-btn (the
+    // TOP of the trio now), so it's always the exact same spacing, at any
+    // screen size, regardless of which button starts the column.
     let gap = FALLBACK_GAP;
-    if (debugBtn) {
+    if (debugBtn && selectionBtn) {
       const debugRect = debugBtn.getBoundingClientRect();
-      const measured = aimsRect.top - debugRect.bottom;
+      const selRect = selectionBtn.getBoundingClientRect();
+      const measured = selRect.top - debugRect.bottom;
       if (measured > 0) gap = measured;
     }
 
-    const x = aimsRect.left;
-    const w = aimsRect.width;
-    const y = aimsRect.bottom + gap;
+    const x = paintingRect.left;
+    const w = paintingRect.width;
+    // Start below painting-btn's own bottom edge AND its satellite fan
+    // (which hangs a few px past the button itself), then the same gap
+    // rhythm as every other row — this is the "keep its upper space to the
+    // lowest button" fix.
+    const y = paintingRect.bottom + FAN_CLEARANCE_PAST_BTN + gap;
 
     // Bottom bound — same gap kept above the bottom bar (#ui)
     let bottomLimit = window.innerHeight - gap;
@@ -156,8 +173,8 @@ export const MasterSliderRenderer = {
     }
     
     // Title — rotated, inside the top of the track. There's no room above
-    // the bar for it anymore (the aims button sits right there with only
-    // a small gap), so it lives inside the track instead.
+    // the bar for it anymore (painting-btn and its satellite fan sit right
+    // there with only a small gap), so it lives inside the track instead.
     mainCtx.save();
     mainCtx.translate(bounds.x + bounds.w / 2, bounds.y + 18);
     mainCtx.rotate(-Math.PI / 2);

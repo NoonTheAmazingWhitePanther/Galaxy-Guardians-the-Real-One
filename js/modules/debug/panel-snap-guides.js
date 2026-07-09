@@ -51,6 +51,7 @@ export const PanelSnapGuides = {
   _dirty: true,
   _lastCanvasW: 0,
   _lastCanvasH: 0,
+  _lastPx: null, _lastPy: null, _lastVz: null, _lastDpr: null,
 
   /**
    * Rebuild the guide line list from every panel EXCEPT the one being
@@ -125,20 +126,48 @@ export const PanelSnapGuides = {
 
   /**
    * Render (or return cached) guide image for the current frame.
-   * origin/size are in PANEL-SPACE — same coordinate system DebugRouter.drawAll
-   * already applies its view transform to, so no extra conversion needed.
+   *
+   * FIX: this used to be built at canvasW×canvasH = window.innerWidth×
+   * window.innerHeight — CSS-pixel VALUES used directly as the offscreen
+   * canvas's RAW pixel buffer size (not multiplied by dpr, unlike the
+   * main canvas — see main.js's resize(): canvas.width = innerWidth*dpr).
+   * Two real consequences, not just one:
+   *   1. Lower resolution than the main canvas (blurry lines once
+   *      upscaled through the ambient dpr transform at blit time).
+   *   2. A genuine positioning/clipping bug: the buffer was implicitly
+   *      assuming panel-space [0,innerWidth]×[0,innerHeight] always
+   *      equals the visible screen — true ONLY at default zoom=1/pan=0.
+   *      This debug view supports zoom 0.15–2.5 and pan (a real,
+   *      documented feature) — at any other pan/zoom, the actually-
+   *      visible panel-space region is a different rectangle entirely,
+   *      so guides for panels outside that narrow default range were
+   *      silently clipped off the offscreen buffer (never drawn at all),
+   *      or the whole overlay landed in the wrong place relative to
+   *      what's actually on screen.
+   *
+   * Fix: build the offscreen buffer at the REAL device-pixel canvas size
+   * (canvasWDevice/canvasHDevice — pass ctx.canvas.width/height, already
+   * dpr-multiplied), and bake the SAME pan/zoom/dpr transform the main
+   * canvas uses into this offscreen context before drawing any lines —
+   * so panel-space coordinates land in the right place regardless of
+   * current pan/zoom, at full device resolution. The caller then blits
+   * this image in raw device-pixel space (identity transform) — the
+   * transform is already baked in, blitting through the ambient
+   * transform AGAIN would double-apply it.
    */
-  getImage(draggedPanel, canvasW, canvasH) {
-    if (!this._dirty && this._image && this._lastCanvasW === canvasW && this._lastCanvasH === canvasH) {
-      return this._image;
-    }
+  getImage(draggedPanel, canvasWDevice, canvasHDevice, px, py, vz, dpr) {
+    const same = !this._dirty && this._image &&
+      this._lastCanvasW === canvasWDevice && this._lastCanvasH === canvasHDevice &&
+      this._lastPx === px && this._lastPy === py && this._lastVz === vz && this._lastDpr === dpr;
+    if (same) return this._image;
 
-    const canvas = makeCanvas(canvasW, canvasH);
+    const canvas = makeCanvas(canvasWDevice, canvasHDevice);
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvasW, canvasH);
+    ctx.setTransform(vz * dpr, 0, 0, vz * dpr, px * dpr, py * dpr);
+    ctx.clearRect(-px / vz, -py / vz, canvasWDevice / (vz * dpr), canvasHDevice / (vz * dpr));
 
     // Faint background grid first (under everything)
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / vz;  // 1 CSS-px-equivalent visual width
     ctx.strokeStyle = GRID_COLOR;
     for (const ln of this._gridLines) {
       ctx.beginPath();
@@ -161,7 +190,7 @@ export const PanelSnapGuides = {
       seen.push(ln);
 
       ctx.strokeStyle = hits.has(ln) ? GUIDE_COLOR_HIT : GUIDE_COLOR;
-      ctx.lineWidth = hits.has(ln) ? 1.5 : 1;
+      ctx.lineWidth = (hits.has(ln) ? 1.5 : 1) / vz;  // CSS-px-equivalent
       ctx.beginPath();
       if (ln.vertical) { ctx.moveTo(ln.x, ln.y0); ctx.lineTo(ln.x, ln.y1); }
       else             { ctx.moveTo(ln.x0, ln.y); ctx.lineTo(ln.x1, ln.y); }
@@ -172,20 +201,21 @@ export const PanelSnapGuides = {
     // pair only — keeps the readout to meaningful corners, not every
     // theoretical crossing on the canvas.
     ctx.strokeStyle = ARC_COLOR;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.5 / vz;  // CSS-px-equivalent
     const hitV = [...hits].filter(l => l.vertical);
     const hitH = [...hits].filter(l => !l.vertical);
     for (const v of hitV) {
       for (const h of hitH) {
         ctx.beginPath();
-        ctx.arc(v.x, h.y, ARC_RADIUS, 0, Math.PI / 2);
+        ctx.arc(v.x, h.y, ARC_RADIUS / vz, 0, Math.PI / 2);  // constant screen-space radius
         ctx.stroke();
       }
     }
 
     this._image = canvas;
-    this._lastCanvasW = canvasW;
-    this._lastCanvasH = canvasH;
+    this._lastCanvasW = canvasWDevice;
+    this._lastCanvasH = canvasHDevice;
+    this._lastPx = px; this._lastPy = py; this._lastVz = vz; this._lastDpr = dpr;
     this._dirty = false;
     return this._image;
   },
@@ -199,6 +229,7 @@ export const PanelSnapGuides = {
     this._gridLines = [];
     this._image = null;
     this._dirty = true;
+    this._lastPx = null; this._lastPy = null; this._lastVz = null; this._lastDpr = null;
   }
 };
 

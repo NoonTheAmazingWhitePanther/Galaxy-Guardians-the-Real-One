@@ -103,8 +103,10 @@ export function registerAllButtons() {
   // main.js (direct pointerdown, stopPropagation). This entry is the
   // hotkey path — fixed to call the actual InAims API (there was no
   // toggleViz() method; that was a stale reference) and keep the button's
-  // .active class in sync (satellite visibility is driven directly off
-  // that class in CSS: #aims-btn.active ~ .aims-sat).
+  // .active class in sync. Satellite visibility (aims-sat) no longer
+  // depends on this class at all — canvas-satellites.js checks
+  // InAims.enabled directly (canvas-drawn now, see rules.md §8) — this
+  // class only affects the button's own visual highlight.
   ButtonRegistry.register('aims-btn', {
     onTap() {
       try {
@@ -129,13 +131,38 @@ export function registerAllButtons() {
     onTap() {
       try {
         window.Sim?.PaintingState?.toggle?.();
-        window.Sim?.PaintingButton?.update?.();   // keeps .active in sync (drives #painting-btn.active ~ .paint-sat)
+        window.Sim?.PaintingButton?.update?.();   // keeps .active in sync (paint-sat visibility is InAims-independent — canvas-satellites.js checks PaintingState.enabled directly)
       } catch (_) {}
     },
     onLongPress() {
       // Deliberately no-op for now.
     },
     hotkey: 'p'
+  });
+
+  // ─── SELECTION TOOL ───
+  // TAP-only by direction, same pattern as aims-btn/painting-btn: the real
+  // production tap-vs-hold handler lives in main.js (direct pointerdown/up,
+  // stopPropagation — it wins over this registry for actual touches). This
+  // entry only matters for the 'v' hotkey path (tap-equivalent: toggle only,
+  // no long-press over keyboard — see button-registry.js's dispatchHotkey).
+  // NOTE: before this session, selection-btn had NO wiring anywhere at all
+  // — not here, not in main.js — so tapping it did nothing.
+  ButtonRegistry.register('selection-btn', {
+    onTap() {
+      try {
+        const st = window.Sim?.SelectionTool;
+        if (!st) return;
+        st.toggle();
+        const btn = document.getElementById('selection-btn');
+        if (btn) { btn.classList.toggle('active', st.enabled); btn.textContent = st.icon; }
+      } catch (_) {}
+    },
+    onLongPress() {
+      // Deliberately no-op over keyboard — mode-cycling is a touch/hold
+      // gesture (main.js), matching aims/painting's no-op long-press.
+    },
+    hotkey: 'v'
   });
 
   // ─── CONFIG ───

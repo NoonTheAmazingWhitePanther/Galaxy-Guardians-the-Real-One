@@ -10,6 +10,7 @@ import { makeBody, estimateParticleCount } from '../physics/creation.js';
 import { CameraModule } from '../camera/camera.module.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { TrajectoryPreview } from '../../core/trajectory-preview.js';
+import { DEBUG_STATE } from '../debug/debug-state.js';
 
 export const OverlaysModule = {
   fpsSamples: [],
@@ -279,15 +280,23 @@ export const OverlaysModule = {
     const midSY = ((SUN.y - CameraModule.cam.y) * CameraModule.cam.zoom + CameraModule.height / 2 +
                    (w.y - CameraModule.cam.y) * CameraModule.cam.zoom + CameraModule.height / 2) / 2;
 
+    // FIX: setTransform(1,0,0,1,0,0) resets to raw DEVICE pixels — midSX/
+    // midSY are CSS-pixel-equivalent screen coordinates (built from
+    // CameraModule.width/height, which are window.innerWidth/Height), so
+    // they need multiplying by dpr here, same bug class as the satellite
+    // buttons had (see rules.md §8) — this was squishing the BURN ZONE /
+    // orbital period label toward the top-left corner on any dpr>1 phone.
+    const dpr = DEBUG_STATE.dpr || 1;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);  // reset to screen-space identity
-    ctx.font = '8px "Space Mono",monospace';
+    ctx.font = `${8 * dpr}px "Space Mono",monospace`;
+    const labelSX = (midSX + 8) * dpr, labelSY = (midSY - 4) * dpr;
     if (isBurnZone) {
       ctx.fillStyle = `rgba(255,80,50,${alpha})`;
-      ctx.fillText(`🔥 BURN ZONE — Will disintegrate`, midSX + 8, midSY - 4);
+      ctx.fillText(`🔥 BURN ZONE — Will disintegrate`, labelSX, labelSY);
     } else {
       ctx.fillStyle = `rgba(180,215,255,${alpha * 0.65})`;
-      ctx.fillText(`r${Math.round(dist)} ~${period_frames}f`, midSX + 8, midSY - 4);
+      ctx.fillText(`r${Math.round(dist)} ~${period_frames}f`, labelSX, labelSY);
     }
     ctx.restore();  // restores world-space camera transform
   }

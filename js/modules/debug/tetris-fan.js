@@ -27,6 +27,7 @@ import { GovernorProfiles } from './governor-profiles.js';
 import { ManualOverrides } from './governor.js';
 import { MsProbe } from '../../core/ms-probe.js';
 import { CycleMeter } from '../../core/cycle-meter.js';
+import { CanvasSatellites } from '../ui/canvas-satellites.js';
 
 const BLOB = 24, GAP = 6;
 
@@ -102,9 +103,13 @@ export const TetrisFan = {
   },
 
   open() {
-    const anchor = document.getElementById('dbg-closeall');
-    if (!anchor) return;
-    const r = anchor.getBoundingClientRect();
+    // FIX: dbg-closeall used to be a real DOM element; getElementById()
+    // silently returned null after it moved to canvas rendering (see
+    // canvas-satellites.js, rules.md §8), which made this whole feature
+    // quietly stop opening. CanvasSatellites.getRect() is the live
+    // equivalent — same shape as getBoundingClientRect() would have given.
+    const r = CanvasSatellites.getRect('dbg-closeall');
+    if (!r) return;
     const x0 = r.right + GAP, yTop = r.top - (BLOB + GAP) / 2, yBot = r.top + r.height / 2 + GAP / 2;
     const R = this._router;
     const feed = (m) => { try { window.UpdateFeed?.push(m); } catch (_) {} };

@@ -31,7 +31,7 @@ import { TuningLayer } from './modules/tuning/tuning-layer.js';
 import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
-import { PhysicsGov, RenderGov, CacheGov } from './modules/debug/governor.js';
+import { PhysicsGov, RenderGov, CacheGov, ManualOverrides } from './modules/debug/governor.js';
 import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { Benchmark } from './modules/debug/benchmark.js';
 import { QueOps } from './core/que-ops.js';
@@ -41,6 +41,9 @@ import { DotAtlasRenderer } from './modules/rendering/dot-atlas-renderer.js';
 import { TweenGovernor } from './core/tween-governor.js';
 import { PaintingState } from './core/painting-state.js';
 import { PaintingButton } from './modules/ui/painting-button.js';
+import { SelectionTool } from './modules/input/in-selection-tool.js';
+import { ZoomEnhancer } from './modules/ui/zoom-enhancer.js';
+import { CanvasSatellites } from './modules/ui/canvas-satellites.js';
 import { BurnMap } from './core/burn-map.js';
 
 const canvas = document.getElementById("c");
@@ -73,8 +76,7 @@ function resize() {
   DEBUG_STATE.setDpr(dpr);
   CameraModule.width = window.innerWidth;
   CameraModule.height = window.innerHeight;
-  Accumulator.resize(CameraModule.width, CameraModule.height);
-  Accumulator.setDpr(dpr);   // readout only — lets the Screen-Res panel show true device px
+  Accumulator.resize(CameraModule.width, CameraModule.height, dpr);
   if (typeof InAims !== 'undefined') InAims.onResize();
 }
 window.addEventListener("resize", resize);
@@ -94,8 +96,9 @@ export function init() {
   ConsoleView.init(DebugRouter);   // Live Text Debug — DOM glass console (rides the 〰️ toggle)
 
   if (EffectsModule.init) EffectsModule.init(CameraModule.width, CameraModule.height);
-  Accumulator.init(CameraModule.width, CameraModule.height);
+  Accumulator.init(CameraModule.width, CameraModule.height, DEBUG_STATE.dpr);
   if (ConfigMenuModule.init) ConfigMenuModule.init();
+  ZoomEnhancer.init(canvas);
 
   InputModule.init(canvas, uiEl, cursorEl, slider, pcountEl, gravSlider, gravVal);
   QueOps.init({ maxFrameTimeMs: 12, enableStagger: true });
@@ -121,7 +124,7 @@ export function init() {
   };
   if (debugBtn) {
     if (DebugRouter.masterEnabled) debugBtn.classList.add('active');
-    document.body.classList.toggle('dbg-on', DebugRouter.masterEnabled);   // initial satellite visibility
+    document.body.classList.toggle('dbg-on', DebugRouter.masterEnabled);   // vestigial — see debug-router.js's toggleAll() comment
     syncBenchVisibility();
     debugBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -156,41 +159,13 @@ export function init() {
   // Load best preferences for this device (signature-checked); falls back to Base.
   Benchmark.load().then(() => { renderBenchInfo(); syncBenchVisibility(); });
 
-  const satWire = (id, fn) => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      fn();
-      b.classList.add('active');
-      setTimeout(() => b.classList.remove('active'), 120);
-    }, { passive: false });
-  };
-  // Tap vs long-press: tapFn on quick release, holdFn if held past `ms`.
-  const satWireHold = (id, tapFn, holdFn, ms = 600) => {
-    const b = document.getElementById(id);
-    if (!b) return;
-    let timer = null, held = false;
-    const clear = () => { if (timer) { clearTimeout(timer); timer = null; } };
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      held = false; b.classList.add('active');
-      timer = setTimeout(() => { held = true; b.classList.remove('active'); holdFn(); }, ms);
-    }, { passive: false });
-    b.addEventListener('pointerup', (e) => {
-      e.preventDefault(); clear(); b.classList.remove('active');
-      if (!held) tapFn();
-      held = false;
-    }, { passive: false });
-    b.addEventListener('pointerleave', () => { clear(); held = false; b.classList.remove('active'); });
-    b.addEventListener('pointercancel', () => { clear(); held = false; b.classList.remove('active'); });
-  };
-  satWire('dbg-closeall', () => TetrisFan.toggle(DebugRouter));                            // ▦ → open the Tetris fan (two lines of tools)
-  satWireHold('dbg-reset', () => DebugRouter.undo(), () => DebugRouter.resetAllToProfile()); // ⟳ → undo / hold: reset
-  satWire('dbg-arrange',  () => DebugRouter.toggleGridSnap());                            // ⊞ → Free Roam ⇄ Grid
-  satWire('dbg-expand',   () => DebugRouter.expandAll());                                 // ⛶ → all panels to max size
-  satWire('dbg-glasses',  () => DebugRouter.cycleRatio());                                // 👓 → ratio ×1 ×2 ×3 (panels + console)
+  // ✅ Satellite buttons (dbg-sat / aims-sat / paint-sat) are no longer
+  // HTML — they're canvas-drawn now (js/modules/ui/canvas-satellites.js),
+  // per rules.md §8. All their wiring (tap/hold actions, including the
+  // Pause-While-Painting redesign — PaintingState.isBlockingPhysics(),
+  // never a one-shot pause) lives in that module's registry instead of
+  // here. resetBrushOverrides is exposed on window.Sim below so that
+  // registry's paint-sat-size entry has something real to call.
 
   // User preferences — load the saved customizations now that the panels
   // exist, then autosave every change in real time (GGPrefs.export() for the
@@ -198,15 +173,54 @@ export function init() {
   PrefsStore.init();
   UpdateFeed.push('UPDATE BAR ONLINE');
 
+  // BUG FIX ("InAims does not work"): window._InAims was ONLY ever set
+  // inside resetGame() — which nothing calls at startup (it's exposed for
+  // manual use only). So in a normal session this global stayed undefined
+  // forever: every aims-sat isActive gate in canvas-satellites.js read
+  // `window._InAims?.enabled` → always false → the aims satellites never
+  // rendered and never responded, no matter what AIMS itself was doing.
+  // (The global exists instead of a direct import because in-aims.js
+  // imports canvas-satellites.js — importing back would be a circular
+  // import, a bug class this project has hit before.)
+  window._InAims = InAims;
+
   const aimsBtn = document.getElementById('aims-btn');
   if (aimsBtn) {
+    // TAP = on/off (unchanged). HOLD = switch resolution mode (Real ⇄
+    // Fake) — previously a no-op; this is what that long-press does now.
+    // See rules.md §8.
+    let aimsTimer = null, aimsHeld = false;
+    const aimsClearTimer = () => { if (aimsTimer) { clearTimeout(aimsTimer); aimsTimer = null; } };
+    const aimsSyncTitle = () => {
+      const state = InAims.enabled ? 'ON' : 'OFF';
+      aimsBtn.title = `Toggle AIMS Input — ${state}, mode: ${InAims.mode.toUpperCase()} (hold to switch mode)`;
+    };
     aimsBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (InAims.enabled) InAims.disable();
-      else InAims.enable();
-      aimsBtn.classList.toggle('active', InAims.enabled);
+      aimsHeld = false;
+      aimsTimer = setTimeout(() => {
+        aimsHeld = true;
+        InAims.toggleMode();
+        aimsSyncTitle();
+        aimsBtn.classList.add('mode-flash');
+        setTimeout(() => aimsBtn.classList.remove('mode-flash'), 200);
+      }, 600);
     }, { passive: false });
+    aimsBtn.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      aimsClearTimer();
+      if (!aimsHeld) {
+        if (InAims.enabled) InAims.disable();
+        else InAims.enable();
+        aimsBtn.classList.toggle('active', InAims.enabled);
+        aimsSyncTitle();
+      }
+      aimsHeld = false;
+    }, { passive: false });
+    aimsBtn.addEventListener('pointerleave', () => { aimsClearTimer(); aimsHeld = false; });
+    aimsBtn.addEventListener('pointercancel', () => { aimsClearTimer(); aimsHeld = false; });
+    aimsSyncTitle();
   }
 
   // ✅ PAINTING BUTTON — wire to PaintingState toggle
@@ -221,6 +235,42 @@ export function init() {
     }, { passive: false });
   }
 
+  // ✅ SELECTION TOOL BUTTON — previously had NO wiring anywhere (not here,
+  // not in button-definitions.js): tapping it did nothing at all. Tap
+  // toggles on/off (gold when active — CSS already had #selection-btn.active
+  // styled, just nothing ever set the class). Hold cycles capture mode
+  // (Box → Polygon → Pointer) and updates the glyph, per in-selection-tool.js's
+  // own doc header. Same tap-vs-hold shape as satWireHold, but that helper
+  // always flashes `.active` for 120ms rather than syncing it to persistent
+  // state, so this needs its own small handler.
+  const selectionBtn = document.getElementById('selection-btn');
+  if (selectionBtn) {
+    let selTimer = null, selHeld = false;
+    const selClearTimer = () => { if (selTimer) { clearTimeout(selTimer); selTimer = null; } };
+    const selSync = () => {
+      selectionBtn.classList.toggle('active', SelectionTool.enabled);
+      selectionBtn.textContent = SelectionTool.icon;
+    };
+    selectionBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      selHeld = false;
+      selTimer = setTimeout(() => {
+        selHeld = true;
+        SelectionTool.cycleMode();
+        selSync();
+      }, 600);
+    }, { passive: false });
+    selectionBtn.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      selClearTimer();
+      if (!selHeld) { SelectionTool.toggle(); selSync(); }
+      selHeld = false;
+    }, { passive: false });
+    selectionBtn.addEventListener('pointerleave', () => { selClearTimer(); selHeld = false; });
+    selectionBtn.addEventListener('pointercancel', () => { selClearTimer(); selHeld = false; });
+    selSync(); // initial glyph/state on load
+  }
+
   window.Sim = window.Sim || {};
   window.Sim.physicsAccumulator = physicsAccumulator;
   window.Sim.isPreCalculating = isPreCalculating;
@@ -232,6 +282,21 @@ export function init() {
   window.Sim.TweenGovernor = TweenGovernor;
   window.Sim.PaintingState = PaintingState;
   window.Sim.BurnMap = BurnMap;
+  window.Sim.SelectionTool = SelectionTool;
+  window.Sim.ZoomEnhancer = ZoomEnhancer;
+  // 📏 paint-sat-size (canvas-satellites.js) — reset brush size/spacing/
+  // density overrides to Auto defaults. HOLD (density/spacing alternation
+  // + computed "safe spacing") was described in an earlier session
+  // summary but was never actually implemented anywhere in the codebase
+  // — no function exists to wire it to. Left as a plain reset-only tap
+  // rather than inventing that logic here; flagging it instead of
+  // silently faking it.
+  window.Sim.resetBrushOverrides = () => {
+    ManualOverrides.reset('brushSizeMin');
+    ManualOverrides.reset('brushSizeMax');
+    ManualOverrides.reset('brushSpacing');
+    ManualOverrides.reset('brushDensity');
+  };
 
   requestAnimationFrame(mainLoop);
 }
@@ -389,7 +454,7 @@ function mainLoop(t) {
   // top-up, no snapshots, no dormancy), <1 = slow-motion. See gui-governor.js.
   const guiRate = GuiGovernor.simRate;
 
-  if (!state.paused && state.physSpeed > 0 && guiRate > 0) {
+  if (!state.paused && !PaintingState.isBlockingPhysics(InputState.isHolding) && state.physSpeed > 0 && guiRate > 0) {
     // Bank real elapsed time, scaled by the speed multiplier. Clamp the frame
     // delta first so a long stall (tab switch, GC hitch) can't inject a huge
     // backlog — only pathological frames are affected; normal frames bank their
@@ -534,11 +599,31 @@ function mainLoop(t) {
       InAims.debugDraw(ctx, true);
     }
 
+    // Zoom Enhancer magnifier box — was built and importable but never
+    // actually init()'d or render()'d anywhere; aims-sat-zoom's toggle was
+    // also unwired until this session. Only meaningful while AIMS is on
+    // (matches its own doc comment); the ZoomEnhancer own `enabled` flag
+    // additionally gates whether it actually draws anything.
+    if (InAims.enabled) ZoomEnhancer.render();
+
     if (Gate.pass('debug.panels')) MsProbe.call('debug.panels', () => {
       DebugRouter.drawAll(ctx);
       TuningLayer.drawAll(ctx);
     });
-    _drawAimCursor(ctx);
+
+    // Satellite buttons (dbg-sat / aims-sat / paint-sat) — canvas-drawn now,
+    // not HTML (rules.md §8). Each gates its own visibility internally
+    // (DebugRouter.masterEnabled / InAims.enabled / PaintingState.enabled),
+    // so no extra condition needed here — same pattern as the panel draws
+    // above. Drawn after panels so a satellite never renders under one.
+    CanvasSatellites.render(ctx);
+
+    // BUG FIX: this used to run unconditionally every frame. Internally it
+    // only checks isPointerDown/Aims.aim._active — and isPointerDown goes
+    // true on EVERY tap anywhere in the app, not just AIMS-relevant ones,
+    // so the crosshair was drawing on every single tap, debug open or not,
+    // AIMS on or not. Gated on InAims.enabled now, matching ZoomEnhancer above.
+    if (InAims.enabled) _drawAimCursor(ctx);
   }
 
   if (cursorEl) {
