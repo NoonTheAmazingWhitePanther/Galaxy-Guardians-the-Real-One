@@ -240,11 +240,12 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
     color: rgba(255,255,255,0.6);
 }
 #aims-btn:active { transform: scale(0.92); }
-/* Long-press mode switch (Real ⇄ Fake AIMS resolution) — a brief gold
-   pulse so the switch is felt even though it's silent otherwise (no
-   change to icon or on/off state, just which resolution mode is active).
-   See rules.md §8. */
-#aims-btn.mode-flash {
+/* Long-press mode-switch feedback — a brief gold pulse so a silent
+   long-press action (no icon/on-off change, just an internal mode
+   flip) is still felt. Shared by aims-btn (Trackpad/Joystick/Offset
+   cycle) and debug-btn (console/panel toggle, folded in from the
+   removed standalone mode button). See rules.md §8. */
+.mode-flash {
     box-shadow: 0 0 18px rgba(255, 200, 80, 0.7), 0 4px 12px rgba(0,0,0,0.4);
     border-color: rgba(255, 200, 80, 0.9);
     transition: box-shadow 0.15s, border-color 0.15s;

@@ -24,21 +24,6 @@
 import { resolveVariable, Governor, ManualOverrides } from './governor.js';
 
 const CSS = `
-#gg-console-mode{ position:fixed; z-index:55;
-  /* Top ray of the debug fan — radius 1.05×pad, -8° (see styles.css .dbg-sat). */
-  left:calc(var(--safe,16px) + var(--pad-size,44px) * 1.373);
-  top:calc(var(--safe,16px) + var(--pad-size,44px) * 1.187);
-  width:calc(var(--pad-size,44px)/3); height:calc(var(--pad-size,44px)/3); border-radius:6px;
-  display:none; align-items:center; justify-content:center; font-size:9px; line-height:1;
-  background:var(--ui-bg,rgba(8,8,18,0.82)); border:1px solid var(--ui-border,rgba(255,255,255,0.18));
-  color:rgba(255,255,255,0.95); cursor:pointer; padding:0; margin:0;
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-  box-shadow:0 3px 8px rgba(0,0,0,0.4); transition:transform .1s, color .2s; user-select:none; }
-#gg-console-mode:active{ transform:scale(0.92); }
-#gg-console-mode .lbl{ display:none; position:absolute; top:calc(var(--pad-size,44px)/3 + 3px); left:0;
-  font-size:8.5px; letter-spacing:.05em; color:rgba(255,255,255,0.9); white-space:nowrap;
-  font-family:var(--ui-font,"Space Mono",monospace); }
-
 #gg-console{ position:fixed; z-index:24; display:none; flex-direction:column;
   left:var(--safe,16px);
   /* Fallback only — _layout() overrides top/height live. This keeps the
@@ -125,9 +110,9 @@ const CSS = `
 
 export const ConsoleView = {
   _router: null,
-  _root: null, _listEl: null, _modeBtn: null, _master: null,
+  _root: null, _listEl: null, _master: null,
   _rows: [],            // { key, gov, variable, el, valEl, barEl, manualKey }
-  _consoleMode: false,   // PANELS are the default on debug-on; the console stays hidden until you tap Console/Panel
+  _consoleMode: false,   // PANELS are the default on debug-on; the console stays hidden until debug-btn is long-pressed
   _timer: null,
 
   // Master: global ratio over every row. Range 0..2, unity 1.0 (matches
@@ -142,14 +127,6 @@ export const ConsoleView = {
     const style = document.createElement('style');
     style.id = 'gg-console-css'; style.textContent = CSS;
     document.head.appendChild(style);
-
-    // mode button
-    const mb = document.createElement('div');
-    mb.id = 'gg-console-mode'; mb.title = 'Switch console / panel mode'; mb.setAttribute('role', 'button');
-    mb.innerHTML = '≣<span class="lbl">console ▸ panel</span>';
-    document.body.appendChild(mb);
-    this._modeBtn = mb;
-    mb.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this._toggleMode(); }, { passive: false });
 
     // glass slab
     const root = document.createElement('div');
@@ -183,13 +160,11 @@ export const ConsoleView = {
     this._waitForConfig(() => {
       this._buildRows();
       this._captureBaseline();
-      // Console mode is the default: suppress the canvas panels up front so the
-      // first time debug is opened it opens straight into the console, not the
-      // panel mess. (Debug itself still starts OFF — this only decides which
-      // face shows when it's turned on.)
+      // Panel mode is the default (this._consoleMode starts false) — debug
+      // itself still starts OFF; this only decides which face shows once
+      // it's turned on, or once debug-btn is long-pressed into console mode.
       if (this._consoleMode) {
         this._router.setConsoleMode?.(true);
-        this._modeBtn.querySelector('.lbl').textContent = 'panel ▸ console';
       }
       this._layout();
       this.sync();
@@ -219,15 +194,16 @@ export const ConsoleView = {
     const cs  = getComputedStyle(document.documentElement);
     const GAP = parseFloat(cs.getPropertyValue('--safe')) || 16;
 
-    // TOP: clear the LOWEST of the top-left debug buttons (the 〰️ debug toggle
-    // and the ≣ console/panel mode button), by GAP. Falls back to the CSS
-    // stack height if those buttons aren't laid out yet.
-    let topY = GAP + 44 + 44;
+    // TOP: clear debug-btn (the 〰️ toggle — the only top-left button left,
+    // now that the mode button is gone and its job moved to a long-press on
+    // this one), by GAP. Falls back to the CSS stack height if it isn't laid
+    // out yet.
+    let topY = GAP + 44;
     let lowest = 0;
-    for (const el of [document.getElementById('debug-btn'), this._modeBtn]) {
-      if (!el) continue;
-      const r = el.getBoundingClientRect();
-      if (r.height > 0 && r.bottom > lowest) lowest = r.bottom;
+    const dbgBtnEl = document.getElementById('debug-btn');
+    if (dbgBtnEl) {
+      const r = dbgBtnEl.getBoundingClientRect();
+      if (r.height > 0) lowest = r.bottom;
     }
     if (lowest > 0) topY = lowest + GAP;
 
@@ -462,18 +438,17 @@ export const ConsoleView = {
   },
 
   // ── Visibility / mode ───────────────────────────────────────────────────
-  _toggleMode() {
+  // Public (no leading underscore) — called from main.js's debug-btn
+  // long-press now that the separate mode button is gone; see rules.md §8.
+  toggleMode() {
     this._consoleMode = !this._consoleMode;
     this._router.setConsoleMode?.(this._consoleMode);
-    this._modeBtn.querySelector('.lbl').textContent = this._consoleMode ? 'panel ▸ console' : 'console ▸ panel';
     this.sync();
   },
 
-  // Called by the 〰️ debug toggle and by the mode switch.
+  // Called by the 〰️ debug toggle and by toggleMode().
   sync() {
     const debugOn = !!this._router?.masterEnabled;
-    // mode button only makes sense while debug is on
-    if (this._modeBtn) this._modeBtn.style.display = debugOn ? 'flex' : 'none';
     const showConsole = debugOn && this._consoleMode;
     if (this._root) this._root.classList.toggle('show', showConsole);
 

@@ -126,15 +126,41 @@ export function init() {
     if (DebugRouter.masterEnabled) debugBtn.classList.add('active');
     document.body.classList.toggle('dbg-on', DebugRouter.masterEnabled);   // vestigial — see debug-router.js's toggleAll() comment
     syncBenchVisibility();
+
+    // TAP = toggle debug on/off (unchanged). HOLD = toggle console/panel
+    // mode — this used to be its own separate button (#gg-console-mode, a
+    // real DOM element sitting in the dbg-sat fan's own screen region,
+    // z-index 55, visible whenever debug was on). Removed; its job folds
+    // into this button's long-press instead, same tap/hold pattern
+    // aims-btn already uses. One fewer real DOM element sitting in front
+    // of the canvas-drawn satellites in that area.
+    let dbgTimer = null, dbgHeld = false;
+    const dbgClearTimer = () => { if (dbgTimer) { clearTimeout(dbgTimer); dbgTimer = null; } };
     debugBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      DebugRouter.toggleAll();
-      debugBtn.classList.toggle('active', DebugRouter.masterEnabled);
-      ConsoleView.sync();
-      renderBenchInfo();
-      syncBenchVisibility();
+      dbgHeld = false;
+      dbgTimer = setTimeout(() => {
+        dbgHeld = true;
+        ConsoleView.toggleMode();
+        debugBtn.classList.add('mode-flash');
+        setTimeout(() => debugBtn.classList.remove('mode-flash'), 200);
+      }, 600);
     }, { passive: false });
+    debugBtn.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      dbgClearTimer();
+      if (!dbgHeld) {
+        DebugRouter.toggleAll();
+        debugBtn.classList.toggle('active', DebugRouter.masterEnabled);
+        ConsoleView.sync();
+        renderBenchInfo();
+        syncBenchVisibility();
+      }
+      dbgHeld = false;
+    }, { passive: false });
+    debugBtn.addEventListener('pointerleave', () => { dbgClearTimer(); dbgHeld = false; });
+    debugBtn.addEventListener('pointercancel', () => { dbgClearTimer(); dbgHeld = false; });
   }
 
   if (benchBtn) {
