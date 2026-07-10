@@ -74,19 +74,30 @@ function _absLeft(leftFactor, topFactor, safe, pad) {
 // per rules.md §5). isOn: for persistent-highlight buttons (paint-sat-
 // pause, paint-sat-spray) — drawn in the "active" color scheme when true,
 // same visual language #painting-btn.active etc. already use.
+//
+// FIX ("there is a space, fix it — average -1 buttons"): the dbg fan's 5
+// rays were -32°/16°/40°/64°/88° — a 48° gap between the first two
+// (glasses→closeall) and a uniform 24° everywhere else, i.e. one ray's
+// worth of empty space sitting in the fan for no reason. Re-spaced evenly
+// across the SAME -32°..88° span using (5-1)=4 equal 30° gaps instead:
+// -32°/-2°/28°/58°/88°. Endpoints (glasses, expand) land on the exact
+// same spot as before — only the three rays between them shift to close
+// the gap. aims-sat's mirror satellite (-7°, originally squeezed into
+// that now-nonexistent 48° gap) gets the same even-spacing treatment
+// below, across its own 4-satellite span.
 const _sats = [
   // ── dbg-sat — debug fan, fanned right off debug-btn ──────────────────
   { id: 'dbg-closeall', family: 'dbg', icon: '▦',
-    pos: (s, p) => _absLeft(1.343, 1.623, s, p),
+    pos: (s, p) => _absLeft(1.383, 1.297, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => { window._TetrisFan?.toggle(DebugRouter); } },
   { id: 'dbg-reset', family: 'dbg', icon: '↶',
-    pos: (s, p) => _absLeft(1.138, 2.008, s, p),
+    pos: (s, p) => _absLeft(1.260, 1.826, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.undo(),
     onHold: () => DebugRouter.resetAllToProfile() },
   { id: 'dbg-arrange', family: 'dbg', icon: '⊞',
-    pos: (s, p) => _absLeft(0.794, 2.277, s, p),
+    pos: (s, p) => _absLeft(0.890, 2.224, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.toggleGridSnap() },
   { id: 'dbg-expand', family: 'dbg', icon: '⛶',
@@ -111,16 +122,13 @@ const _sats = [
     pos: (s, p) => _mirrorFan(s + p * 3 + 12, 40, s, p),
     isActive: () => window._InAims?.enabled,
     onTap: () => ZoomEnhancer.toggle() },
-  // -7°, not one of dbg-sat's five rays — the standard full radius
-  // (1.050×pad) genuinely has no room for a 4th satellite at any of
-  // dbg-sat's remaining angles (64°/88°) in THIS column: painting-btn
-  // sits directly below aims-btn (debug-btn has open space below it
-  // instead), so those angles collide with it. -7° sits in the real
-  // 48°-wide gap between the -32° and 16° rays instead — verified
-  // collision-free by script against every button and every other
-  // satellite in this fan, same radius as the rest, not a shrunk one.
+  // Evenly re-spaced across this fan's own -32°..40° span, (4-1)=3 equal
+  // 24° gaps: -32°/-8°/16°/40° — was -32°/-7°/16°/40° (a 1° rounding
+  // artifact from being hand-placed "in the gap" rather than computed;
+  // same fix, same reasoning as the dbg fan above, just barely visible
+  // here since this one was already nearly even).
   { id: 'aims-sat-mirror', family: 'aims', icon: '⇄',
-    pos: (s, p) => _mirrorFan(s + p * 3 + 12, -7, s, p),
+    pos: (s, p) => _mirrorFan(s + p * 3 + 12, -8, s, p),
     isActive: () => window._InAims?.enabled,
     isOn: () => AimsEdge.automate || AimsEdge.mode !== 'normal',
     onTap: () => AimsEdge.cycleMode(),

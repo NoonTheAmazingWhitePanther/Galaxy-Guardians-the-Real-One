@@ -28,6 +28,9 @@ import { CycleMeter } from '../../core/cycle-meter.js';
 import { Gate } from '../../core/gate.js';
 import { TrajectoryPreview } from '../../core/trajectory-preview.js';
 import { loadPanelConfigs } from '../../core/panel-loader.js';
+import { SelectionVitals } from '../../core/selection-vitals.js';
+import { SelectionTool } from '../input/in-selection-tool.js';
+import { SelectionPanelExtras } from './selection-panel-extras.js';
 
 export const DebugRouter = {
   panels: [],
@@ -37,6 +40,7 @@ export const DebugRouter = {
   _canvas: null,
   _config: null,
   _initialized: false,
+  _prevSelCount: 0,   // last frame's SelectionTool.captured.length — for syncSelectionPanel()
 
   async init(canvas) {
     this._canvas = canvas;
@@ -64,6 +68,7 @@ export const DebugRouter = {
     GovernorRegistry.register('CycleMeter',       CycleMeter);
     GovernorRegistry.register('Gate',             Gate);
     GovernorRegistry.register('TrajectoryPreview', TrajectoryPreview);
+    GovernorRegistry.register('SelectionVitals',   SelectionVitals);
     // FIX: both were referenced by planetbrush.json ("PaintingState.enabled",
     // "ColorPalette.current") but never registered — every read/write against
     // either logged "[Governor] resolveVariable: unknown module". PaintingState
@@ -104,6 +109,15 @@ export const DebugRouter = {
       const panel = new Panel(panelCfg, panelCfg.position?.x, panelCfg.position?.y);
       this.panels.push(panel);
     }
+
+    // Starts hidden — Panel's own constructor defaults visible=true for
+    // every panel (there's no JSON field for it), but this one panel
+    // should only ever appear once there's an actual selection to show.
+    // syncSelectionPanel() (called every rAF from main.js) reveals + pins
+    // it the moment SelectionTool has a capture, and hides + unpins it
+    // again once the selection fully clears.
+    const selPanel = this.panels.find(p => p.id === 'selection');
+    if (selPanel) selPanel.visible = false;
 
     for (const panel of this.panels) {
       MasterGovernor.register(panel);
@@ -152,6 +166,47 @@ export const DebugRouter = {
         panel._dataDirty  = true;
       }
     }
+  },
+
+  /**
+   * Auto show/hide the "selection" panel to match SelectionTool having a
+   * live capture — makes the real Panel (drag/pin/minimize/etc., see
+   * panels/selection.json) pop up the same way the old standalone
+   * overlay used to, in or out of debug mode, without the user having to
+   * find and manually toggle it on first.
+   *
+   * MUST be called unconditionally every rAF, NOT from updateData() —
+   * updateData() early-returns whenever debug is off AND nothing is
+   * pinned yet (`!debugOn && !tuningOn`), which is exactly the state this
+   * needs to escape FROM on the very first capture (nothing pinned yet,
+   * debug possibly off). Called from main.js right after
+   * SelectionTool.update(), same spot SelectionTool's own render() call
+   * lives relative to it.
+   *
+   * Only acts ON THE TRANSITION (0→N pins+shows, N→0 unpins+hides) — it
+   * never fights the user's own manual pin/minimize/drag on a frame where
+   * the count doesn't change, which is what makes "close it, stays closed
+   * until a new selection" and "drag it wherever, it remembers" both true
+   * for free, just from the normal Panel machinery.
+   */
+  syncSelectionPanel() {
+    if (!this._initialized) return;
+    const panel = this.panels.find(p => p.id === 'selection');
+    if (!panel) return;
+
+    const n = SelectionTool.captured?.length || 0;
+    if (this._prevSelCount === 0 && n > 0) {
+      panel.visible = true;
+      panel.pin();
+      // Fresh selection — start the zoom box centered/at baseline zoom
+      // rather than inheriting wherever the LAST selection's pan/zoom
+      // was left.
+      SelectionPanelExtras.resetView();
+    } else if (this._prevSelCount > 0 && n === 0) {
+      panel.visible = false;
+      panel.unpin();
+    }
+    this._prevSelCount = n;
   },
 
   drawAll(ctx) {
@@ -612,15 +667,26 @@ export const DebugRouter = {
 
   // ⛶ satellite: open every visible panel to its MAXIMUM size — un-minimize,
   // clear any grip-shrunk user sizes (back to natural full layout), and open
-  // all collapsed sections. One press = everything fully expanded.
+  // all collapsed sections. A REAL TOGGLE: if everything visible is already
+  // expanded (nothing minimized/shrunk), the same tap instead minimizes
+  // every visible panel back down. FIX ("does not minimize on the second
+  // tap"): this used to be one-way — expand-only, no matter how many times
+  // you tapped it. Checked fresh each call (not a stored flag) so a manual
+  // change to one panel in between doesn't leave the toggle out of sync.
   expandAll() {
+    const allAlreadyExpanded = this.panels.every(p =>
+      !p.visible || (!p.minimized && !p.shrunk));
     for (const p of this.panels) {
       if (!p.visible) continue;
-      p.minimized = false;
-      p.shrunk = false;
-      p._userW = null;    p._userH = null;
-      p._userMinW = null; p._userMinH = null;
-      p._collapsedSections?.clear?.();
+      if (allAlreadyExpanded) {
+        p.minimized = true;
+      } else {
+        p.minimized = false;
+        p.shrunk = false;
+        p._userW = null;    p._userH = null;
+        p._userMinW = null; p._userMinH = null;
+        p._collapsedSections?.clear?.();
+      }
       p._chromeDirty = true;
     }
     this._rebuildAimsMap();

@@ -32,7 +32,6 @@ const RIGHT_EDGE_RESERVE  = MASTER_SLIDER_PAD + MASTER_SLIDER_W;  // 26px
 const MIN_GAP           = 2;     // matches PanelArrange.MIN_GAP
 const SNAP_THRESHOLD    = 10;    // px — how close before a guide is "hit"
 const ARC_RADIUS        = 7;
-const GUIDE_COLOR       = 'rgba(255,255,255,0.30)';
 const GUIDE_COLOR_HIT   = 'rgba(255,255,255,0.75)';   // brighter when the dragged panel is actually on it
 const GRID_COLOR        = 'rgba(255,255,255,0.06)';
 const ARC_COLOR         = 'rgba(255,200,80,0.55)';    // Tuning gold — matches pinned-panel border
@@ -176,8 +175,17 @@ export const PanelSnapGuides = {
       ctx.stroke();
     }
 
-    // Panel-derived guides — dedupe near-identical lines so a cluster of
-    // aligned panels doesn't render a stack of overlapping strokes.
+    // Panel-derived guides — ONLY lines actually "hit" (within
+    // SNAP_THRESHOLD of the dragged panel right now) are ever drawn.
+    // FIX ("too many white lines, impossible to see anything"): this used
+    // to draw all 7 candidate guide lines from EVERY other visible panel
+    // unconditionally, just dimmer when not hit — with this project's
+    // usual 15-20 open panels that's 100+ overlapping lines on screen at
+    // once. Real Adobe/Canva-style snap guides only ever show a line once
+    // the dragged object's edge is actually near it; they don't pre-draw
+    // every theoretical alignment on the canvas. Dedup still collapses a
+    // cluster of panels that are all aligned to the same position into
+    // one stroke instead of a stack of overlapping ones.
     const seen = [];
     const isDup = (ln) => seen.some(s =>
       s.vertical === ln.vertical &&
@@ -185,12 +193,12 @@ export const PanelSnapGuides = {
 
     const hits = draggedPanel ? this._hitLines(draggedPanel) : new Set();
 
-    for (const ln of this._lines) {
+    ctx.strokeStyle = GUIDE_COLOR_HIT;
+    ctx.lineWidth = 1.5 / vz;  // CSS-px-equivalent
+    for (const ln of hits) {
       if (isDup(ln)) continue;
       seen.push(ln);
 
-      ctx.strokeStyle = hits.has(ln) ? GUIDE_COLOR_HIT : GUIDE_COLOR;
-      ctx.lineWidth = (hits.has(ln) ? 1.5 : 1) / vz;  // CSS-px-equivalent
       ctx.beginPath();
       if (ln.vertical) { ctx.moveTo(ln.x, ln.y0); ctx.lineTo(ln.x, ln.y1); }
       else             { ctx.moveTo(ln.x0, ln.y); ctx.lineTo(ln.x1, ln.y); }

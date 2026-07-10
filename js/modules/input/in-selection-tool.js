@@ -226,12 +226,46 @@ export const SelectionTool = {
     if (!this.enabled) return;
     if (this.dragging) return;   // the drag itself already updates state live
     if (this.mode === 'pointer') {
-      this.captured = this.captured.filter(b => !b.dead && state.bodies.includes(b));
+      this.captured = this._resolveLive(this.captured);
       return;
     }
     if (this.captured.length === 0) { this._rect = null; return; }
-    this.captured = this.captured.filter(b => !b.dead && state.bodies.includes(b));
+    this.captured = this._resolveLive(this.captured);
     this._rect = this._boundsOf(this.captured);
+  },
+
+  /**
+   * Re-resolve captured bodies to their CURRENT live objects, matched by
+   * `.id` rather than by object reference.
+   *
+   * FIX ("selection pops for one frame and is gone"): FutureCache's
+   * ghost-simulation cache-ahead system (future-cache.js) periodically
+   * swaps `state.bodies` to a batch of freshly-CLONED body objects
+   * (`playNext()`) — same `.id`, different object identity — on every
+   * cache-HIT tick, which is most ticks. A captured array holding onto
+   * the OLD object references failed a reference check
+   * (`state.bodies.includes(b)`) the moment the next cache hit landed —
+   * near-certain within a frame or two — and silently emptied out.
+   * Re-resolving by id every frame matters even when nothing would have
+   * been dropped, too: without it, a captured body's `cx/cy/heat` would
+   * freeze at the exact moment of the last swap forever, since nothing
+   * ever mutates a discarded clone again — the live tracking rect AND
+   * the Planet(s) Panel both need the CURRENT object, not just proof one
+   * once existed. `.id` survives the clone (`future-cache.js`'s
+   * `cloneBodies` spreads every field, including `id`); the object
+   * identity doesn't.
+   */
+  _resolveLive(bodies) {
+    if (bodies.length === 0) return bodies;
+    const byId = new Map();
+    for (const b of state.bodies) if (b.id != null) byId.set(b.id, b);
+    const out = [];
+    for (const b of bodies) {
+      if (b.dead) continue;
+      const live = (b.id != null) ? byId.get(b.id) : (state.bodies.includes(b) ? b : undefined);
+      if (live && !live.dead) out.push(live);
+    }
+    return out;
   },
 
   /**

@@ -733,6 +733,18 @@ export class Panel {
   }
 
   computeLayout(data) {
+    // FIX ("Glasses ratio satellite doesn't work at all"): PanelStyle.apply()
+    // used to run AFTER the shrunk early-return below — DEBUG_STATE.scale
+    // (which the shrunk-size math immediately below also reads) never got
+    // refreshed at all whenever EVERY visible panel happened to be shrunk,
+    // since none of them ever reached the line that used to call apply().
+    // cycleRatio() (dbg-glasses satellite) would update the underlying
+    // ManualOverrides.psOverall value correctly, but nothing ever folded it
+    // into DEBUG_STATE.scale, so no panel's size ever visibly changed.
+    // apply() is documented as idempotent/cheap and safe at the top of
+    // every computeLayout — this just actually puts it there.
+    PanelStyle.apply();   // fold the user's PANEL SETTINGS scales into the style
+
     // SHRUNK: the lowest size — a one-line header bar in panel style.
     if (this.shrunk) {
       const sc = DEBUG_STATE.scale * (this.contentScale || 1);
@@ -741,7 +753,6 @@ export class Panel {
       this.w = w; this.h = h;
       return { w, h, minimized: true, shrunk: true, lines: [], controls: [], scrollOffset: 0 };
     }
-    PanelStyle.apply();   // fold the user's PANEL SETTINGS scales into the style
     const s = DEBUG_STATE.style;
     const sc = DEBUG_STATE.scale * (this.contentScale || 1);   // per-panel content size
 

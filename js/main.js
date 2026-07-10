@@ -23,6 +23,7 @@ import { EffectsModule } from './modules/rendering/effects.js';
 import { OverlaysModule } from './modules/ui/overlays.js';
 import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { PrefsStore } from './core/prefs-store.js';
+import { SelectionPanelExtras } from './modules/debug/selection-panel-extras.js';
 import { UpdateFeed } from './core/update-feed.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 import { ConsoleView } from './modules/debug/console-view.js';
@@ -81,7 +82,7 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 
-export function init() {
+export async function init() {
   state.physicsStep = CONFIG.physics.TIMESTEP;
   state.vaultSize = CONFIG.physics.VAULT_SIZE;
   state.maxBodies = CONFIG.physics.MAX_BODIES;
@@ -92,7 +93,18 @@ export function init() {
   document.body.style.backgroundColor = CONFIG.render.BACKGROUND_COLOR;
 
   CameraModule.init(canvas, ctx, CameraModule.width, CameraModule.height);
-  DebugRouter.init(canvas);
+  // FIX ("remember pinned panels and their locations for the next run"):
+  // DebugRouter.init() is async (it fetches panels/*.json) but this call
+  // was never awaited — every line after it, INCLUDING PrefsStore.init()
+  // over 100 lines down (which restores each panel's saved x/y/pinned/etc
+  // by looking them up in DebugRouter.panels by id — see its own "now
+  // that the panels exist" comment), was running before the fetch had any
+  // chance to finish. DebugRouter.panels was still [] at that point, so
+  // the restore loop had nothing to iterate and silently did nothing —
+  // pin state and dragged positions were being saved correctly every 800ms
+  // (PrefsStore.save() itself was fine) but never actually restored on
+  // the next load. Awaiting here is what actually closes the loop.
+  await DebugRouter.init(canvas);
   ConsoleView.init(DebugRouter);   // Live Text Debug — DOM glass console (rides the 〰️ toggle)
 
   if (EffectsModule.init) EffectsModule.init(CameraModule.width, CameraModule.height);
@@ -141,6 +153,12 @@ export function init() {
       e.stopPropagation();
       dbgHeld = false;
       dbgTimer = setTimeout(() => {
+        // RULE: a long press can only change an ALREADY-active button's
+        // secondary state — never a backdoor way to also turn something
+        // on. Debug isn't on yet → this timer firing does nothing at
+        // all; pointerup below still runs the normal tap (turns debug
+        // on) since dbgHeld stays false.
+        if (!DebugRouter.masterEnabled) return;
         dbgHeld = true;
         ConsoleView.toggleMode();
         debugBtn.classList.add('mode-flash');
@@ -197,6 +215,26 @@ export function init() {
   // exist, then autosave every change in real time (GGPrefs.export() for the
   // readable file copy).
   PrefsStore.init();
+
+  // The "selection" panel's show/hide is DYNAMIC — driven by whether
+  // something is currently captured (DebugRouter.syncSelectionPanel),
+  // not part of the user's saved layout the way every other panel's
+  // pin/visibility is. PrefsStore.init() just above restores `pinned`
+  // from whatever it happened to be at the last autosave — if that
+  // landed mid-selection, this would otherwise show an empty, stale
+  // panel on every fresh load, since TuningLayer draws pinned panels
+  // regardless of `.visible`. Force it back to "nothing selected yet"
+  // here; x/y/minimized etc. still restore normally, so it reappears
+  // wherever it was last left once a real selection happens again.
+  {
+    const selPanel = DebugRouter.panels.find(p => p.id === 'selection');
+    if (selPanel) {
+      selPanel.pinned = false;
+      selPanel.visible = false;
+      if (window._TuningLayer) window._TuningLayer.remove(selPanel);
+    }
+  }
+
   UpdateFeed.push('UPDATE BAR ONLINE');
 
   // BUG FIX ("InAims does not work"): window._InAims was ONLY ever set
@@ -225,6 +263,11 @@ export function init() {
       e.stopPropagation();
       aimsHeld = false;
       aimsTimer = setTimeout(() => {
+        // RULE (same as debug-btn): a long press only ever changes an
+        // ALREADY-active button's secondary state, never turns it on as
+        // a side effect. AIMS isn't on yet → do nothing here; pointerup
+        // below still runs the normal tap (turns AIMS on).
+        if (!InAims.enabled) return;
         aimsHeld = true;
         InAims.cycleProfile();
         aimsSyncTitle();
@@ -280,6 +323,12 @@ export function init() {
       e.preventDefault(); e.stopPropagation();
       selHeld = false;
       selTimer = setTimeout(() => {
+        // RULE (same as debug-btn/aims-btn): a long press only ever
+        // changes an ALREADY-active button's secondary state, never
+        // turns it on as a side effect. Selection isn't on yet → do
+        // nothing here; pointerup below still runs the normal tap
+        // (turns Selection on).
+        if (!SelectionTool.enabled) return;
         selHeld = true;
         SelectionTool.cycleMode();
         selSync();
@@ -734,6 +783,33 @@ function mainLoop(t) {
                 + (CameraModule.isPanning ? 30 : 0);
   RenderGov.feedChaos(_camVel, 0, didPhysicsTick);
 
+  // FIX ("Selection does not work on the physical canvas"): SelectionTool
+  // was imported, toggled by selection-btn, and correctly received
+  // handleDown/Move/Up — it really was capturing bodies — but update()
+  // (drops dead bodies, recomputes the live tracking rect) and render()
+  // (draws the marching-ants box / capture rings) were never called
+  // anywhere in this file. Nothing was ever wrong with capture itself;
+  // there was just nothing on screen to show it happened. update() runs
+  // unconditionally every rAF, same treatment as DebugRouter.updateData()
+  // just above — render() is screen-space and belongs in the draw block
+  // below, gated by shouldRender() like everything else that draws.
+  SelectionTool.update();
+
+  // Pan/zoom hold-to-repeat for the selection panel's zoom box — real
+  // elapsed seconds (rawDt, computed above), not the fixed physics
+  // timestep, so the strength × delta-time movement feels the same
+  // regardless of simulation speed. Self-gates: a no-op whenever nothing
+  // is currently held.
+  SelectionPanelExtras.update(rawDt);
+
+  // Auto show/pin (or hide/unpin) the real "selection" debug Panel to
+  // match SelectionTool's live capture — see DebugRouter.syncSelectionPanel's
+  // own header for why this can't live inside updateData() below. Ordered
+  // AFTER SelectionTool.update() (needs this frame's resolved capture) and
+  // BEFORE DebugRouter.updateData() (so a fresh pin's cached data is
+  // refreshed this same frame, not one frame late).
+  DebugRouter.syncSelectionPanel();
+
   // Data update — every rAF, unconditionally, before any drawing
   DebugRouter.updateData();
 
@@ -795,6 +871,23 @@ function mainLoop(t) {
     // so no extra condition needed here — same pattern as the panel draws
     // above. Drawn after panels so a satellite never renders under one.
     CanvasSatellites.render(ctx);
+
+    // Selection Tool overlay — box/polygon marching-ants or pointer-mode
+    // rings. Screen-space (converts world→screen internally via
+    // CameraModule), same raw-canvas context as CanvasSatellites just
+    // above. Self-gates on SelectionTool.enabled — no extra condition
+    // needed here, same pattern as the satellite/panel draws around it.
+    SelectionTool.render(ctx);
+
+    // Selection zoom box / ticker / eye toggle now render as part of the
+    // "selection" debug Panel itself (js/modules/debug/selection-panel-
+    // extras.js, called from debug-renderer.js's renderPanel) — attached
+    // directly above/below the panel so it moves and scales with it.
+    // REFACTOR: this used to be a separate always-fixed-position DOM
+    // overlay (planet-inspector.js) drawn here; per direction ("Zoom Box
+    // needs to be on top of the Selection Panel... grouped for dragging
+    // and everything else") it's now part of the panel's own rendering
+    // instead, so there's nothing left to call from this file.
 
     // Persistent aim reticle — visible for exactly as long as AIMS is
     // enabled, regardless of pointer state, so the aim's last position is

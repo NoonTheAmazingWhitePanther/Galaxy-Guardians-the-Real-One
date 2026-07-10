@@ -16,5 +16,6 @@
  "planetbrush.json",
  "gravitygrid.json",
  "trajectory.json",
- "cycle.json"
+ "cycle.json",
+ "selection.json"
 ]

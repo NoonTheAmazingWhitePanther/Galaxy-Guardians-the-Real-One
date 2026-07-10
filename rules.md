@@ -156,6 +156,20 @@ These apply to every file touched in every session, no exceptions:
   change** — ES module URL caching at localhost:7700 means edits can
   silently not take effect otherwise. If something "doesn't work" after a
   change, confirm a restart happened before diagnosing further.
+- **Async init order matters — check what actually gets awaited.**
+  `DebugRouter.init(canvas)` is `async` (it fetches every panel's JSON
+  config) but was called without `await` in `main.js` for a long time.
+  Everything after it in `init()`, including `PrefsStore.init()` — which
+  restores each panel's saved position/pin state by looking it up in
+  `DebugRouter.panels` by id — ran before the fetch had any chance to
+  finish, so `DebugRouter.panels` was still `[]` and the restore loop had
+  nothing to iterate. Saving was working fine the whole time; nothing was
+  ever coming back. The bug hid completely from static reading — the code
+  looked sequential — and only showed up as "pinned panels don't survive
+  a reload," several files and a UI feature away from the actual cause.
+  When anything depends on an async init's side effects (a populated
+  array, a loaded config), verify the `await` is actually there, not just
+  that the call is — don't assume JS source order means execution order.
 - **Physics claims are tagged Real / Fake / Cached**, with error bounds
   stated on anything Fake.
 - **The Tween Law is locked:** longer tweens are better at identical time
@@ -367,13 +381,27 @@ one `render(ctx)`, one hit-test + its own tap-vs-hold gesture state
 (`handleDown/Move/Up`). Anchors (debug-btn/aims-btn/painting-btn) stay
 real HTML — only their satellites moved; positions read `--safe`/
 `--pad-size` live off `:root`, same source of truth the CSS used before.
-Geometry: EVERY fan (dbg-sat, aims-sat, paint-sat) now shares the exact
-same shape — radius `1.050×pad`, rays at `-32°/16°/40°` (aims-sat/
-paint-sat use the first three of dbg-sat's five, mirrored: `dx` negated,
-since dbg-sat opens right off the left-edge debug-btn and the other two
-open left off right-edge anchors) — reverse-engineered from dbg-sat's
-own hand-tuned factors (confirmed correct by direction) rather than a
-separately-invented template, and verified by script to 0.02px symmetry.
+Geometry, UPDATED (was uneven, fixed by evenly re-spacing each fan across
+its own existing span using `(N-1)` equal gaps — literally averaging by
+one fewer than the button count, not eyeballed): **dbg-sat** (5 rays,
+radius `1.050×pad`) is `-32°/-2°/28°/58°/88°`, 30° apart every step — was
+`-32°/16°/40°/64°/88°`, a 48° gap between the first two rays and 24°
+everywhere else, i.e. one ray's worth of dead space sitting in the fan.
+Endpoints (glasses at -32°, expand at 88°) land on the exact same spot as
+before; only the three middle rays (closeall/reset/arrange) shifted to
+close the gap. **aims-sat** (4 rays, same radius, mirrored: `dx`
+negated, since dbg-sat opens right off the left-edge debug-btn and
+aims-sat opens left off the right-edge anchor) is its own independent
+even split, `-32°/-8°/16°/40°`, 24° apart every step — was already close
+(`-32°/-7°/16°/40°`, a 1° rounding artifact from being hand-placed rather
+than computed) but now exact. **paint-sat** (3 rays: `-32°/16°/40°`) was
+NOT touched this session and still has the same uneven-gap pattern
+dbg-sat used to (48°/24°) — a known pending item if it's ever reported,
+not yet asked for. Every angle→position conversion for this fan (both
+dbg-sat and aims-sat) is `leftFactor = 1/3 + 1.050·cos(a)`,
+`topFactor = 4/3 + 1.050·sin(a)` for `_absLeft`, reverse-engineered from
+dbg-sat's own original hand-tuned factors and verified by script, not by
+eye — recompute this way for any future ray, don't hand-place a new one.
 `_hitTest` and `AimsCast`'s tie-break both iterate/prefer back-to-front
 (later registry entries win on overlap), matching render order, so a
 tap always goes to whatever's visibly on top even where fans overlap.
@@ -384,6 +412,45 @@ effect worth knowing: satellites render on the canvas (`z-index: 0`)
 instead of as `z-index: 55` DOM elements — harmless given the
 established layout keeps them clear of other HTML, but worth
 remembering if a future element ever needs to sit between them.
+
+**Correction — AIMS was structurally dead inside Debug/Panel mode and
+inside Console mode, for two separate reasons, both now fixed.** This
+is the same class of bug as the "real touch always tries first"
+correction above, found later: the normal chain trying first is only
+correct if every handler IN that chain is willing to say "not mine" when
+it should.
+
+1. **`InDebug`'s marquee-arm** (`in-debug.js`, "empty space → arm the
+   hold-to-select rectangle" catch-all) used to claim *every* real
+   empty-canvas touch unconditionally whenever `DebugRouter.masterEnabled`
+   was true, with no regard for `InAims.enabled` at all. Since `InDebug`
+   sits in the real, first-try chain (checked *before* AIMS is ever
+   consulted, per the model above), a real touch that should have "missed
+   everything" and handed off to AIMS was instead always swallowed here
+   first — AIMS could never engage at all while debug was on, full stop.
+   Fixed with a marker on the synthesized aim event
+   (`input.module.js`'s `_aimShim`, `_isAimShim: true`): the marquee now
+   only arms on the REAL first pass if AIMS is off; once AIMS captures
+   and routes its own event back through `InDebug` (`_isAimShim: true`
+   on that shim), the marquee is still fully armable — debug panels stay
+   AIMS-eligible per the table above, so the marquee should be reachable
+   via a placed aim too, just not by short-circuiting AIMS out of the
+   picture entirely.
+2. **`console-view.js`'s `#gg-console` root** called
+   `e.stopPropagation()` on *every* pointerdown inside its own DOM box
+   unconditionally — meant to keep taps on the console's own real
+   controls from leaking through to camera pan/zoom/planet-spawn behind
+   it, but it also killed the window-level input router entirely for any
+   tap landing in that box, AIMS included, regardless of AIMS state. Now
+   only stops propagation while AIMS is off. `masterEnabled` being true
+   while console shows already keeps `InPlanet` excluded regardless (see
+   the normal chain's own world-fallback check), so the one thing the
+   original guard actually needed to prevent stays prevented either way.
+
+Same underlying lesson both times: a catch-all "claim empty space"
+handler sitting in the REAL first-try chain has to explicitly know about
+AIMS's existence and defer to it, or AIMS is dead in that catch-all's
+territory no matter how correct the rest of the chain is.
 
 **Standing rule — AIMS always has a charge delay.** A real touch must
 be held for `AIMS_CHARGE_MS` (`js/modules/input/input.module.js`,
@@ -490,14 +557,15 @@ kept").
   magnifier box placement (`BOX_OFFSET_X/Y`) — the identical problem,
   just for a 100×100 box instead of a point. One shared function, two
   callers, not two parallel implementations of the same idea.
-- **Geometry note:** `aims-sat-mirror` sits at -7°, not one of dbg-sat's
-  five original rays (-32°/16°/40°/64°/88°). The standard full radius
-  genuinely has no room for a 4th ray at 64° or 88° in this specific
-  column — `painting-btn` sits directly below `aims-btn`, where
-  `debug-btn` has open space instead — so -7° fills the real 48°-wide
-  gap between the -32° and 16° rays, verified collision-free by script
-  against every button and every other satellite in the fan, at the
-  same radius as the rest (not a shrunk one).
+- **Geometry note, UPDATED:** `aims-sat-mirror` sits at -8°, one of
+  aims-sat's own 4 evenly-spaced rays now (`-32°/-8°/16°/40°`, see the
+  satellite geometry paragraph above) — it used to sit at -7° specifically
+  because that was "the real 48°-wide gap" in dbg-sat's OLD uneven
+  spacing, a gap that no longer exists now that dbg-sat itself was fixed
+  to be even. aims-sat was re-spaced independently (its own 4-ray split,
+  not derived from dbg-sat's rays at all), and -8° is where that split
+  happens to land — a coincidence of the math, not a re-application of
+  the old "fill the gap" reasoning, which no longer applies to anything.
 
 **Standing rule — Canvas play and Panel play are separate domains, not
 two gestures competing for one tap.** A canvas-space touch means one of
@@ -532,3 +600,59 @@ an edge case to special-case around after the fact. When adding a new
 canvas-space interaction, ask which state(s) it belongs to before
 wiring it in, the same way `InPlanet`'s world-spawn already explicitly
 excludes itself during Debug/Panel state.
+
+---
+
+## 9. HTML Button Tap/Hold Rule
+
+Standing rule, applies to every real HTML button with a tap/hold dual
+action (currently `debug-btn`, `aims-btn`, `selection-btn` — all wired
+directly in `main.js`, each with its own `pointerdown` timer):
+
+**A long press can only change an ALREADY-active button's secondary
+state. It can never be a backdoor way to also turn the button on.**
+
+- Button currently OFF (not toggled on) → holding it does nothing beyond
+  what releasing it normally would (a plain tap-equivalent, which turns
+  it on). The hold-specific action does not fire.
+- Button currently ON (already toggled active) → holding it works
+  exactly as designed (cycles console mode / AIMS profile / selection
+  capture mode).
+
+Implementation shape, the same in all three: check the button's own
+active flag (`DebugRouter.masterEnabled` / `InAims.enabled` /
+`SelectionTool.enabled`) *inside* the `setTimeout` callback, right
+before performing the hold action — not at `pointerdown` time, since the
+callback firing 600ms later is the moment that actually matters. If
+inactive, `return` before doing anything; the held-flag (`dbgHeld` /
+`aimsHeld` / `selHeld`) stays `false`, so the subsequent `pointerup` still
+runs the normal tap action. Apply this same shape to any future
+HTML button that grows a hold behavior — check active-state inside the
+timer callback, not before starting the timer.
+
+---
+
+## 10. One-Off Custom Panel Widgets
+
+Not every piece of panel UI belongs in `panel.js`/`debug-renderer.js`'s
+generic line-type system. `js/modules/debug/selection-panel-extras.js`
+(the "selection" panel's attached zoom box, pan/zoom controls, and
+scrolling ticker) is the established pattern for something that's
+genuinely custom to exactly ONE panel, not a new reusable line type:
+
+- A single module, gated everywhere it's called by `panel.id === 'xxx'`
+  — `debug-renderer.js` calls its `draw()`, `in-debug.js` calls its
+  `hitTest()`, both only for that one panel id.
+- One `layout()` method is the SINGLE SOURCE OF TRUTH for geometry,
+  called by both the draw path and the hit-test path — visible ⟺
+  touchable, same principle as everywhere else, just enforced by
+  sharing one function instead of duplicating the math.
+- Everything drawn this way is PANEL-SPACE (same coordinates as
+  `panel.x/y/w/h`) and drawn from inside the ambient debug-view
+  transform `debug-renderer.js` already sets up — never re-derive
+  screen-space/pan/zoom transforms by hand for something attached to a
+  panel; ride the transform that's already there.
+- Anything that animates (a live crop, a scrolling ticker) has to be
+  drawn OUTSIDE the panel's cached chrome canvas (`_drawChrome`,
+  rebuilt only on pin/resize/minimize) — live, every frame, same
+  reasoning as the pinned-panel gold title line before it.

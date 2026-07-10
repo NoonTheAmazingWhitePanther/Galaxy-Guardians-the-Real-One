@@ -67,7 +67,12 @@ export const InputState = {
 function _aimShim(pointerId) {
   return {
     clientX: Aims.aim.x, clientY: Aims.aim.y, pointerId,
-    preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
+    preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {},
+    // Lets a handler that's called from BOTH the real first-pass chain and
+    // this synthesized aim chain (in-debug.js's marquee-arm, currently)
+    // tell which one it's looking at — see rules.md §8 / in-debug.js for
+    // why that distinction matters.
+    _isAimShim: true
   };
 }
 

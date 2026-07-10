@@ -58,7 +58,13 @@ export const InAims = {
   // Show/Hide Map — debug-only overlay toggle for aims-sat-showmap. The
   // render call site (main.js) is already gated to debug/tuning-active
   // contexts, so this flag only ever has a visible effect there.
-  showMap: true,
+  // FIX ("the aims Blueprint is showing whenever it is on, it never needs
+  // to be visible"): this defaulted to true, so the dashed-rectangle
+  // candidate overlay (debugDraw below) appeared automatically the moment
+  // AIMS was enabled, every time, with no one having asked for it. Default
+  // is now off — 🗺️ still toggles it on for actual debugging, it just
+  // doesn't announce itself uninvited anymore.
+  showMap: false,
   toggleShowMap() {
     InAims.showMap = !InAims.showMap;
     return InAims.showMap;

@@ -76,14 +76,39 @@ export const TetrisFan = {
 
   _blob(x, y, label, title, onTap, onHold) {
     const el = document.createElement('div');
-    el.className = 'dbg-sat tetris-fan-blob';
+    // FIX ("Sorting and Tetris does not open up at all — entire menu is
+    // hidden"): these blobs used to just be `.dbg-sat tetris-fan-blob` and
+    // lean on `.dbg-sat` in styles.css for position:fixed + all visual
+    // styling. That CSS class was deliberately removed when satellites
+    // moved to canvas rendering (rules.md §8) — this file is the one real
+    // DOM holdout that still needed it and got left behind. Without
+    // position:fixed, the left/top below did nothing (static-positioned
+    // elements ignore them) and every blob landed, unstyled, at the top of
+    // normal document flow — invisible in practice. Styled inline here
+    // instead of reviving the shared class, so this stays this file's own
+    // concern.
+    el.className = 'tetris-fan-blob';
     el.textContent = label;
     el.title = title;
+    el.style.position = 'fixed';
     el.style.left = x + 'px';
     el.style.top = y + 'px';
     el.style.width = el.style.height = BLOB + 'px';
     el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
     el.style.fontSize = '10px';
+    el.style.fontFamily = 'var(--ui-font)';
+    el.style.color = 'var(--ui-text)';
+    el.style.background = 'var(--ui-bg)';
+    el.style.border = '1px solid var(--ui-border)';
+    el.style.borderRadius = '8px';
+    el.style.backdropFilter = 'blur(var(--glass-blur))';
+    el.style.webkitBackdropFilter = 'blur(var(--glass-blur))';
+    el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+    el.style.cursor = 'pointer';
+    el.style.userSelect = 'none';
+    el.style.touchAction = 'none';
     el.style.zIndex = 60;
     let holdT = 0, held = false;
     el.addEventListener('pointerdown', (e) => {

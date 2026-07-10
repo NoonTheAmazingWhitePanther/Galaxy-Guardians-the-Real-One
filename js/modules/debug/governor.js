@@ -178,6 +178,13 @@ export const ManualOverrides = {
   brushPlane:               { isManual: false, value: -1 },    // -1 = CPU picks (round-robin) · 0..3 fixed group
   brushColor:               { isManual: false, value: -1 },    // -1 = Random · 0..5 named palette
 
+  // ── SELECTION PANEL — master knob drives the zoom box's pan/zoom speed ──
+  // Range 0.1..2.0, where 2.0 is the ORIGINAL fixed pan/zoom strength
+  // (PAN_FRACTION_PER_SEC/ZOOM_UNITS_PER_SEC in selection-panel-extras.js
+  // as originally shipped — "extra play" above the default). Ships at
+  // 1.0, i.e. half of that — "make it into 1.0 (half of the current)".
+  selectionPanSpeed:        { isManual: false, value: 1.0 },
+
   // ── GRAVITY GRID (the weight map — one for the Sun, many for the planets) ──
   gravGridOn:               { isManual: false, value: 1 },     // 1 = grid far field · 0 = legacy direct loop
   gravGridCols:             { isManual: false, value: 48 },    // lattice resolution (N×N over the cluster box)

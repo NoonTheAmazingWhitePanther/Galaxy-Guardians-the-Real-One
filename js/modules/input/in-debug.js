@@ -40,6 +40,7 @@ import { DEBUG_STATE } from '../debug/debug-state.js';
 import { InputState } from './input.module.js';
 import { SatBlobs } from '../debug/sat-blobs.js';
 import { SelectionTool } from './in-selection-tool.js';
+import { SelectionPanelExtras } from '../debug/selection-panel-extras.js';
 
 // "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
 // debug+panel mode → a selection rectangle. On release, every panel it caught
@@ -255,6 +256,67 @@ export const InDebug = {
       const layout = panel.computeLayout(data);
       const pw = layout.w;
       const ph = layout.h;
+
+      // ── Selection panel's own zoom-box/ticker/eye extras — checked
+      // before anything else on THIS panel so they get first say on
+      // their own turf (they sit ABOVE/BELOW the panel's normal bounds,
+      // outside where the generic hit-test below even looks). No-op for
+      // every other panel (hitTest only ever returns non-null for the
+      // "selection" panel's own attached box/ticker/eye rects).
+      if (panel.id === 'selection') {
+        const exHit = SelectionPanelExtras.hitTest(panel, x, y, pw, ph);
+        if (exHit === 'eye') {
+          SelectionPanelExtras.toggleEye();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        }
+        if (exHit === 'fit') {
+          SelectionPanelExtras.fit();
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        }
+        if (exHit && exHit !== 'drag') {
+          // pan-up/down/left/right, zoom-in/zoom-out — TAP-TOGGLE, not a
+          // hold: this fires once, immediately, same as eye/fit just
+          // above. SelectionPanelExtras.toggleDirection() starts (or
+          // stops) continuous movement that then runs on its own every
+          // frame via update(dt) in main.js, independent of whether any
+          // pointer is still touching the screen — no drag/hold state to
+          // track here at all.
+          SelectionPanelExtras.toggleDirection(exHit);
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        }
+        if (exHit === 'drag') {
+          // Grabbing the box or the ticker moves the WHOLE assembly —
+          // "grouped for dragging" — exactly the same drag-start as
+          // grabbing the panel's own title bar below, just reached from
+          // a different rect.
+          this.activePanel = panel;
+          this.pointerId = e.pointerId;
+          this.isDragging = true;
+          this._dragStarted = false;
+          this.startX = x;
+          this.startY = y;
+          this.startPanelX = panel.x;
+          this.startPanelY = panel.y;
+          this._grabX = x - panel.x;
+          this._grabY = y - panel.y;
+          this._prevMoveX = x;
+          this._prevMoveY = y;
+          PanelArrange.cancel(panel);
+          PanelArrange.clearTraj();
+          PanelSnapGuides.rebuild(this._activePanels(), panel, window.innerWidth || 1920, window.innerHeight || 1080);
+          DEBUG_STATE.dragGuide = { panel };
+          try { if (this._canvas) this._canvas.setPointerCapture(this.pointerId); } catch (_) {}
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return true;
+        }
+      }
 
       // ── Resize grip — bottom-right, checked FIRST before knob/master
       const GRIP  = 36;
@@ -508,8 +570,23 @@ export const InDebug = {
     // gesture (debug PANEL marquee vs. SelectionTool's PLANET capture) —
     // only one can own a given tap, and the one the user explicitly
     // turned on is the one that should.
+    //
+    // SECOND FIX ("InAims does not work inside Debug ... or Panels"): this
+    // block ALSO used to claim every real empty-canvas touch regardless of
+    // AIMS, with no check at all — since InDebug sits in the REAL, first-
+    // try chain (input.module.js, before AIMS is ever consulted), a real
+    // touch that would otherwise "miss everything" and hand off to AIMS
+    // was instead always swallowed here first, so AIMS could never engage
+    // at all while debug was on. `e._isAimShim` (input.module.js's
+    // _aimShim) tells the two calls apart: on the REAL first pass, only
+    // arm the marquee if AIMS is off (so a touch that misses can still
+    // fall through to AIMS); once AIMS captures and routes its own
+    // synthesized event back through here (`_isAimShim: true`), the
+    // marquee is still fully armable — debug panels are AIMS-eligible per
+    // rules.md §8, so the marquee should be reachable via a placed aim too.
     if (DebugRouter.masterEnabled && !DebugRouter._consoleMode && !SelectionTool.enabled &&
-        (e.button === 0 || e.button === undefined) && !InputState.panLocked) {
+        (e.button === 0 || e.button === undefined) && !InputState.panLocked &&
+        (!window._InAims?.enabled || e._isAimShim)) {
       const pt = this._toPanel(e.clientX, e.clientY);
       const m = {
         armed: true, active: false,

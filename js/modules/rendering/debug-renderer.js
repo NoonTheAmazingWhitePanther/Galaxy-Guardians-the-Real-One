@@ -19,6 +19,7 @@ import { ControlRenderer } from '../debug/controls.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { headerIcons } from '../debug/panel-style.js';
+import { SelectionPanelExtras } from '../debug/selection-panel-extras.js';
 
 function makeCanvas(w, h) {
   // Use OffscreenCanvas where available, fall back to regular canvas
@@ -128,6 +129,33 @@ export const DebugRenderer = {
     // rather than using its native pixel dimensions directly.
     ctx.drawImage(panel._chromeCanvas, panel.x, panel.y, pw, ph);
 
+    // Golden TITLE line — the manual-edit indicator, shown INSIDE debug
+    // too. Distinct from the amber whole-panel border (cached, above —
+    // deliberately an outside-debug-only "pinned to the live tuning
+    // surface" cue). This is the "is this panel background/auto, or has
+    // it been touched" signal the amber border can't give while debug is
+    // on, present whenever ANY control on this panel is manually
+    // overridden (panel.pinned already tracks exactly that — see
+    // Panel._onManualChange, which pins on the first manual touch).
+    // Drawn live every frame (not part of the cached chrome above) because
+    // it animates. Applies to minimized panels too, same as the old cached
+    // version did, so it's drawn before the minimized early-return below.
+    if (panel.pinned) {
+      this._drawPinnedTitleLine(ctx, panel, pw, s.radius * sc);
+    }
+
+    // Selection panel's zoom box / ticker / eye toggle — "on top of" and
+    // "beneath" the panel per direction, sized to match it exactly. Live
+    // every frame, same reasoning as the gold title line just above: this
+    // animates (scrolling ticker, live crop), so it can't live in the
+    // cached chrome canvas. Applies to both minimized and expanded states
+    // (drawn before the minimized early-return below), not to shrunk —
+    // shrunk is a different, more extreme compact mode than what "Minimized
+    // Panel with a Zoom Box Attached" was describing.
+    if (panel.id === 'selection') {
+      SelectionPanelExtras.draw(ctx, panel, ctx.canvas, pw, ph);
+    }
+
     if (minimized) {
       // Minimized — PanelMasterSlider draws text/knob on main ctx
       PanelMasterSlider.render(ctx, panel, panel.x, panel.y, pw, ph, minimized);
@@ -152,6 +180,53 @@ export const DebugRenderer = {
 
     panel.w = pw;
     panel.h = ph;
+  },
+
+  /**
+   * Two soft "shiny pixel" strands across the top of a pinned panel's
+   * title bar — gold + white, continuously trading places with each other
+   * ("flip"), round-capped, and fading softly at both horizontal ends
+   * instead of cutting off hard. Replaces the old single solid 3px gold
+   * bar (session note: "too big and wide").
+   *
+   * Lives outside the cached chrome canvas on purpose (see renderPanel) —
+   * it reads performance.now() every call, so it has to actually run
+   * every frame, not just when the chrome cache is rebuilt.
+   */
+  _drawPinnedTitleLine(ctx, panel, pw, radius) {
+    const y  = panel.y + 1.5;
+    const x0 = panel.x + radius, x1 = panel.x + pw - radius;
+    if (x1 <= x0) return;
+
+    // Smooth back-and-forth, not a hard snap — one full flip cycle every
+    // ~2.4s. t=0: strand A gold / strand B white. t=1: the reverse. The
+    // continuous crossfade through the middle IS the "flip," done as a
+    // soft blend rather than an instant swap (the "soften fading" part).
+    const t = (Math.sin(performance.now() / 1200) + 1) / 2;   // 0..1
+    const GOLD = [255, 200, 80], WHITE = [240, 245, 255];
+    const lerp3 = (f) => [0, 1, 2].map(i => Math.round(GOLD[i] + (WHITE[i] - GOLD[i]) * f));
+    const rgbA = lerp3(t), rgbB = lerp3(1 - t);
+
+    ctx.save();
+    ctx.lineCap = 'round';   // soft corners
+    for (const [[r, g, b], dy, a] of [[rgbA, -0.75, 0.95], [rgbB, 0.75, 0.85]]) {
+      // Fade in/out at both horizontal ends — a hard-edged strand still
+      // reads as "too big and wide" even at 1px, a soft one doesn't.
+      const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+      grad.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0.12, `rgba(${r},${g},${b},${a})`);
+      grad.addColorStop(0.88, `rgba(${r},${g},${b},${a})`);
+      grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1;
+      ctx.shadowColor = `rgba(${r},${g},${b},0.6)`;
+      ctx.shadowBlur = 2.5;    // the "shiny" part
+      ctx.beginPath();
+      ctx.moveTo(x0, y + dy);
+      ctx.lineTo(x1, y + dy);
+      ctx.stroke();
+    }
+    ctx.restore();
   },
 
   // Chrome = background, border, amber border, buttons — cached
@@ -199,22 +274,11 @@ export const DebugRenderer = {
       ctx.stroke();
     }
 
-    // Golden TITLE line — the manual-edit indicator, shown INSIDE debug too.
-    // Distinct from the amber whole-panel border above (which is deliberately
-    // an outside-debug-only "this is pinned to the live tuning surface" cue).
-    // This is the "is this panel background/auto, or has it been touched"
-    // signal the amber border can't give while debug is on: a slim gold line
-    // across the top of the title bar, present whenever ANY control on this
-    // panel is manually overridden (panel.pinned already tracks exactly that —
-    // see Panel._onManualChange, which pins on the first manual touch).
-    if (panel.pinned) {
-      ctx.strokeStyle = 'rgba(255,200,80,0.9)';
-      ctx.lineWidth   = 3;
-      ctx.beginPath();
-      ctx.moveTo(radius, 1.5);
-      ctx.lineTo(pw - radius, 1.5);
-      ctx.stroke();
-    }
+    // Golden TITLE line moved OUT of this cached chrome layer — see
+    // renderPanel's live draw call (_drawPinnedTitleLine) just after the
+    // chrome blit. It now animates (gold ⇄ white flip), and this canvas is
+    // only rebuilt on pin/resize/minimize changes (panel._chromeDirty), so
+    // an animated element baked in here would freeze between those events.
 
     // Title bar — drag handle highlight + buttons (expanded only)
     if (!minimized) {

@@ -6,7 +6,7 @@
 
 **A browser-based soft-body physics engine, hand-built on a \$100 phone.**
 
-`HTML5` · `Vanilla JavaScript` · `ES6 Modules` · `Canvas 2D` · `No WASM` · `No Web Workers` · `79 modules and counting`
+`HTML5` · `Vanilla JavaScript` · `ES6 Modules` · `Canvas 2D` · `No WASM` · `No Web Workers` · `104 modules and counting`
 
 > *Fun first. Education later. Explosions always.*
 
@@ -127,7 +127,7 @@ A profiler wired straight into the physics / queue-ops / render hot paths, so ev
 
 **Config as data, one source of truth.** A configuration loader (`config-index.js`) with a bulletproof safe-fallback, feeding a single Base (Factory Defaults) config split cleanly into `physics / render / overlay / game / audio`. Themes/multi-profile config are out of use — live tuning (Base + your saved profile, benchmarked "best" results) is a separate system, see `governor-profiles.js` / `prefs-store.js`.
 
-**79 ES-modules, ~300–600 lines each.** No build step. No framework. No bundler. Open `index.html` and it *is* the engine — every module a plain `import`, every system inspectable.
+**104 ES-modules, ~300–600 lines each.** No build step. No framework. No bundler. Open `index.html` and it *is* the engine — every module a plain `import`, every system inspectable.
 
 ```
 js/
@@ -262,3 +262,12 @@ The tuning surface grew into a small operating system:
   on load, announced Matrix-style. Kill the app; the deck remembers.
 - **The Mesh War** — Auto (device) and Manual (user) preferences saved side
   by side, competing for the user's ideal from a $100 phone to a workstation.
+- **Selection Panel** — capture one planet or a whole cluster and a real,
+  draggable, pinnable debug panel pops up on its own: live vitals (mass,
+  radius, heat, speed, sun distance) scrolling in a ticker beneath an
+  attached zoom box. The box has its own pan/zoom controls — tap a
+  direction and it glides there on its own, all the way to the edge of
+  the selection, until it gets there or you tap it again to stop; a Fit
+  button frames the whole selection in one tap; a master knob dials the
+  glide speed. Closes itself when the selection clears, remembers where
+  you dragged it for next time.

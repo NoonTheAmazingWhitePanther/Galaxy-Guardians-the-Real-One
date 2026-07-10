@@ -147,8 +147,20 @@ export const ConsoleView = {
                      val: root.querySelector('.mval'),
                      fill: root.querySelector('.fill') };
 
-    // stop taps inside the glass from reaching the canvas (pan/zoom/spawn)
-    root.addEventListener('pointerdown', (e) => e.stopPropagation(), { passive: true });
+    // Stop taps inside the glass from reaching the canvas (pan/zoom/spawn)
+    // — but only while AIMS is off. FIX ("InAims does not work inside ...
+    // Console"): this used to stop propagation unconditionally, which also
+    // silently killed the window-level input router for EVERY tap in this
+    // box, including ones meant to become an AIMS charge gesture — nothing
+    // downstream (canvas satellites, AIMS itself) could ever see them.
+    // While AIMS is on, let the tap bubble to the window listener like
+    // everywhere else does; masterEnabled already being true while console
+    // shows means InPlanet/world-spawn stay excluded regardless (see
+    // input.module.js), so this doesn't reopen the original leak-to-canvas
+    // concern for the one thing that mattered (planet spawning).
+    root.addEventListener('pointerdown', (e) => {
+      if (!window._InAims?.enabled) e.stopPropagation();
+    }, { passive: true });
 
     // Re-fit whenever the viewport changes (rotation, keyboard, resize).
     window.addEventListener('resize', () => this._layout());
