@@ -207,94 +207,158 @@ virtual space. HTML buttons are real browser space.
 
 Native touch already lands correctly on a normal-sized (44px) HTML
 button, bar, or control — that's just how touchscreens work. AIMS
-offsetting the coordinates of an already-correct tap doesn't improve
-it, it *breaks* it. So:
+routing a touch away from an already-correct tap doesn't improve it, it
+*breaks* it. So:
 
 - **Never AIMS-eligible, always plain native touch, no exceptions:**
   pan-pad, the debug/selection/aims/painting toggle buttons, the zoom
   bar, the speed bar, the FPS text, the bottom bar (`#ui` — clear-btn,
   config-btn, sliders), the config menu. Generalizes to every plain
-  HTML button/bar in the app. A future "virtual controller" (joystick-
-  style, continuous input) is explicitly a *different* thing from
-  pan-pad — pan-pad stays excluded either way.
-- **AIMS-eligible, always (not HTML at all — canvas-drawn, "virtual
-  space", same category as debug panels):** the satellite buttons
-  (`js/modules/ui/canvas-satellites.js` — dbg-sat/aims-sat/paint-sat
-  families). These used to be real `<div>` elements with an AIMS
-  exception carved out for them ("HTML, but AIMS anyway") — that was
-  identified as backwards and removed. There is no HTML/AIMS exception
-  anymore, in either direction: satellites moved to the canvas side of
-  the boundary instead of staying HTML with a special case. Each
-  satellite's own `isActive()` gates both rendering and hit-testing —
-  visible ⟺ touchable, same law as everywhere else in this codebase,
-  just enforced in JS now instead of via a CSS `display:none` check on
-  a DOM element that no longer exists.
-- **AIMS-eligible, always (not an HTML button at all):** debug panels
-  (canvas-drawn, not real DOM — "virtual space").
+  HTML button/bar in the app. These have their own direct element
+  listeners, which fire independently of the window-level input chain —
+  so even while AIMS is on and consuming every canvas touch, these stay
+  reachable by a plain thumb tap, unaffected. A future "virtual
+  controller" (joystick-style, continuous input) is explicitly a
+  *different* thing from pan-pad — pan-pad stays excluded either way.
+- **AIMS-eligible, always (canvas-drawn, "virtual space", never real
+  DOM):** the satellite buttons (`js/modules/ui/canvas-satellites.js`)
+  and debug panels. Each satellite's own `isActive()` gates both
+  rendering and hit-testing — visible ⟺ touchable.
+- **AIMS-eligible, always:** world/canvas interaction — planet
+  charging, brush painting, selection-box dragging.
 
-**The core idea — one ray cast, not a different input module.** A 3D
-engine always casts a ray for picking; only the origin/direction/length
-change per use, never the mechanism. AIMS is that, in 2D:
-`AimsCast.cast(x, y, radius)` (`js/core/aims-cast.js`) is the ONE
-function every AIMS resolution goes through, always. Normal touch and
-AIMS-assisted touch are not two different systems — they're the same
-hit-test/collision-check between a touch point and the virtual-space
-objects it might be aiming at, called with different `x`, `y`, and
-`radius`. `radius=0` only hits something you're exactly on top of;
-`radius>0` forgives being that many px away from the nearest edge.
-Deliberately NOT a spatial index or pixel bitmap — there are only ever
-a handful of satellites + panels on screen, so a plain linear scan over
-their LIVE bounds, re-read on every single cast, is cheap enough that a
-pre-built cache buys nothing but a second thing to go stale.
+**The core idea — real touch always gets first try; AIMS only ever
+engages for a touch that misses everything.** CORRECTED (this was a real
+bug, not just a design choice that changed): AIMS is NOT "every touch,
+always, routed through the profile." That version existed briefly and
+broke exactly what it shouldn't have — a real, precise tap on a
+satellite or a debug panel would get swallowed into the charge timer
+instead of ever reaching the thing it was aimed at, because AIMS was
+checked *before* the normal chain instead of after it. "AIMS is a
+preference of choice of what pointer the user wants to use" — it's an
+option for the ambiguous case (open canvas/world), never something that
+can block a real, unambiguous hit on a real, fixed-position thing.
 
-**How a tap actually resolves (immediate pass, then deferred one loop
-cycle later):** normal hit-testing — `InDebug` (panels) →
-`CanvasSatellites` (satellites, exact point, no offset) → `InButtons` →
-`InConfigMenu` → `InUI` → `InCamera` — always runs first,
-unconditionally, exactly as if AIMS didn't exist. This covers every
-HTML button/bar AND gives satellites/panels a normal precise-tap path of
-their own, satisfying "HTML buttons are a no-go for AIMS" by
-construction (HTML never appears in AIMS's resolution at all, in either
-pass) rather than by a special case. Only if ALL of that misses, and
-AIMS is on, does `InputModule._deferAimsRetry()`
-(`js/modules/input/input.module.js`) schedule a real retry one
-`requestAnimationFrame` later: apply the Aims offset, then call
-`InAims.resolve(sx, sy)` — which is just `AimsCast.cast()` at the
-current mode's radius, then either `CanvasSatellites.fireTap()` (calls
-the matched satellite's `onTap()` directly — no DOM element in the
-picture at all anymore) or a coordinate-shimmed call into
-`InDebug.handleDown()` for a matched panel. If that also misses, the tap
-falls through to world interaction (SelectionTool / InPlanet) one frame
-late, at the raw un-offset point — world taps never use the bias, only
-satellites/panels do. One cycle of deferral is cheap at real frame rates
-(see the "1000 law," §5) and invisible to a human; it is not a hack,
-it's the actual mechanism.
+The actual model, `js/modules/input/input.module.js`'s pointerdown:
 
-**Long-press aims-btn** (`InAims.toggleMode()`) switches 'fake'
-(default, tight ~2px radius) ⇄ 'real' (full finger-size radius, reusing
-the historical `AIM_RADIUS` constant). Same `cast()` call either way —
-mode is a radius choice, not a different code path. Tap still toggles
-AIMS on/off, unchanged.
+1. The bulb is checked first (its own thing, see below).
+2. Real touch, real coordinates, ALWAYS tries the full normal chain —
+   `CanvasSatellites → InDebug → InButtons → InConfigMenu → InUI →
+   InCamera` — regardless of `InAims.enabled`. If anything here claims
+   it (`_gestureMode = 'normal'`), that's the whole gesture; AIMS never
+   gets involved, not on this down, not on the moves/up that follow it.
+   `CanvasSatellites` is checked *before* `InDebug` specifically because
+   `InDebug`'s own "empty space, arm the marquee" catch-all has no
+   knowledge of satellite positions at all — a tap landing exactly on a
+   `dbg-sat` satellite used to get swallowed as "empty space" before
+   `CanvasSatellites` ever saw it. This order also matches the render
+   z-order (satellites draw on top of panels) — hit-testing top-down is
+   the same principle already used for satellite-vs-satellite overlaps.
+3. Only if ALL of that misses — nothing but open canvas/world under the
+   touch — does `InAims.enabled` matter at all: off, it's a plain
+   `SelectionTool`/`InPlanet` tap (`_gestureMode = 'world'`), exactly as
+   if AIMS didn't exist; on, THIS is where AIMS actually changes
+   anything — the touch becomes a charge→profile→aim gesture instead
+   (`_gestureMode = 'aims'`), and only now does the active profile
+   (`js/modules/input/aims-profiles.js`) start updating the persistent
+   aim point `Aims.aim.x/y`, firing a synthesized event at the aim into
+   `CanvasSatellites → InDebug → SelectionTool → InPlanet`
+   (`_aimChainDown/Move/Up`) instead of at the real finger. Never into
+   `InButtons`/`InConfigMenu`/`InUI`/`InCamera` — HTML-DOM/camera-drag
+   specific, excluded from the aim chain on purpose, same reasoning as
+   step 2 (a fixed-position HTML thing is never ambiguous, so AIMS never
+   gets a say over it, at any stage).
 
-**Superseded designs, for history — do not resurrect either:**
+`_gestureMode` (`'none' | 'normal' | 'aims' | 'world'`) is set explicitly
+once on pointerdown and consulted on every subsequent move/up for that
+same gesture — not re-decided per event, and not inferred from which
+handlers happen to self-gate true/false. That ambiguity is exactly what
+let the bug through the first time; explicit tracking closes it for good.
+
+Downstream code (panels, satellites, brush painting, planet charging)
+still cannot tell an aim-driven event from a real one once AIMS *does*
+engage — same coordinate shape, same down/move/up sequence, same
+tap-vs-hold timers already built into each of those systems. "Just a
+different configuration of what's firing" remains true for the one case
+where AIMS actually applies; it was never true for satellites/panels/
+buttons, and no longer pretends to be.
+
+**The three profiles** (long-press aims-btn cycles Trackpad → Joystick →
+Offset → Trackpad; tap still toggles on/off):
+
+1. **Trackpad** (default) — relative delta. The aim moves by exactly the
+   distance your finger moves, regardless of where the gesture starts.
+   Precise, laptop-trackpad feel.
+2. **Joystick** — "the entire screen is a joystick window." Verbatim
+   reuse of Pan Pad's own rate model (`in-ui.js`'s `_handlePanPadMove`/
+   `updatePanPad`: 8-way direction snap, `PAN_ACCEL=0.7`/`PAN_MAX=3`
+   power ramping over TIME while held), just anchored at the touch-down
+   point instead of a fixed pad center. Needs a per-frame tick
+   (`InputModule.aimsTick()`, called from main.js's loop exactly where
+   `updatePanPad()` already is) to keep moving the aim between pointer
+   events — hold-and-lean, not just react-to-drag.
+3. **Offset** — the original "finger bias" idea. The aim tracks the real
+   finger 1:1, shifted by a fixed correction (`Aims.aim.offsetX/offsetY`
+   — the historical `AIM_OFFSET_X/Y` constants). Direct, immediate, no
+   ramp or delta.
+
+`Aims.aim.x/y` is the ONE authoritative position for all three — no
+separate "effective position" layer anymore (the old `aim.ex/ey`
+getters, `= x + offsetX`, are retired from live use; applying Offset's
+bias a second time on top of a profile that already applied it, or
+applying it to Trackpad/Joystick where it never meant anything, was the
+problem). `ZoomEnhancer` and `_drawAimCursor` (main.js) both read
+`aim.x/y` directly now.
+
+**`Aims.aim.x/y` is never touched while AIMS is off** — profiles are the
+only thing that write to it, and profiles only run while enabled. This
+is deliberate: turning AIMS back on resumes exactly where the aim was
+left, never wherever the finger currently is ("always have a last point
+recollected, always continue from there," per direction). Defaults to
+screen center on first load, not `(0,0)` — it used to not matter (the
+old design always snapped `aim.x/y` straight to the first real touch),
+but Trackpad/Joystick now move the aim RELATIVELY from wherever it
+already is, so a sensible starting point matters.
+
+**The aim is always visible while enabled, never while disabled.**
+`_drawAimCursor` (main.js) used to hide itself unless a pointer was
+actively down — the opposite of "always show the last position so the
+user knows." It now draws unconditionally whenever called; the caller
+gates entirely on `InAims.enabled`. No more offset/bias line either —
+that only meant something for the old single-behavior design; with
+three profiles the aim IS the one honest position to show, nothing to
+draw a bias line back to.
+
+**Superseded designs, for history — do not resurrect any of them:**
 1. A same-frame `Proxy`-based coordinate-only retry. Failed silently:
    `InButtons`/`InUI`/`InConfigMenu` hit-test off `e.target` (the
    browser's own real hit-test result at the real touch point), which
    spoofing `clientX/clientY` alone can't touch.
 2. A dual "Real bitmap map, rebuilt fresh every miss" vs "Fake
    `elementFromPoint`" split — two genuinely different algorithms
-   pretending to be modes of the same thing. `AimsCast` replaced both:
-   one function, one algorithm, parameterized by radius.
+   pretending to be modes of the same thing.
+3. `AimsCast.cast(x, y, radius)` + a ONE-FRAME-DEFERRED retry
+   (`InputModule._deferAimsRetry`) that only engaged after normal touch
+   missed everything. Conceptually cleaner than 1/2, and `AimsCast`
+   itself is still used today (satellite/panel candidate geometry, and
+   the "Show Map" debug visualization — see `InAims.debugDraw`) — but
+   the retry-on-miss SHAPE was still wrong: it meant "a different input
+   module taking over" for exactly one frame, on a miss, rather than
+   "just different coordinates, always." The always-on profile model
+   replaced it: no miss detection, no defer, AIMS is a strict on/off,
+   never a fallback.
 
 **Current state of `core/aims.js`:** its bitmap/registration engine
-(`_items`/`_layers`/`_map`/`register()`/`registerElement()`/
-`_resolve()`) is fully unused now — `AimsCast` never calls any of it.
-Left in place, not deleted, because `Aims.aim.x/y/offsetX/offsetY/ex/ey`
-(the position/offset/radius tracker) are still real and still updated
-every pointermove — `ZoomEnhancer`'s magnifier box and `AimsCast`'s own
-radius/offset both read from it. Whether to physically delete the dead
-bitmap code from that file is a deliberate follow-up decision, not
-something to do as a side effect of an unrelated change.
+(`_items`/`_layers`/`_map`/`register()`/`registerElement()`/`_resolve()`/
+`fire()`/`down()`/`up()`/`bindPointer()`) has been unused for a while now
+and stays that way — nothing in the live input path calls any of it.
+`Aims.debugDraw()` (the old bitmap-visualization renderer, which still
+reads the now-retired `ex/ey`) is ALSO unreachable — `InAims.debugDraw`
+draws its own thing via `AimsCast.allCandidates()` instead. Left in
+place, not deleted, because `_aim.x/y/offsetX/offsetY/radius` (the part
+that's genuinely live) shares the same object. Whether to physically
+delete the dead code is a deliberate follow-up decision, not something
+to do as a side effect of an unrelated change.
 
 **Satellites, structurally (`js/modules/ui/canvas-satellites.js`):** one
 registry array (`id`, `icon`, `pos()`, `isActive()`, `isOn()` for
@@ -303,14 +367,168 @@ one `render(ctx)`, one hit-test + its own tap-vs-hold gesture state
 (`handleDown/Move/Up`). Anchors (debug-btn/aims-btn/painting-btn) stay
 real HTML — only their satellites moved; positions read `--safe`/
 `--pad-size` live off `:root`, same source of truth the CSS used before.
-Geometry: aims-sat/paint-sat share the clean (radius, angle) template
-already established (0.70×pad+7.5px, -15°/10°/35°); dbg-sat kept its
-original hand-tuned absolute factors verbatim — nobody asked for that
-fan reshaped, only moved off HTML. Anything that used to anchor off a
-satellite's `getBoundingClientRect()` (e.g. `tetris-fan.js`'s popup
-position) now calls `CanvasSatellites.getRect(id)` instead — same
-shape, live, no DOM element required. One real side effect worth
-knowing: satellites now render on the canvas (`z-index: 0`) instead of
-as `z-index: 55` DOM elements — harmless given the established layout
-keeps them clear of other HTML, but worth remembering if a future
-element ever needs to sit between them.
+Geometry: EVERY fan (dbg-sat, aims-sat, paint-sat) now shares the exact
+same shape — radius `1.050×pad`, rays at `-32°/16°/40°` (aims-sat/
+paint-sat use the first three of dbg-sat's five, mirrored: `dx` negated,
+since dbg-sat opens right off the left-edge debug-btn and the other two
+open left off right-edge anchors) — reverse-engineered from dbg-sat's
+own hand-tuned factors (confirmed correct by direction) rather than a
+separately-invented template, and verified by script to 0.02px symmetry.
+`_hitTest` and `AimsCast`'s tie-break both iterate/prefer back-to-front
+(later registry entries win on overlap), matching render order, so a
+tap always goes to whatever's visibly on top even where fans overlap.
+Anything that used to anchor off a satellite's `getBoundingClientRect()`
+(e.g. `tetris-fan.js`'s popup position) calls `CanvasSatellites.getRect(id)`
+instead — same shape, live, no DOM element required. One real side
+effect worth knowing: satellites render on the canvas (`z-index: 0`)
+instead of as `z-index: 55` DOM elements — harmless given the
+established layout keeps them clear of other HTML, but worth
+remembering if a future element ever needs to sit between them.
+
+**Standing rule — AIMS always has a charge delay.** A real touch must
+be held for `AIMS_CHARGE_MS` (`js/modules/input/input.module.js`,
+currently 99ms) before AIMS captures it at all. Below that threshold, a
+touch that releases early never fires anything into the aim chain — no
+profile `onDown`, no downstream event — as if it never happened. This
+gives the user a moment to "chill" before a touch commits, and a moment
+to bail on an accidental graze before it does anything; it is not
+tunable-away per feature, it's how AIMS accepts a touch, period. Every
+future profile or AIMS-driven interaction goes through this same delay
+— don't build a new touch-start path that skips it.
+
+Visual confirmation: the aim reticle is BLUE and full-opacity ("sharp")
+for exactly as long as a touch is actively captured and driving it right
+now (`InputModule.aimsCaptured`); RED and dimmer otherwise — whether
+AIMS is idle (on, nothing touching) or a touch is still mid-charge,
+hasn't cleared the delay yet. Red → blue is the user's confirmation that
+capture actually happened, not just that they touched the screen.
+
+**The Tap Bulb — the one deliberate exception to "every touch is aim-
+routed."** When a captured gesture releases, a large (`BULB_RADIUS`,
+45 screen px vs. the aim's own ~7px) gold/amber circle appears at the
+REAL release position — not the aim's position, which a profile like
+Trackpad may have moved somewhere else entirely. Tapping the bulb fires
+one fresh tap at the aim's current position, checked with a plain,
+real, normal hit-test (real finger x/y against the bulb's real x/y) —
+overriding AIMS entirely for exactly that one tap, no charge delay, no
+profile involved. This exists because "placing the cursor" via a
+profile can strand your actual finger somewhere comfortable while the
+aim ends up somewhere far away or awkward to reach — the bulb lets you
+confirm/re-fire that placement with an easy, nearby, ordinary tap
+instead of reaching back to wherever the aim visually sits. It clears
+itself when tapped, when a new AIMS gesture starts elsewhere (a fresh
+placement retires the old one), or when AIMS is turned off.
+
+**AimsEdge — reaching every corner, not just the ones the base offset
+favors (`js/core/aims-edge.js`).** `Aims.aim.offsetX/offsetY` always
+pushes up-and-left (the historical finger-bias constants). That's fine
+in the middle of the screen; it actively fights you near the left/top
+edges (pushes further off-screen) while being free help near the
+right/bottom edges (pulls away from them). The 4th aims-sat satellite
+(`aims-sat-mirror`, ⇄) exists to fix that, and ONLY matters for Profile
+3/Offset — Trackpad and Joystick never read `offsetX/offsetY` at all.
+
+The real hardware input is always the thumb (x, y). The offset is what
+gets added on top of it. Two guarantees hold always, in every mode:
+
+1. **The cursor (thumb + offset) is never drawn outside the screen.**
+   `AimsEdge.clamp()` is unconditional — no mode check, no exception.
+   Clamps to `[AUTOMATE_CLAMP_INSET, extent - AUTOMATE_CLAMP_INSET]` —
+   "push it back to where it needs to be, which is the last pixels of
+   the map." `ZoomEnhancer`'s box has its own box-aware version of the
+   same unconditional clamp (accounts for `BOX_SIZE`, since the whole
+   box has to stay on-screen, not just its corner).
+2. **Inside the last 5% of width/height near an edge, the offset
+   automatically shrinks and, if pushed further, reverses.** A "quick
+   camera-like fix" — the same idea a 3rd-person game camera uses to
+   pull in and reorient so nothing behind it hides the character.
+   `EDGE_MARGIN_PCT = 0.05` — 5% of the relevant screen dimension, not
+   a fixed pixel count.
+
+**What's tested for edge-proximity is the CURSOR (thumb + offset), not
+the raw thumb position.** A thumb sitting comfortably in the screen
+center can still have its offset-displaced cursor sitting right at an
+edge — that displaced position is what's actually at risk, not the
+thumb. `computeSign()` adds the offset internally before ever measuring
+distance to an edge. It also takes an optional `(elemW, elemH)` — 0 for
+a point (the crosshair), `BOX_SIZE` for `ZoomEnhancer`'s box — since a
+box's leading edge in the direction it's pushed is offset from its own
+anchor by its own size, where a point's isn't. This only changes WHICH
+edge gets measured from; the 5% margin itself never scales with element
+size ("don't spread its distance too much, spacing always needs to be
+kept").
+
+**Manual and automate differ in shape, not in these two guarantees:**
+
+- **Tap** cycles 4 states: normal → x-eligible → y-eligible →
+  both-eligible → normal. "Eligible," not "reversed" — x/y/both SELECT
+  which axis is *allowed* to shrink/reverse when its own edge is caught;
+  the axis not selected stays flat +1 regardless of position. A
+  deliberate HARD threshold, independent per axis — fully reversed
+  inside the 5% margin, fully normal outside it, no blend. Manual is a
+  yes/no, on purpose.
+- **Hold** toggles `automate`, overriding the manual cycle while on.
+  Both axes are always eligible together, and — this is the part that
+  needed real correcting, twice — they shrink and reverse by ONE SHARED
+  SCALE, not two independent per-axis values. `computeSign()` computes
+  a "trouble" fraction per axis (0 = safe, 1 = a full margin past the
+  edge, 0.5 = exactly at it — offset scaled to zero there), takes the
+  WORSE of the two axes, and applies that single resulting scale to
+  *both* `offsetX` and `offsetY` equally. Scaling the axes independently
+  could point the offset in a different direction than it started;
+  scaling both by the same factor only ever changes its length — "keep
+  the ratio so the feeling be the same." Verified: with a base offset of
+  (-20,-50) (ratio 2.5), the effective offset shrinks smoothly through
+  (-16,-40) → (-4,-10) → (+6,+15) as the thumb approaches and then
+  passes an edge — the 2.5 ratio holds at every single step, including
+  through the zero-crossing into reversal. This is also the "tween
+  slide": no timer, no animation state machine — the scale is a pure
+  function of a position that's already moving smoothly, recomputed
+  fresh every call, same "always live, never cached" principle as
+  everything else here.
+- **`ZoomEnhancer` reuses the exact same `computeSign()`** for its own
+  magnifier box placement (`BOX_OFFSET_X/Y`) — the identical problem,
+  just for a 100×100 box instead of a point. One shared function, two
+  callers, not two parallel implementations of the same idea.
+- **Geometry note:** `aims-sat-mirror` sits at -7°, not one of dbg-sat's
+  five original rays (-32°/16°/40°/64°/88°). The standard full radius
+  genuinely has no room for a 4th ray at 64° or 88° in this specific
+  column — `painting-btn` sits directly below `aims-btn`, where
+  `debug-btn` has open space instead — so -7° fills the real 48°-wide
+  gap between the -32° and 16° rays, verified collision-free by script
+  against every button and every other satellite in the fan, at the
+  same radius as the rest (not a shrunk one).
+
+**Standing rule — Canvas play and Panel play are separate domains, not
+two gestures competing for one tap.** A canvas-space touch means one of
+two genuinely different things depending on which STATE the app is
+currently in — Simulation (`!DebugRouter.masterEnabled`) or Debug/Panel
+(`DebugRouter.masterEnabled`) — and `DebugRouter.masterEnabled` is
+already the one clean, existing boundary between them:
+
+- **Simulation state:** canvas touch → `SelectionTool` (planet capture,
+  if on) or `InPlanet` (world spawn/charge). "Canvas play."
+- **Debug/Panel state:** canvas touch → debug's own marquee/Selection
+  Box (grouping/moving multiple PANELS, `in-debug.js`). "Panel play."
+
+These do NOT take turns based on which tool the user happens to have
+toggled on — `SelectionTool.enabled` being true does not, and should
+never, make the debug marquee defer to it, and vice versa. A fix that
+made one "win" over the other via a shared conditional (`!SelectionTool
+.enabled` gating the marquee) shipped once and was wrong — it silently
+broke the debug's own Selection Box the instant SelectionTool was
+turned on, which is a real bug, not a tradeoff. `DebugRouter
+.masterEnabled` is checked explicitly everywhere this boundary matters
+(`in-debug.js`'s marquee-arming, `input.module.js`'s `SelectionTool
+.handleDown/Move/Up` in both the normal 'world' gesture and the
+AIMS-routed chain) rather than inferred from which handler happened to
+claim the touch first.
+
+This generalizes past just these two systems: **any HTML button, tool,
+or gesture can legitimately have a different job — or no job at all —
+depending on whether the app is currently in Simulation or Debug/Panel
+state**, and that's a real design shape to build with on purpose, not
+an edge case to special-case around after the fact. When adding a new
+canvas-space interaction, ask which state(s) it belongs to before
+wiring it in, the same way `InPlanet`'s world-spawn already explicitly
+excludes itself during Debug/Panel state.

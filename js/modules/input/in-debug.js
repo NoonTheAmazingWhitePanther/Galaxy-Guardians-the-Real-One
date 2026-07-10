@@ -39,6 +39,7 @@ import { resolveVariable, resolveDynamicMax } from '../debug/governor.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
 import { InputState } from './input.module.js';
 import { SatBlobs } from '../debug/sat-blobs.js';
+import { SelectionTool } from './in-selection-tool.js';
 
 // "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
 // debug+panel mode → a selection rectangle. On release, every panel it caught
@@ -495,7 +496,19 @@ export const InDebug = {
     // ── 5. Empty space (debug + panel mode): arm the marquee ──────────
     // Nothing was hit. Claim primary-button presses for the hold-to-select
     // rectangle. Sticky pan lock keeps its meaning — never steal from it.
-    if (DebugRouter.masterEnabled && !DebugRouter._consoleMode &&
+    //
+    // FIX: this used to claim EVERY empty-canvas tap unconditionally
+    // whenever debug was on, with no check for SelectionTool.enabled at
+    // all — meaning Selection Tool silently never worked whenever debug
+    // mode happened to be on too, even though SelectionTool.enabled was
+    // true and the button showed active. "Selection tool always work
+    // when it is on Only, no matter where inside the App" means exactly
+    // this: SelectionTool.enabled must win the tap, not lose to whatever
+    // else happens to also be on. This is a genuinely different selection
+    // gesture (debug PANEL marquee vs. SelectionTool's PLANET capture) —
+    // only one can own a given tap, and the one the user explicitly
+    // turned on is the one that should.
+    if (DebugRouter.masterEnabled && !DebugRouter._consoleMode && !SelectionTool.enabled &&
         (e.button === 0 || e.button === undefined) && !InputState.panLocked) {
       const pt = this._toPanel(e.clientX, e.clientY);
       const m = {

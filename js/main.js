@@ -186,14 +186,13 @@ export function init() {
 
   const aimsBtn = document.getElementById('aims-btn');
   if (aimsBtn) {
-    // TAP = on/off (unchanged). HOLD = switch resolution mode (Real ⇄
-    // Fake) — previously a no-op; this is what that long-press does now.
-    // See rules.md §8.
+    // TAP = on/off (unchanged). HOLD = cycle profile — Trackpad → Joystick
+    // → Offset → Trackpad. See aims-profiles.js and rules.md §8.
     let aimsTimer = null, aimsHeld = false;
     const aimsClearTimer = () => { if (aimsTimer) { clearTimeout(aimsTimer); aimsTimer = null; } };
     const aimsSyncTitle = () => {
       const state = InAims.enabled ? 'ON' : 'OFF';
-      aimsBtn.title = `Toggle AIMS Input — ${state}, mode: ${InAims.mode.toUpperCase()} (hold to switch mode)`;
+      aimsBtn.title = `Toggle AIMS Input — ${state}, profile: ${InAims.mode.toUpperCase()} (hold to cycle profile)`;
     };
     aimsBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -201,7 +200,7 @@ export function init() {
       aimsHeld = false;
       aimsTimer = setTimeout(() => {
         aimsHeld = true;
-        InAims.toggleMode();
+        InAims.cycleProfile();
         aimsSyncTitle();
         aimsBtn.classList.add('mode-flash');
         setTimeout(() => aimsBtn.classList.remove('mode-flash'), 200);
@@ -283,6 +282,11 @@ export function init() {
   window.Sim.PaintingState = PaintingState;
   window.Sim.BurnMap = BurnMap;
   window.Sim.SelectionTool = SelectionTool;
+  // finalPointerX/Y (InputState) — the one canonical "where the effective
+  // click/drag is right now" value: the aim while AIMS is on, the real
+  // pointer while it's off. Exposed globally so nothing has to reach into
+  // input.module.js's internals to read it. See rules.md §8.
+  window.Sim.InputState = InputState;
   window.Sim.ZoomEnhancer = ZoomEnhancer;
   // 📏 paint-sat-size (canvas-satellites.js) — reset brush size/spacing/
   // density overrides to Auto defaults. HOLD (density/spacing alternation
@@ -351,64 +355,211 @@ function runPreCalc() {
   return preCalcCounter >= CONFIG.physics.VAULT_SIZE;
 }
 
+// FIX: used to hide itself whenever the pointer wasn't currently down —
+// the opposite of "always show the aim's last position so the user
+// knows." The caller (below, in the render loop) already gates this
+// entirely on InAims.enabled; this function just draws, unconditionally,
+// every time it's called.
+//
+// Also simplified: used to draw a separate "effective position" (aim.ex/
+// ey = aim.x/y + a fixed offset) with a bias line back to the raw touch
+// point. That made sense when AIMS had exactly one behavior (apply a
+// fixed offset to wherever you tapped). Now there are three profiles
+// (aims-profiles.js) with three different relationships between a touch
+// and the aim — Trackpad's delta, Joystick's hold-and-lean, Offset's
+// fixed bias — and aim.x/y IS the final, authoritative position in every
+// one of them. Drawing a second "effective" point off of it doesn't mean
+// anything for Trackpad/Joystick, and would double-apply Offset's own
+// bias. One reticle, at the one real position, is honest for all three.
+//
+// Color state, per direction: BLUE + sharp once a touch has cleared the
+// charge delay and is actively driving the aim right now
+// (InputModule.aimsCaptured); RED otherwise — idle (AIMS on, nothing
+// touching), or mid-charge (touching, but hasn't cleared the delay yet).
+// "Sharp" = full opacity / crisp, vs a dimmer, softer look while not
+// captured — still fully visible either way ("always show the last
+// position"), just visually distinct from "currently engaged."
 function _drawAimCursor(ctx) {
-  if (!InputState.isPointerDown && !Aims.aim._active) return;
   const ax = Aims.aim.x;
   const ay = Aims.aim.y;
-  const ex = Aims.aim.ex;
-  const ey = Aims.aim.ey;
-  const r = Aims.aim.radius;
+  const r  = Aims.aim.radius;
   const dpr = DEBUG_STATE.dpr || 1;
+  const captured = InputModule.aimsCaptured;
+
+  const c = captured
+    ? { ring: 'rgba(90, 170, 255, 0.95)',  fill: 'rgba(90, 170, 255, 0.10)',  cross: 'rgba(90, 170, 255, 1.0)',  dot: 'rgba(255, 255, 255, 0.95)' }
+    : { ring: 'rgba(255, 80, 80, 0.55)',   fill: 'rgba(255, 80, 80, 0.04)',   cross: 'rgba(255, 80, 80, 0.65)',  dot: 'rgba(255, 190, 190, 0.7)'  };
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   const sx = ax * dpr, sy = ay * dpr;
-  const sex = ex * dpr, sey = ey * dpr;
   const sr = r * dpr;
 
-  if (ax !== ex || ay !== ey) {
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.lineTo(sex, sey);
-    ctx.strokeStyle = 'rgba(255, 200, 80, 0.7)';
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.setLineDash([4 * dpr, 4 * dpr]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.beginPath();
-    ctx.arc(sx, sy, 5 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255, 160, 40, 0.85)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-    ctx.lineWidth = 1 * dpr;
-    ctx.stroke();
-  }
-
   ctx.beginPath();
-  ctx.arc(sex, sey, sr, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(100, 200, 255, 0.75)';
+  ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+  ctx.strokeStyle = c.ring;
   ctx.lineWidth = 1.5 * dpr;
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(sex, sey, sr, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(100, 200, 255, 0.06)';
+  ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+  ctx.fillStyle = c.fill;
   ctx.fill();
 
   const cs = 6 * dpr;
-  ctx.strokeStyle = 'rgba(100, 200, 255, 0.9)';
+  ctx.strokeStyle = c.cross;
   ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath();
-  ctx.moveTo(sex - cs, sey); ctx.lineTo(sex + cs, sey);
-  ctx.moveTo(sex, sey - cs); ctx.lineTo(sex, sey + cs);
+  ctx.moveTo(sx - cs, sy); ctx.lineTo(sx + cs, sy);
+  ctx.moveTo(sx, sy - cs); ctx.lineTo(sx, sy + cs);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(sex, sey, 2.5 * dpr, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.arc(sx, sy, 2.5 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = c.dot;
   ctx.fill();
+  ctx.restore();
+}
+
+// AIMS Tap Bulb — appears at the REAL release position after a captured
+// gesture, big and easy to hit on purpose (InputModule's BULB_RADIUS,
+// 15 screen px vs. the aim's own ~7px radius). Gold/amber family, not the
+// aim's blue/red — a visually distinct control, not another aim state.
+// Six states, six distinct looks (InputModule.bulbState.state):
+//   hidden      — nothing drawn.
+//   idle        — soft breathing gold glow, waiting to be tapped.
+//   held        — bright filled gold ring, real immediate press feedback.
+//   cancelling  — held but slid outside its own radius — warns by
+//                 shifting toward red BEFORE anything is decided; release
+//                 now and it won't fire, slide back in and it's held
+//                 again.
+//   confirmed   — DID fire. A bright ring expands outward and fades —
+//                 the standard "success ping" motion.
+//   cancelled   — did NOT fire. A red ring contracts inward and fades —
+//                 deliberately the opposite motion from confirmed, so
+//                 the two flashes never read as the same thing even at
+//                 a glance.
+function _drawAimsBulb(ctx) {
+  const b = InputModule.bulbState;
+  if (b.state === 'hidden') return;
+
+  const dpr = DEBUG_STATE.dpr || 1;
+  const sx = b.x * dpr, sy = b.y * dpr, sr = b.radius * dpr;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  if (b.state === 'held') {
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 200, 80, 0.22)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 200, 80, 1.0)';
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+
+  } else if (b.state === 'cancelling') {
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 70, 60, 0.18)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 90, 70, 0.9)';
+    ctx.lineWidth = 3 * dpr;
+    ctx.setLineDash([5 * dpr, 4 * dpr]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+  } else if (b.state === 'confirmed') {
+    const p = 1 - b.flashRemain;   // 0 → 1 over the flash duration
+    const r = sr * (1 + 0.6 * p);
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 220, 140, ${(0.9 * (1 - p)).toFixed(3)})`;
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+
+  } else if (b.state === 'cancelled') {
+    const p = 1 - b.flashRemain;   // 0 → 1 over the flash duration
+    const r = sr * (1 - 0.5 * p);
+    ctx.beginPath();
+    ctx.arc(sx, sy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 90, 70, ${(0.9 * (1 - p)).toFixed(3)})`;
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+
+  } else {
+    // idle
+    const pulse = 0.75 + 0.25 * Math.sin(performance.now() / 260);
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 200, 80, ${(0.08 * pulse).toFixed(3)})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 200, 80, ${(0.55 * pulse).toFixed(3)})`;
+    ctx.lineWidth = 2 * dpr;
+    ctx.stroke();
+  }
+
+  // Center dot — the exact real touch point the bulb is anchored to.
+  // Skipped during confirmed/cancelled — the expanding/contracting ring
+  // alone reads more clearly as "done" without a static dot competing
+  // with it.
+  if (b.state !== 'confirmed' && b.state !== 'cancelled') {
+    ctx.beginPath();
+    ctx.arc(sx, sy, 3 * dpr, 0, Math.PI * 2);
+    ctx.fillStyle = b.state === 'cancelling' ? 'rgba(255, 160, 150, 0.9)' : 'rgba(255, 220, 140, 0.9)';
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// Live status readout, placed just below the aim reticle — "what is the
+// touch event triggered" made visible as text, not just inferred from
+// the reticle's color. Prioritizes the bulb's state when it's showing
+// anything (it's the more specific, more immediate thing happening);
+// otherwise shows the aim's own phase (idle/charging/captured) and
+// which profile is active. Always anchored to the AIM's position, even
+// when reporting on the bulb — the bulb has its own real position
+// elsewhere on screen (that's the whole point of it), but this label
+// lives with the cursor, not with whatever else is happening.
+function _aimsStatusText() {
+  const b = InputModule.bulbState;
+  if (b.state !== 'hidden') return `BULB · ${b.state.toUpperCase()}`;
+
+  const phase = InputModule.aimsPhase.toUpperCase();
+  if (phase === 'CHARGING') return 'CHARGING…';
+  return `${phase} · ${InAims.mode.toUpperCase()}`;
+}
+
+function _drawAimsStatus(ctx) {
+  const dpr = DEBUG_STATE.dpr || 1;
+  const s = DEBUG_STATE.style;
+  const text = _aimsStatusText();
+
+  const sx = Aims.aim.x * dpr;
+  const sy = (Aims.aim.y + Aims.aim.radius + 16) * dpr;
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.font = `${10 * dpr}px ${s.font}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const padX = 6 * dpr, padY = 3 * dpr;
+  const w = ctx.measureText(text).width + padX * 2;
+  const h = 14 * dpr;
+
+  ctx.beginPath();
+  ctx.roundRect(sx - w / 2, sy - h / 2, w, h, 4 * dpr);
+  ctx.fillStyle = s.bg;
+  ctx.fill();
+  ctx.strokeStyle = s.border;
+  ctx.lineWidth = 1 * dpr;
+  ctx.stroke();
+
+  ctx.fillStyle = s.textDim;
+  ctx.fillText(text, sx, sy + 0.5 * dpr);
   ctx.restore();
 }
 
@@ -550,6 +701,7 @@ function mainLoop(t) {
 
   CameraModule.tick();
   if (window.Sim?.updatePanPad) window.Sim.updatePanPad();
+  InputModule.aimsTick();
 
   // ✅ FIX: Use RenderGov from unified governor
   const _camVel = Math.abs(CameraModule.cam.zoom - CameraModule.cam.targetZoom) * 100
@@ -618,12 +770,12 @@ function mainLoop(t) {
     // above. Drawn after panels so a satellite never renders under one.
     CanvasSatellites.render(ctx);
 
-    // BUG FIX: this used to run unconditionally every frame. Internally it
-    // only checks isPointerDown/Aims.aim._active — and isPointerDown goes
-    // true on EVERY tap anywhere in the app, not just AIMS-relevant ones,
-    // so the crosshair was drawing on every single tap, debug open or not,
-    // AIMS on or not. Gated on InAims.enabled now, matching ZoomEnhancer above.
-    if (InAims.enabled) _drawAimCursor(ctx);
+    // Persistent aim reticle — visible for exactly as long as AIMS is
+    // enabled, regardless of pointer state, so the aim's last position is
+    // always visible ("always show... so the user knows", per direction).
+    // Never visible while disabled. See _drawAimCursor's own header for
+    // why it no longer draws a separate offset/bias line.
+    if (InAims.enabled) { _drawAimCursor(ctx); _drawAimsBulb(ctx); _drawAimsStatus(ctx); }
   }
 
   if (cursorEl) {

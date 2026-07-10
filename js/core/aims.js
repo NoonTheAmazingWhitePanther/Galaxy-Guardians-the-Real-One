@@ -2,6 +2,26 @@
  * js/core/aims.js
  * AIMS — Adaptive Input Map System
  *
+ * STATUS: the pixel-bitmap engine this file originally implemented
+ * (register/registerElement/rebuild/_resolve/fire/bindPointer, described
+ * below) is no longer called from anywhere in the live input path — see
+ * rules.md §8 for the current architecture (three profiles in
+ * aims-profiles.js drive a persistent aim point, synthesized events fire
+ * at the aim into the same chain a real touch uses). Left in place, not
+ * deleted, because the parts still genuinely used live in the same
+ * object: `_aim.x/y` (the one authoritative aim position every profile
+ * writes to), `_aim.offsetX/offsetY` (Profile 3/Offset's fixed bias),
+ * `_aim.radius` (the reticle's drawn size in main.js's _drawAimCursor).
+ * Whether to physically delete the dead bitmap code is a deliberate
+ * follow-up decision, not something to do as a side effect of an
+ * unrelated change.
+ *
+ * The rest of this header describes the ORIGINAL, now-unused design —
+ * kept for historical context on the bitmap concepts (item/layer/map),
+ * not as a guide to how to use this file today. Don't call register(),
+ * registerElement(), Aims.aim.moveTo/fire/down/up, or bindPointer()
+ * expecting them to do anything in the live app.
+ *
  * A pixel-perfect virtual input layer.
  * Maintains a spatial registry of every interactive element on screen
  * (HTML buttons, canvas regions, custom zones) indexed by x,y position.
@@ -34,7 +54,7 @@
  *   LOADING SCREEN HOOK — aims.rebuild() can be called during loading
  *     to pre-register all items before first frame. Valid items from frame 0.
  *
- * USAGE:
+ * NOT-LIVE USAGE EXAMPLE (historical — see the STATUS note above):
  *   import { Aims } from '../../core/aims.js';
  *
  *   // Register items
@@ -85,7 +105,13 @@ let _screenH = window.innerHeight;
 
 // ── Aim State ─────────────────────────────────────────────────────────────
 const _aim = {
-  x: 0, y: 0,
+  // Screen center, not (0,0) — this used to not matter (the old design
+  // always jumped aim.x/y straight to the first real touch coordinate).
+  // Now Trackpad/Joystick move the aim RELATIVELY from wherever it
+  // already is (see aims-profiles.js), so a sensible starting point
+  // actually matters the first time AIMS is ever turned on.
+  x: (typeof window !== 'undefined' ? window.innerWidth  / 2 : 0),
+  y: (typeof window !== 'undefined' ? window.innerHeight / 2 : 0),
   offsetX: AIM_OFFSET_X,
   offsetY: AIM_OFFSET_Y,
   radius:  AIM_RADIUS,

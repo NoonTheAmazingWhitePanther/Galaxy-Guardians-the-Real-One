@@ -2,24 +2,36 @@
  * js/modules/input/in-aims.js
  * AIMS binding layer for Galaxy Guardians.
  *
- * AIMS is a 2D ray cast (see core/aims-cast.js) applied to touch input:
- * ONE resolution function, cast(x, y, radius), used every time — never a
- * separate "different input module" taking over. Only the numbers change.
+ * AIMS drives a persistent aim point (Aims.aim.x/y) through one of three
+ * PROFILES (aims-profiles.js — Trackpad / Joystick / Offset), and fires
+ * synthesized events at the aim into the same "virtual space" chain a
+ * real touch would use. Never "a different input module taking over" —
+ * the downstream code (debug panels, satellites, world) can't tell an
+ * aim-driven event from a real one; only the coordinates, and which
+ * profile is computing them, differ. See rules.md §8.
  *
  * SCOPE (rules.md §8 — "HTML buttons are a no-go for AIMS"):
  *   - satellite buttons (dbg-sat / aims-sat / paint-sat), while active
  *   - debug panels (canvas-drawn, "virtual space")
- *   - nothing else. HTML buttons/bars always use plain native touch.
+ *   - world/canvas (planet charging, brush painting)
+ *   - nothing else. HTML buttons/bars always use plain native touch,
+ *     via their own direct listeners — never reachable through AIMS.
  *
  * Toggle: InAims.enable() / InAims.disable() / Tab key.
- * Long-press aims-btn (main.js): InAims.toggleMode() — 'fake' (default,
- * tight radius) ⇄ 'real' (full finger-size radius) — same cast() either
- * way, just a different radius. See rules.md §8.
+ * Long-press aims-btn (main.js): InAims.cycleProfile() — Trackpad →
+ * Joystick → Offset → Trackpad. Tap still toggles on/off.
+ *
+ * The aim is ALWAYS visible while enabled (main.js's _drawAimCursor —
+ * no longer gated on pointer-down state) and NEVER visible while
+ * disabled — "always show the last position so the user knows," per
+ * direction. Aims.aim.x/y is untouched while AIMS is off, so turning it
+ * back on resumes exactly where the aim was left, not wherever the
+ * finger currently is.
  */
 
-import { Aims }              from '../../core/aims.js';
 import { AimsCast }          from '../../core/aims-cast.js';
-import { CanvasSatellites }  from '../ui/canvas-satellites.js';
+import { AimsProfiles }      from './aims-profiles.js';
+import { DEBUG_STATE }       from '../debug/debug-state.js';
 
 // ── Injected deps (no circular imports) ──────────────────────────────────
 let _canvas     = null;
@@ -28,55 +40,19 @@ let _InUI       = null;
 let _InDebug    = null;
 let _enabled    = false;
 
-// Radius presets — the ONLY thing that differs between modes. 'real' reuses
-// the historical AIM_RADIUS (core/aims.js) finger-size constant; 'fake' is
-// deliberately tight (mostly leans on the offset alone, minimal extra
-// forgiveness) so the two feel meaningfully different to hold-switch between.
-const FAKE_RADIUS = 2;
-
 // ── Public API ────────────────────────────────────────────────────────────
 export const InAims = {
 
   get enabled() { return _enabled; },
 
-  _mode: 'fake',
-  get mode() { return InAims._mode; },
-  toggleMode() {
-    InAims._mode = (InAims._mode === 'fake') ? 'real' : 'fake';
-    console.log('[InAims] mode →', InAims._mode, '(radius', InAims.castRadius + 'px)');
-    return InAims._mode;
-  },
-  get castRadius() {
-    return InAims._mode === 'real' ? Aims.aim.radius : FAKE_RADIUS;
-  },
-
-  /**
-   * THE resolution function. One cast, at (x, y) with the current mode's
-   * radius, against every live satellite + debug panel — read fresh, every
-   * single call, straight off the DOM/panel state, never from a cache.
-   * Called from InputModule._deferAimsRetry, already one loop cycle after
-   * the original miss, so doing real, live work here (not reading from
-   * anything pre-built) is "slow but only once": paid exactly once per
-   * unresolved tap, never proactively, never on a timer, nothing to keep
-   * in sync by hand — the reason `syncDebugPanels()` used to have to be
-   * called from a dozen places elsewhere whenever a panel moved.
-   */
-  resolve(x, y) {
-    const hit = AimsCast.cast(x, y, InAims.castRadius);
-    if (!hit) return false;
-
-    if (hit.type === 'satellite') {
-      CanvasSatellites.fireTap(hit.satellite);
-      return true;
-    }
-    if (hit.type === 'panel') {
-      _InDebug?.handleDown?.({
-        clientX: x, clientY: y, pointerId: 0,
-        preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {}
-      });
-      return true;
-    }
-    return false;
+  // Delegates to AimsProfiles — one source of truth for which profile is
+  // active, not a separately-tracked mirror of it.
+  get profile() { return AimsProfiles.active; },
+  get mode() { return AimsProfiles.active.label; },   // display name for the title/HUD
+  cycleProfile() {
+    const p = AimsProfiles.cycle();
+    console.log('[InAims] profile →', p.label);
+    return p;
   },
 
   // Show/Hide Map — debug-only overlay toggle for aims-sat-showmap. The
@@ -98,7 +74,7 @@ export const InAims = {
   enable() {
     if (_enabled) return;
     _enabled = true;
-    console.log('[InAims] AIMS enabled | mode:', InAims._mode);
+    console.log('[InAims] AIMS enabled | profile:', AimsProfiles.active.label);
   },
 
   disable() {
@@ -118,27 +94,42 @@ export const InAims = {
 
   /**
    * Refresh — aims-sat-refresh's action. Under the old bitmap design this
-   * force-rebuilt the registration cache; there's no cache left to
-   * rebuild, so this is now a confirmation no-op rather than invented new
-   * behaviour. Logs so the button still visibly does SOMETHING on tap
-   * rather than feeling dead.
+   * force-rebuilt a registration cache; under the current profile-driven
+   * model there's no cache or resolution step to refresh at all — AIMS
+   * routes every touch live, through whichever profile is active. Kept as
+   * a confirmation no-op rather than invented new behaviour, so the
+   * button still visibly does SOMETHING on tap rather than feeling dead.
    */
   refresh() {
-    console.log('[InAims] cast() reads live state on every call — nothing to refresh.');
+    console.log('[InAims] nothing to refresh — AIMS routes every touch live now.');
   },
+
+  /**
+   * "Show Map" (aims-sat-showmap) — diagnostic overlay only, not what
+   * AIMS actually resolves against anymore (there's no resolution step;
+   * see the header comment). Still useful as a live view of the two
+   * "virtual space" categories §8 defines — satellites and debug panels
+   * — via AimsCast.allCandidates(), which is otherwise unused now.
+   */
 
   debugDraw(ctx, showMap = false) {
     if (!_enabled || !showMap) return;
     // Live visualization of the ACTUAL current cast candidates — every
     // satellite + panel cast() would consider right now — rather than a
     // rasterized snapshot of a pixel map that could silently go stale.
+    //
+    // FIX: dpr was hardcoded to 1 here — same bug class as the satellites
+    // and overlays.js had (setTransform to raw device-pixel identity,
+    // then drawing CSS-pixel-equivalent coordinates unscaled). Every rect
+    // was landing squished toward the top-left corner instead of over
+    // its actual candidate — the "blue rectangle near debug-btn" report.
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const dpr = 1;
+    const dpr = DEBUG_STATE.dpr || 1;
     for (const c of AimsCast.allCandidates()) {
       ctx.strokeStyle = c.type === 'panel' ? 'rgba(130,210,255,0.6)' : 'rgba(255,200,80,0.6)';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.setLineDash([4 * dpr, 3 * dpr]);
       ctx.strokeRect(c.rect.left * dpr, c.rect.top * dpr, c.rect.width * dpr, c.rect.height * dpr);
     }
     ctx.setLineDash([]);

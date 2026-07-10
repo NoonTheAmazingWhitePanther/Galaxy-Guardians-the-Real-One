@@ -25,6 +25,7 @@ import { DEBUG_STATE }  from '../debug/debug-state.js';
 import { DebugRouter }  from '../debug/debug-router.js';
 import { PaintingState } from '../../core/painting-state.js';
 import { ZoomEnhancer }  from '../ui/zoom-enhancer.js';
+import { AimsEdge }      from '../../core/aims-edge.js';
 
 const HOLD_MS = 600; // matches main.js's old satWireHold threshold
 
@@ -110,6 +111,20 @@ const _sats = [
     pos: (s, p) => _mirrorFan(s + p * 3 + 12, 40, s, p),
     isActive: () => window._InAims?.enabled,
     onTap: () => ZoomEnhancer.toggle() },
+  // -7°, not one of dbg-sat's five rays — the standard full radius
+  // (1.050×pad) genuinely has no room for a 4th satellite at any of
+  // dbg-sat's remaining angles (64°/88°) in THIS column: painting-btn
+  // sits directly below aims-btn (debug-btn has open space below it
+  // instead), so those angles collide with it. -7° sits in the real
+  // 48°-wide gap between the -32° and 16° rays instead — verified
+  // collision-free by script against every button and every other
+  // satellite in this fan, same radius as the rest, not a shrunk one.
+  { id: 'aims-sat-mirror', family: 'aims', icon: '⇄',
+    pos: (s, p) => _mirrorFan(s + p * 3 + 12, -7, s, p),
+    isActive: () => window._InAims?.enabled,
+    isOn: () => AimsEdge.automate || AimsEdge.mode !== 'normal',
+    onTap: () => AimsEdge.cycleMode(),
+    onHold: () => AimsEdge.toggleAutomate() },
 
   // ── paint-sat — fanned left off painting-btn ─────────────────────────
   { id: 'paint-sat-pause', family: 'paint', icon: '⏸',
@@ -136,8 +151,22 @@ function _visibleSats() {
   const { safe, pad } = _cssVars();
   const out = [];
   for (const def of _sats) {
-    if (!def.isActive()) continue;
-    out.push({ def, rect: def.pos(safe, pad) });
+    // Defensive isolation: _visibleSats() backs BOTH render() and
+    // _hitTest() — one satellite's isActive()/pos() throwing here used
+    // to be uncaught, which would abort the WHOLE loop partway through,
+    // silently taking every other satellite down with it (none render,
+    // none respond to taps) while leaving everything else in the app
+    // (panels, HTML buttons) completely unaffected, since they don't
+    // route through this function at all. That fully explains "only
+    // console/panels work." Logged clearly instead of swallowed, so if
+    // this is what's actually happening, the next console screenshot
+    // will show exactly which satellite and why.
+    try {
+      if (!def.isActive()) continue;
+      out.push({ def, rect: def.pos(safe, pad) });
+    } catch (err) {
+      console.error(`[CanvasSatellites] "${def.id}" isActive()/pos() threw — skipped, not blocking the rest:`, err);
+    }
   }
   return out;
 }
@@ -238,21 +267,25 @@ export const CanvasSatellites = {
     ctx.textBaseline = 'middle';
 
     for (const { def, rect } of _visibleSats()) {
-      const on = def.isOn?.();
-      const w = rect.w * dpr, h = rect.h * dpr;
-      const cx = rect.cx * dpr, cy = rect.cy * dpr;
-      const x = cx - w / 2, y = cy - h / 2;
+      try {
+        const on = def.isOn?.();
+        const w = rect.w * dpr, h = rect.h * dpr;
+        const cx = rect.cx * dpr, cy = rect.cy * dpr;
+        const x = cx - w / 2, y = cy - h / 2;
 
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6 * dpr);
-      ctx.fillStyle = on ? 'rgba(30, 80, 50, 0.9)' : s.bg;
-      ctx.fill();
-      ctx.strokeStyle = on ? 'rgba(130, 255, 160, 0.5)' : s.border;
-      ctx.lineWidth = 1 * dpr;
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 6 * dpr);
+        ctx.fillStyle = on ? 'rgba(30, 80, 50, 0.9)' : s.bg;
+        ctx.fill();
+        ctx.strokeStyle = on ? 'rgba(130, 255, 160, 0.5)' : s.border;
+        ctx.lineWidth = 1 * dpr;
+        ctx.stroke();
 
-      ctx.fillStyle = on ? 'rgba(130, 255, 160, 0.95)' : s.textDim;
-      ctx.fillText(def.icon, cx, cy + 0.5 * dpr);
+        ctx.fillStyle = on ? 'rgba(130, 255, 160, 0.95)' : s.textDim;
+        ctx.fillText(def.icon, cx, cy + 0.5 * dpr);
+      } catch (err) {
+        console.error(`[CanvasSatellites] "${def.id}" failed to draw — skipped, not blocking the rest:`, err);
+      }
     }
     ctx.restore();
   }

@@ -176,8 +176,29 @@ export const TetrisFan = {
     });
 
     // dismiss on any outside tap
+    //
+    // FIX: this used to compare e.target against `anchor`, a DOM element
+    // (dbg-closeall) that hasn't existed since satellites moved to canvas
+    // rendering (canvas-satellites.js, rules.md §8) — `anchor` was never
+    // defined anywhere in this function anymore, so this listener threw
+    // ReferenceError on EVERY pointerdown across the entire app, forever,
+    // the instant this fan was opened once. It's a capture-phase listener
+    // on `window` (fires before anything else, every tap) and the throw
+    // happened before `this.close()` could ever run — which is also what
+    // removes this listener — so it never even cleaned itself up. That's
+    // "debug satellite buttons not responding": this was in the way of
+    // literally every tap in the app, not just this fan's own.
+    //
+    // The original intent — don't immediately re-close if the tap that's
+    // dismissing us was actually on the dbg-closeall trigger button
+    // itself, since CanvasSatellites.handleDown already re-toggles it —
+    // is preserved with a real coordinate check against that satellite's
+    // live rect instead of a DOM element identity check.
     this._dismiss = (e) => {
-      if (!(e.target?.classList?.contains('tetris-fan-blob')) && e.target !== anchor) this.close();
+      if (e.target?.classList?.contains('tetris-fan-blob')) return;
+      const ar = CanvasSatellites.getRect('dbg-closeall');
+      if (ar && e.clientX >= ar.left && e.clientX <= ar.right && e.clientY >= ar.top && e.clientY <= ar.bottom) return;
+      this.close();
     };
     window.addEventListener('pointerdown', this._dismiss, true);
   },
