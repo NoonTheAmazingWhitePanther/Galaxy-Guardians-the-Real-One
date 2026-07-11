@@ -1,7 +1,7 @@
 /**
  * js/modules/debug/debug-router.js
  */
-import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov, InputGov, CacheGov, TrailGov } from './governor.js';
+import { GovernorRegistry, ManualOverrides, PhysicsGov, RenderGov, InputGov, CacheGov, TrailGov, ScreenGov } from './governor.js';
 import { Panel } from './panel.js';
 import { MasterGovernor } from './master-governor.js';
 import { DEBUG_STATE } from './debug-state.js';
@@ -47,6 +47,7 @@ export const DebugRouter = {
 
     GovernorRegistry.register('PhysicsGov',      PhysicsGov);
     GovernorRegistry.register('RenderGov',        RenderGov);
+    GovernorRegistry.register('ScreenGov',        ScreenGov);
     GovernorRegistry.register('InputGov',         InputGov);
     GovernorRegistry.register('CacheGov',         CacheGov);
     GovernorRegistry.register('TrailGov',         TrailGov);

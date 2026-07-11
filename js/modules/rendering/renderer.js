@@ -19,7 +19,7 @@ import { ParticlesModule } from './particles.js';
 import { Accumulator }    from './accumulator.js';
 import { CameraModule }   from '../camera/camera.module.js';
 import { StateCache }     from '../../core/state-cache.js';
-import { state }          from '../../core/state.js';
+import { state, SUN }     from '../../core/state.js';
 import { DrawCallCounter, PassProbe } from '../debug/draw-call-counter.js';
 import { MsProbe } from '../../core/ms-probe.js';
 import { Gate } from '../../core/gate.js';
@@ -33,11 +33,19 @@ import { TrailGov } from '../debug/governor.js';
 function _drawTrailStamps(ctx, framesBodies, opts) {
   const { skip, alpha, shrink, bloom, density } = opts;
 
-  // Subsample keyframes by skip, keeping order oldest→newest.
+  // Subsample keyframes by skip — ANCHORED TO THE NEWEST FRAME.
+  // FIX (trail detaches from the planet): the old subsample walked from
+  // the oldest end (f = 0, 8, 16…), so the newest frame only survived
+  // when (len−1) happened to be divisible by skip — otherwise the trail's
+  // head stopped up to skip−1 ticks short of the body, a gap that pulsed
+  // as the buffer length changed. Walking from the newest end backwards
+  // pins the head to the body always; the cut lands at the oldest tail
+  // where nothing connects to it.
   let keys = framesBodies;
   if (skip > 1) {
     keys = [];
-    for (let f = 0; f < framesBodies.length; f += skip) keys.push(framesBodies[f]);
+    for (let f = framesBodies.length - 1; f >= 0; f -= skip) keys.push(framesBodies[f]);
+    keys.reverse();  // back to oldest→newest order
   }
   const K = keys.length;
   if (K === 0) return;
@@ -51,7 +59,29 @@ function _drawTrailStamps(ctx, framesBodies, opts) {
   for (let s = 0; s < segs; s++) {
     const A = keys[s], B = keys[s + 1];
     if (!A || !B) continue;
-    const m = Math.min(A.length, B.length);
+
+    // FIX (cross-body streaks): bodies were paired across frames by ARRAY
+    // INDEX (A[i] ↔ B[i]). Any death/merge/spawn between the two frames
+    // shifts indices, and the interpolation then connects two DIFFERENT
+    // bodies — a trail streak flying across the screen every time
+    // something dies. Snapshots carry stable ids (state-cache.js), so
+    // pair by id: a body missing from B simply ends its trail (no stamp),
+    // a body new in B has no past yet (no stamp) — both correct, neither
+    // draws a line between strangers. Pairs are built ONCE per segment
+    // (they don't change per interpolation step — the old code re-indexed
+    // inside the step loop for nothing).
+    const byId = new Map();
+    for (let i = 0; i < B.length; i++) { const bb = B[i]; if (bb) byId.set(bb.id, bb); }
+    const pairs = [];
+    for (let i = 0; i < A.length; i++) {
+      const ba = A[i];
+      if (!ba) continue;
+      const bb = byId.get(ba.id);
+      if (bb) pairs.push(ba, bb);   // flat [a0,b0,a1,b1,…] — no per-pair objects
+    }
+    const m2 = pairs.length;
+    if (m2 === 0) continue;
+
     for (let step = 0; step < perSeg; step++) {
       const tt  = step / perSeg;                       // 0..1 within segment
       const age = (s + tt) / segs;                     // 0 oldest → 1 newest
@@ -60,9 +90,8 @@ function _drawTrailStamps(ctx, framesBodies, opts) {
       const rScale = (1 - shrink * (1 - age)) * (1 + bloom * 0.8);
       if (rScale <= 0) continue;
       const aStr = a.toFixed(3);
-      for (let i = 0; i < m; i++) {
-        const ba = A[i], bb = B[i];
-        if (!ba || !bb) continue;
+      for (let i = 0; i < m2; i += 2) {
+        const ba = pairs[i], bb = pairs[i + 1];
         const cx = ba.cx + (bb.cx - ba.cx) * tt;
         const cy = ba.cy + (bb.cy - ba.cy) * tt;
         if (!Number.isFinite(cx) || !Number.isFinite(cy)) continue;
@@ -120,7 +149,16 @@ export function DrawAll(ctx, t, alpha, didPhysicsTick = false, onBeforeRestore =
   Accumulator.fadeAlpha = TrailGov.glowFade;
   // Pass ticks-this-frame so the glow window is measured in physics ticks, not
   // rendered frames: same persistence at any speed and any frame rate.
-  Accumulator.beginFrame(trailTicks);
+  // Also pass: (a) the CAMERA, so the accumulator reprojects prior layers by
+  // the camera delta instead of blitting them at stale screen positions (the
+  // sun-jumping fix — phosphor now sticks to WORLD space); (b) the SUN CLEAN
+  // ZONE in screen px, sized past the largest strong halo (5.5R → 6R), so
+  // the sun's animated rays/halos never accumulate as fog — the faint 18R
+  // god rays ghost at 0.025 alpha × age decay, i.e. invisibly.
+  const _sunSX = (SUN.x - cam.x) * cam.zoom + w / 2;
+  const _sunSY = (SUN.y - cam.y) * cam.zoom + h / 2;
+  Accumulator.beginFrame(trailTicks, cam,
+    { x: _sunSX, y: _sunSY, r: SUN.radius * 6 * cam.zoom });
   const sCtx = Accumulator.stageCtx;
 
   // FIX: the accumulator's stage buffers are now built at device-pixel

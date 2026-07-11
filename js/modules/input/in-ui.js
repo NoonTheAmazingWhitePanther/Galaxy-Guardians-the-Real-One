@@ -7,7 +7,6 @@ import { state, setPhysSpeed, setSunGravMult, togglePause, SPEED_MAX } from '../
 import { CameraModule } from '../camera/camera.module.js';
 import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
-import { TrailsModule } from '../rendering/trails.js';
 import { InputState } from './input.module.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
 
@@ -88,7 +87,9 @@ export const InUI = {
       state.bodies = []; state.loose = []; state.flashes = [];
       StateCache.clear();
       FutureCache.reset();
-      for (const buf of TrailsModule.trailBufs) buf.used = false;
+      // (TrailsModule buffer reset removed — the module is retired and its
+      // trailBufs was permanently empty; the vault clear above is what
+      // actually resets the live stamp trail.)
       if (pcountEl) pcountEl.textContent = '-';
     });
   },

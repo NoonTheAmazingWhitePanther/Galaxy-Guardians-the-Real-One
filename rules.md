@@ -141,8 +141,15 @@ These apply to every file touched in every session, no exceptions:
   passes `node --check` (which only parses syntax, never resolves
   imports) and then breaks silently in the browser. Resolve every new
   `from '...'` path against the filesystem before calling something done.
-- **Draw calls only inside `shouldRender()`** — this includes
-  `DebugRouter.drawAll` and `TuningLayer.drawAll` in `main.js`.
+- **Draw calls only inside `shouldRender()` — a MUST, no exceptions.**
+  WHATEVER is painted — canvas draws AND DOM writes born in the main loop
+  (FPS readout, custom cursor, any future overlay) — paints only inside
+  the `RenderGov.shouldRender()` gate; `DebugRouter.drawAll` and
+  `TuningLayer.drawAll` included. The ordering law: ALL input updates
+  before the gate, ALL physics updates before the gate — constant, never
+  behind `if (shouldRender)`. Measurement/counting is data and runs every
+  frame; only the paint skips with the frame. Tweening between fragments
+  builds on this contract.
 - **Visible ⟺ touchable, always.** Hit-test geometry and draw geometry
   must agree. If a button/panel/satellite moves, whatever computes tap
   regions must move with it in the same commit.
@@ -177,6 +184,37 @@ These apply to every file touched in every session, no exceptions:
 - **The "1000 law":** 1000 virtual cycles/second is the benchmark ideal
   for this engine. Keep it in mind when something is framed as a
   performance tradeoff.
+- **The Pure Frames Law (locked, strengthened):** frame skipping is the
+  LAST RESORT, never the preference — pure frames always. The benchmark's
+  ENTIRE refinement runs with skip pinned to ZERO: every quality knob
+  finds its honest level on pure frames only. Skip enters exactly once,
+  at the end of the bench (`_minSkipPass`), and only if the pure-frames
+  config cannot hold the screen-rate target — it then walks from 0
+  upward (render frames sacrificed before physics frames) and stops at
+  the FIRST level that stables on target: the minimum skip needed, never
+  more. Good engineering over frame theft.
+- **The Sun Spread law (satellites):** every anchor button owns a 12-slot
+  clock ring; 30° (1/12) is the ONLY satellite spacing. Placement is the
+  walker (start straight-up, step 1/12 to the first genuinely free slot;
+  free = unoccupied + on-screen + no overlap with any satellite or fixed
+  HTML). Rings overflow OUTWARD on their own rays at the visible edge-gap
+  spacing, each ring one wider than the last. No hand angles, ever —
+  declaration is anchor + registry order (`sun-spread.js`).
+- **Governors target the SCREEN, not 60:** every fps target derives from
+  `ScreenGov.hz` (detected display refresh), never a hardcoded number.
+  Adaptive quality controllers start at their CEILING and decrease to
+  what holds stable at the screen's rate — quality-first, always.
+- **The 1000 standard:** caching routes (stored-state lists) cap at 1000
+  — FutureCache steps, CacheGov target, StateCache vault, TrailGov
+  counts, QueOps queue, undo stack. Physical limits (canvas rings,
+  per-frame drain valves, stat windows) are NOT caching routes and stay
+  engineered, not inflated.
+- **The benchmark exploration rule:** every playable tier gets at least
+  one configuration change the greedy ascent did NOT choose — a random
+  knob to a random legal value, kept only if it measures better
+  (`_explorePass`). Hill climbing finds edges; the poke finds ridges the
+  climb walked past. Skip knobs are exempt (their direction belongs to
+  the Pure Frames Law).
 
 ---
 

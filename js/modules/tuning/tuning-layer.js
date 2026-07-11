@@ -18,6 +18,20 @@ import { DEBUG_STATE } from '../debug/debug-state.js';
 
 export const TuningLayer = {
   _panels: [],
+  _suspended: null,   // stash while a benchmark owns the screen
+
+  // Benchmark clean-slate: pull every pinned panel off the layer without
+  // losing them — resume() puts the exact list back. Idempotent both ways.
+  suspend() {
+    if (this._suspended) return;
+    this._suspended = this._panels;
+    this._panels = [];
+  },
+  resume() {
+    if (!this._suspended) return;
+    this._panels = this._suspended;
+    this._suspended = null;
+  },
 
   add(panel) {
     if (!this._panels.includes(panel)) {

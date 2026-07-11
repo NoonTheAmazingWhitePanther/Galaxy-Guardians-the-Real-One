@@ -15,14 +15,13 @@
  * fewer knobs), we fall back to the built-in Base (BALANCE) profile.
  */
 
-import { ManualOverrides, TrailGov } from './governor.js';
+import { ManualOverrides, TrailGov, ScreenGov, RenderGov } from './governor.js';
 import { GovernorProfiles } from './governor-profiles.js';
 import { state, SUN, sunGravMult, PALS } from '../../core/state.js';
 import { config } from '../../core/config.js';
 import { CONFIG } from '../../config/config-index.js';
 import { makeBody } from '../physics/creation.js';
 import { hypot, clamp } from '../../core/math.js';
-import { FpsCounter } from './fps-counter.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { DebugRouter } from './debug-router.js';
 
@@ -32,9 +31,13 @@ const FILE_URL    = 'best-preferences.json';
 // Planet-count ladder — the stress steps. 1000-cycle ideal held in mind at each.
 const TIERS = [30, 60, 90, 120, 240, 480, 960];
 
-// Target real frame rate to hold while maximizing quality. The virtual cycle
-// count (FpsCounter.avgVirtual) is the score we push toward the 1000 ideal.
-const TARGET_FPS = 55;
+// Target real frame rate to hold while maximizing quality. Derived from the
+// DETECTED screen refresh (ScreenGov), not a hardcoded 60Hz assumption: the
+// old 55 was 60Hz × ~0.92 tolerance — same ratio, applied to whatever the
+// screen actually is (110 on a 120Hz panel, 83 on 90Hz…). "Stable max
+// refresh rate of the current screen" is the pass bar everywhere.
+const TARGET_RATIO = 0.92;
+const TARGET_FPS = () => Math.round(ScreenGov.hz * TARGET_RATIO);
 
 // If the leanest level still can't clear this, the device is saturated — heavier
 // tiers are pointless, so the whole run stops (your "makes no sense to continue").
@@ -48,16 +51,23 @@ const MAX_LIVE_PARTICLES = 45000;
 // [0] cheapest/safest, last = highest quality/cost). Cost rises with richness, so
 // a sweep can stop the moment a value drops below target. These are the REAL
 // governor variables (renderFrameSkip/physicsFrameSkip are out of 60).
+// PURE FRAMES LAW (locked): frame skipping is the LAST RESORT, never the
+// preference. Real frames beat decoration — headroom is spent on reducing
+// skip BEFORE anything else gets richer (skip knobs refine first), and the
+// Pure Frames pass afterwards actively trades decoration back for real
+// frames (see _pureFramesPass). Good engineering over frame theft.
 const KNOBS = [
+  { key: 'renderFrameSkip',  values: [50, 40, 30, 20, 10, 0], skip: true },  // rich = skip nothing
+  { key: 'physicsFrameSkip', values: [30, 20, 10, 0],         skip: true },  // rich = skip nothing
   { key: 'physicsSubsteps',  values: [2, 3, 4, 6, 8, 12] },
-  { key: 'renderFrameSkip',  values: [50, 40, 30, 20, 10, 0] },   // rich = skip nothing
-  { key: 'physicsFrameSkip', values: [30, 20, 10, 0] },           // rich = skip nothing
   { key: 'trailGlowDepth',   values: [4, 6, 8, 10, 12] },
   { key: 'trailMax',         values: [6, 8, 12, 16, 24, 32] },
   { key: 'trailDensity',     values: [8, 16, 32, 64, 120, 240] },
   { key: 'cacheMsBudget',    values: [1, 1.5, 2, 2.5, 3] },
   { key: 'cacheTargetAhead', values: [12, 24, 40, 60, 90, 120] },
 ];
+// Decoration donors for the Pure Frames trade, cheapest sacrifice first.
+const DONORS = ['trailDensity', 'trailMax', 'trailGlowDepth', 'cacheTargetAhead', 'cacheMsBudget'];
 
 // The leanest safe config — every knob at its cheapest value. Benchmarks start
 // here so the very first measurement can't crash, then climb.
@@ -173,7 +183,7 @@ export const Benchmark = {
       generated:  new Date().toISOString(),
       signature:  this.signature(),
       idealCycle: 1000,               // the 1000 law, recorded for reference
-      targetFps:  TARGET_FPS,
+      targetFps:  TARGET_FPS(),
       base,
       tiers,
     };
@@ -244,16 +254,23 @@ export const Benchmark = {
   // Average real FPS over a measurement window.
   async _measure(warmFrames, sampleFrames) {
     await _waitFrames(warmFrames);
-    let sumReal = 0, sumVirt = 0, samples = 0;
-    for (let i = 0; i < sampleFrames; i++) {
-      await _raf();
-      sumReal += FpsCounter.avgReal || 0;
-      sumVirt += FpsCounter.avgVirtual || 0;
-      samples++;
-    }
+    // FIX (measurement contamination): this used to sample
+    // FpsCounter.avgReal/avgVirtual — but that ring holds ONE ENTRY PER
+    // SECOND over 120 entries, i.e. a ~2-MINUTE trailing average that is
+    // never reset between config steps. Every "measurement" was mostly
+    // the history of all previous configs; adjacent knob steps differed
+    // by near-noise and the coordinate-ascent was discriminating on it.
+    // Measure DIRECTLY instead: count the sample frames against the
+    // wall clock — fully isolated to this config, nothing trailing in.
+    const t0 = performance.now();
+    for (let i = 0; i < sampleFrames; i++) await _raf();
+    const t1 = performance.now();
+    const real = sampleFrames * 1000 / Math.max(1, t1 - t0);
+    const base = RenderGov.BASE, skip = RenderGov.frameSkip;
+    const virtual = real * base / Math.max(1, base - skip);
     return {
-      fps:     +(sumReal / Math.max(1, samples)).toFixed(1),
-      virtual: +(sumVirt / Math.max(1, samples)).toFixed(1),
+      fps:     +real.toFixed(1),
+      virtual: +virtual.toFixed(1),
     };
   },
 
@@ -280,26 +297,94 @@ export const Benchmark = {
     cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg);
     let m = await this._measure(12, 20); onStep?.(knob.key, knob.values[idx], m);
 
-    if (m.fps >= TARGET_FPS) {
+    if (m.fps >= TARGET_FPS()) {
       for (let vi = idx + 1; vi <= top; vi++) {           // climb into headroom
         cfg[knob.key] = knob.values[vi]; this._applyCfg(cfg);
         const mm = await this._measure(12, 20); onStep?.(knob.key, knob.values[vi], mm);
-        if (mm.fps >= TARGET_FPS) { idx = vi; m = mm; } else break;
+        if (mm.fps >= TARGET_FPS()) { idx = vi; m = mm; } else break;
       }
     } else {
       for (let vi = idx - 1; vi >= 0; vi--) {             // retreat to safety
         cfg[knob.key] = knob.values[vi]; this._applyCfg(cfg);
         const mm = await this._measure(12, 20); onStep?.(knob.key, knob.values[vi], mm);
         idx = vi; m = mm;
-        if (mm.fps >= TARGET_FPS) break;
+        if (mm.fps >= TARGET_FPS()) break;
       }
     }
     cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg);
     return { idx, m };
   },
 
+  // ── PURE FRAMES PASS ──────────────────────────────────────────────────
+  // After the greedy ascent settles, actively buy real frames back: while a
+  // skip knob still skips, try stepping it toward 0; if fps breaks, step one
+  // decoration donor leaner (cheapest first) and retry. Every accepted trade
+  // converts decoration into pure frames — skip only survives when NOTHING
+  // playable can pay for its removal. Bounded so a run can't wander.
+  async _pureFramesPass(cfg, capIdx, onStep) {
+    let trades = 0;
+    for (const knob of KNOBS) {
+      if (!knob.skip) continue;
+      let idx = Math.max(0, knob.values.indexOf(cfg[knob.key]));
+      const top = Math.min(capIdx[knob.key] ?? knob.values.length - 1, knob.values.length - 1);
+      while (idx < top && trades < 8) {
+        // try one step purer
+        cfg[knob.key] = knob.values[idx + 1]; this._applyCfg(cfg);
+        let m = await this._measure(12, 20); onStep?.(knob.key, knob.values[idx + 1], m);
+        if (m.fps >= TARGET_FPS()) { idx++; trades++; continue; }
+        // doesn't hold — offer a donor
+        let paid = false;
+        for (const dk of DONORS) {
+          const donor = KNOBS.find(k => k.key === dk);
+          const di = donor.values.indexOf(cfg[dk]);
+          if (di <= 0) continue;                       // nothing left to give
+          const savedDonor = cfg[dk];
+          cfg[dk] = donor.values[di - 1]; this._applyCfg(cfg);
+          m = await this._measure(12, 20); onStep?.(`${knob.key}←${dk}`, knob.values[idx + 1], m);
+          if (m.fps >= TARGET_FPS()) { idx++; trades++; paid = true; break; }
+          cfg[dk] = savedDonor;                         // donor wasn't enough — refund
+        }
+        if (!paid) { cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg); break; }
+      }
+    }
+    return trades;
+  },
+
+  // ── EXPLORATION PASS ──────────────────────────────────────────────────
+  // RULE: at least one configuration change per playable tier that the
+  // greedy ascent did NOT choose — a random knob to a random legal value,
+  // kept only if it measures better. Hill climbing finds edges; the random
+  // poke finds the ridge the climb walked past. Skip knobs are exempt (their
+  // direction is owned by the Pure Frames Law) and the monotonic tier cap
+  // is respected.
+  async _explorePass(cfg, capIdx, onStep) {
+    const pool = KNOBS.filter(k => !k.skip);
+    const knob = pool[Math.floor(Math.random() * pool.length)];
+    const top = Math.min(capIdx[knob.key] ?? knob.values.length - 1, knob.values.length - 1);
+    const cur = Math.max(0, knob.values.indexOf(cfg[knob.key]));
+    if (top < 1) return false;
+    let ri = Math.floor(Math.random() * (top + 1));
+    if (ri === cur) ri = (ri + 1) % (top + 1);
+    const saved = cfg[knob.key];
+    const before = this._richness(cfg);
+    cfg[knob.key] = knob.values[ri]; this._applyCfg(cfg);
+    const m = await this._measure(12, 20);
+    onStep?.(`?${knob.key}`, knob.values[ri], m);
+    const adopt = m.fps >= TARGET_FPS() && this._richness(cfg) > before;
+    if (!adopt) { cfg[knob.key] = saved; this._applyCfg(cfg); }
+    return adopt;
+  },
+
+  // How many stress tiers exist — for staged callers (warm-up flow).
+  get tierCount() { return TIERS.length; },
+
   // ── The benchmark ─────────────────────────────────────────────────────
-  async run() {
+  // toTier bounds the ladder for STAGED runs (warm-up flow): 1 = Fast
+  // Bench (first tier only), ceil(n/2) = Moderate Scaling, n = Full
+  // Inspection. Always starts from tier 0 — the monotonic per-knob
+  // ceiling seeds lighter→heavier, so a run can be CUT SHORT but never
+  // started mid-ladder.
+  async run({ toTier = TIERS.length } = {}) {
     if (this.running) return;
     this.running = true;
     this._setStatus('starting…', 0);
@@ -328,10 +413,11 @@ export const Benchmark = {
       const capIdx = {};
       for (const k of KNOBS) capIdx[k.key] = k.values.length - 1;
 
-      const totalSteps = TIERS.length * KNOBS.length;
+      const tierCount  = Math.max(1, Math.min(Math.round(toTier), TIERS.length));
+      const totalSteps = tierCount * KNOBS.length;
       let step = 0;
 
-      for (let ti = 0; ti < TIERS.length; ti++) {
+      for (let ti = 0; ti < tierCount; ti++) {
         const planets = TIERS[ti];
         this._clearBodies();
         const reached = this._spawnTo(planets);
@@ -354,6 +440,23 @@ export const Benchmark = {
           step++;
         }
 
+        // Pure Frames Law: trade decoration back for real frames.
+        if ((lastM?.fps ?? 0) > FLOOR_FPS) {
+          await this._pureFramesPass(cfg, capIdx,
+            (key, val, mm) => this._setStatus(`#${runNumber} · ${reached}p · pure:${key}=${val} · ${mm.fps}fps`, step / totalSteps));
+        }
+        // Exploration rule: at least one non-greedy change per playable tier.
+        if ((lastM?.fps ?? 0) >= TARGET_FPS()) {
+          await this._explorePass(cfg, capIdx,
+            (key, val, mm) => this._setStatus(`#${runNumber} · ${reached}p · ${key}=${val} · ${mm.fps}fps`, step / totalSteps));
+        }
+        // Re-anchor caps to the final config so heavier tiers inherit the
+        // post-pass truth, not the pre-trade greedy shape.
+        for (const k of KNOBS) capIdx[k.key] = Math.max(0, k.values.indexOf(cfg[k.key]));
+        // …and re-measure so the recorded numbers are the FINAL config's,
+        // not the pre-pass greedy snapshot.
+        if ((lastM?.fps ?? 0) > FLOOR_FPS) lastM = await this._measure(12, 20);
+
         const richness = this._richness(cfg);
         results.push({
           planets, reached,
@@ -364,7 +467,7 @@ export const Benchmark = {
           capped:   reached < planets,
           settings: { ...cfg },
         });
-        this._setStatus(`#${runNumber} · ${reached}p done · ${lastM?.fps ?? 0}fps`, (ti + 1) / TIERS.length);
+        this._setStatus(`#${runNumber} · ${reached}p done · ${lastM?.fps ?? 0}fps`, (ti + 1) / tierCount);
 
         if ((lastM?.fps ?? 0) <= FLOOR_FPS || reached < planets) { collapsed = true; break; }
       }

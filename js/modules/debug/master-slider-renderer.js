@@ -17,13 +17,12 @@ import { MasterGovernor } from './master-governor.js';
 // panel's position, size, minimize state, or visibility.
 const THUMB_H = 16;
 const FALLBACK_GAP = 6;
-// painting-btn's own satellite fan (paint-sat-*) hangs below its own
-// bottom edge — a fixed geometric offset (R·sin(40°) + satH/2 − pad/2 ≈
-// 15.02px at R=1.050×pad, pad=44 — the fans now exactly mirror the dbg
-// fan, see canvas-satellites.js's _mirrorFan) that's independent of the
-// button's absolute screen position, only of the fan's shape. Rounded up
-// to 16 for a hair of safety margin.
-const FAN_CLEARANCE_PAST_BTN = 16;
+// painting-btn's satellite fan clearance is no longer a constant —
+// SunSpread (canvas-satellites.js) places satellites dynamically, so the
+// slider asks CanvasSatellites.familyBottom('paint') live for the fan's
+// actual lowest edge instead of assuming a hand-fan shape that no longer
+// exists. Fallback if the query yields nothing keeps the old margin.
+const FAN_CLEARANCE_FALLBACK = 16;
 
 export const MasterSliderRenderer = {
   _bounds: null,
@@ -79,11 +78,16 @@ export const MasterSliderRenderer = {
 
     const x = paintingRect.left;
     const w = paintingRect.width;
-    // Start below painting-btn's own bottom edge AND its satellite fan
-    // (which hangs a few px past the button itself), then the same gap
-    // rhythm as every other row — this is the "keep its upper space to the
-    // lowest button" fix.
-    const y = paintingRect.bottom + FAN_CLEARANCE_PAST_BTN + gap;
+    // Start below painting-btn's own bottom edge AND its satellite fan,
+    // then the same gap rhythm as every other row — this is the "keep its
+    // upper space to the lowest button" fix. The fan's real lowest edge
+    // comes live from the SunSpread layout; if the fan sits entirely
+    // above the button's bottom, clearance is simply zero.
+    const fanBottom = window._CanvasSatellites?.familyBottom?.('paint');
+    const clearance = (fanBottom != null)
+      ? Math.max(0, fanBottom - paintingRect.bottom)
+      : FAN_CLEARANCE_FALLBACK;
+    const y = paintingRect.bottom + clearance + gap;
 
     // Bottom bound — same gap kept above the bottom bar (#ui)
     let bottomLimit = window.innerHeight - gap;

@@ -26,10 +26,16 @@ import { DebugRouter }  from '../debug/debug-router.js';
 import { PaintingState } from '../../core/painting-state.js';
 import { ZoomEnhancer }  from '../ui/zoom-enhancer.js';
 import { AimsEdge }      from '../../core/aims-edge.js';
+import { SunSpread }     from './sun-spread.js';
 
 const HOLD_MS = 600; // matches main.js's old satWireHold threshold
 
-// ── Geometry ────────────────────────────────────────────────────────────
+// ── Geometry — THE SUN SPREAD (rules.md §8) ─────────────────────────────
+// All per-satellite hand angles (_mirrorFan / _absLeft and the old
+// -32°/-2°/28°/... lists) are GONE. Every anchor owns a 12-slot clock
+// ring; SunSpread walks each satellite from straight-up in 30° steps to
+// the first genuinely free slot. Declaration = anchor + registry order.
+// See sun-spread.js for the full law.
 function _cssVars() {
   const cs = getComputedStyle(document.documentElement);
   const safe = parseFloat(cs.getPropertyValue('--safe')) || 16;
@@ -37,36 +43,59 @@ function _cssVars() {
   return { safe, pad };
 }
 
-// aims-sat / paint-sat — EXACT mirror of the dbg fan (the confirmed-good
-// one), opening in reverse. Reverse-engineering the dbg fan's hand-tuned
-// factors gives: every ray at R = 1.050×pad, at angles -32°/16°/40°/64°/
-// 88° from horizontal. The 3-satellite fans use the first three rays
-// (-32°, 16°, 40°) with dx NEGATED — same radius, same angles, same
-// vertical drops, opening LEFT instead of right (anchors sit on the
-// right screen edge, debug-btn sits on the left).
-//
-// FIX: the previous version had `+ r·cos(a)` here — PLUS, which pushed
-// these satellites to the RIGHT of their anchor's center, i.e. clipped
-// slivers at/off the right screen edge instead of a fan opening left.
-// That's exactly the "placement is wrong / unseen" report. Minus is the
-// mirror.
-function _mirrorFan(anchorTop, angleDeg, safe, pad) {
-  const R = 1.050 * pad;                 // same radius as the dbg fan
-  const a = angleDeg * Math.PI / 180;
-  const satW = pad / 3, satH = pad / 3;
-  const cx = (window.innerWidth - safe - pad / 2) - R * Math.cos(a);
-  const cy = anchorTop + pad / 2 + R * Math.sin(a);
-  return { cx, cy, w: satW, h: satH };
+// Anchor button centers, derived from the same CSS the buttons use:
+// debug-btn:    top: safe+pad,        left: safe    → center (safe+pad/2, safe+1.5·pad)
+// aims-btn:     top: safe+3·pad+12,   right: safe   → center (W−safe−pad/2, safe+3.5·pad+12)
+// painting-btn: top: safe+4·pad+18,   right: safe   → center (W−safe−pad/2, safe+4.5·pad+18)
+function _anchors(safe, pad) {
+  const rightX = window.innerWidth - safe - pad / 2;
+  return {
+    dbg:   { x: safe + pad / 2, y: safe + 1.5 * pad },
+    aims:  { x: rightX,         y: safe + 3.5 * pad + 12 },
+    paint: { x: rightX,         y: safe + 4.5 * pad + 18 },
+  };
 }
 
-// dbg-sat — original absolute CSS factors, ported verbatim (fanned RIGHT,
-// debug-btn sits on the left edge). Formula: left = safe + pad*leftFactor,
-// top = safe + pad*topFactor; center = left/top + satW/2 (satW = pad/3).
-function _absLeft(leftFactor, topFactor, safe, pad) {
-  const satW = pad / 3, satH = pad / 3;
-  const cx = safe + pad * leftFactor + satW / 2;
-  const cy = safe + pad * topFactor + satH / 2;
-  return { cx, cy, w: satW, h: satH };
+// Fixed HTML controls the spread must treat as occupied space. Read live
+// off the DOM (the same source of truth the browser lays them out with) —
+// zero-size rects (hidden elements) are dropped.
+const _OBSTACLE_IDS = ['debug-btn', 'selection-btn', 'aims-btn', 'painting-btn',
+                       'pan-pad', 'fpsCounter', 'bench-btn', 'bench-info', 'ui',
+                       'zoom-bar', 'speed-bar'];
+function _obstacles() {
+  const out = [];
+  for (const id of _OBSTACLE_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  }
+  return out;
+}
+
+// Layout cache — recomputed only when the inputs that can move anything
+// actually change (safe/pad/viewport). getBoundingClientRect every frame
+// would be layout thrash for rects that only move on those same changes.
+let _layoutKey = '';
+let _layout = new Map();
+function _resolveLayout(safe, pad) {
+  const key = `${safe}|${pad}|${window.innerWidth}|${window.innerHeight}`;
+  if (key === _layoutKey) return _layout;
+  _layout = SunSpread.place(
+    _anchors(safe, pad),
+    _sats.map(d => ({ id: d.id, family: d.family })),
+    {
+      screenW: window.innerWidth,
+      screenH: window.innerHeight,
+      size: pad / 3,
+      radius: 1.050 * pad,
+      anchorHalf: pad / 2,
+      gap: 4,
+      obstacles: _obstacles(),
+    }
+  );
+  _layoutKey = key;
+  return _layout;
 }
 
 // ── The registry ────────────────────────────────────────────────────────
@@ -75,79 +104,58 @@ function _absLeft(leftFactor, topFactor, safe, pad) {
 // pause, paint-sat-spray) — drawn in the "active" color scheme when true,
 // same visual language #painting-btn.active etc. already use.
 //
-// FIX ("there is a space, fix it — average -1 buttons"): the dbg fan's 5
-// rays were -32°/16°/40°/64°/88° — a 48° gap between the first two
-// (glasses→closeall) and a uniform 24° everywhere else, i.e. one ray's
-// worth of empty space sitting in the fan for no reason. Re-spaced evenly
-// across the SAME -32°..88° span using (5-1)=4 equal 30° gaps instead:
-// -32°/-2°/28°/58°/88°. Endpoints (glasses, expand) land on the exact
-// same spot as before — only the three rays between them shift to close
-// the gap. aims-sat's mirror satellite (-7°, originally squeezed into
-// that now-nonexistent 48° gap) gets the same even-spacing treatment
-// below, across its own 4-satellite span.
+// NO POSITIONS DECLARED — a satellite declares only its family (which
+// anchor's ring it belongs to). Position comes from SunSpread: this
+// registry's ORDER is the walk priority — the first satellite of a
+// family gets the slot nearest straight-up, the next gets the next free
+// slot, 30° at a time. Add a new satellite by appending it; it can never
+// overlap anything by construction.
 const _sats = [
-  // ── dbg-sat — debug fan, fanned right off debug-btn ──────────────────
+  // ── dbg — debug-btn's ring (left edge, walks clockwise) ──────────────
   { id: 'dbg-closeall', family: 'dbg', icon: '▦',
-    pos: (s, p) => _absLeft(1.383, 1.297, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => { window._TetrisFan?.toggle(DebugRouter); } },
   { id: 'dbg-reset', family: 'dbg', icon: '↶',
-    pos: (s, p) => _absLeft(1.260, 1.826, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.undo(),
     onHold: () => DebugRouter.resetAllToProfile() },
   { id: 'dbg-arrange', family: 'dbg', icon: '⊞',
-    pos: (s, p) => _absLeft(0.890, 2.224, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.toggleGridSnap() },
   { id: 'dbg-expand', family: 'dbg', icon: '⛶',
-    pos: (s, p) => _absLeft(0.370, 2.383, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.expandAll() },
   { id: 'dbg-glasses', family: 'dbg', icon: '👓',
-    pos: (s, p) => _absLeft(1.224, 0.777, s, p),
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.cycleRatio() },
 
-  // ── aims-sat — fanned left off aims-btn ──────────────────────────────
+  // ── aims — aims-btn's ring (right edge, walks counter-clockwise) ─────
   { id: 'aims-sat-refresh', family: 'aims', icon: '↻',
-    pos: (s, p) => _mirrorFan(s + p * 3 + 12, -32, s, p),
     isActive: () => window._InAims?.enabled,
     onTap: () => window._InAims?.refresh() },
   { id: 'aims-sat-showmap', family: 'aims', icon: '🗺️',
-    pos: (s, p) => _mirrorFan(s + p * 3 + 12, 16, s, p),
     isActive: () => window._InAims?.enabled,
     onTap: () => window._InAims?.toggleShowMap() },
   { id: 'aims-sat-zoom', family: 'aims', icon: '🔍',
-    pos: (s, p) => _mirrorFan(s + p * 3 + 12, 40, s, p),
     isActive: () => window._InAims?.enabled,
     onTap: () => ZoomEnhancer.toggle() },
-  // Evenly re-spaced across this fan's own -32°..40° span, (4-1)=3 equal
-  // 24° gaps: -32°/-8°/16°/40° — was -32°/-7°/16°/40° (a 1° rounding
-  // artifact from being hand-placed "in the gap" rather than computed;
-  // same fix, same reasoning as the dbg fan above, just barely visible
-  // here since this one was already nearly even).
   { id: 'aims-sat-mirror', family: 'aims', icon: '⇄',
-    pos: (s, p) => _mirrorFan(s + p * 3 + 12, -8, s, p),
     isActive: () => window._InAims?.enabled,
     isOn: () => AimsEdge.automate || AimsEdge.mode !== 'normal',
     onTap: () => AimsEdge.cycleMode(),
     onHold: () => AimsEdge.toggleAutomate() },
 
-  // ── paint-sat — fanned left off painting-btn ─────────────────────────
+  // ── paint — painting-btn's ring (right edge, walks counter-clockwise) ─
   { id: 'paint-sat-pause', family: 'paint', icon: '⏸',
-    pos: (s, p) => _mirrorFan(s + p * 4 + 18, -32, s, p),
     isActive: () => PaintingState.enabled,
     isOn: () => PaintingState.pauseWhilePainting,
     onTap: () => PaintingState.togglePauseWhilePainting() },
   { id: 'paint-sat-spray', family: 'paint', icon: '💨',
-    pos: (s, p) => _mirrorFan(s + p * 4 + 18, 16, s, p),
     isActive: () => PaintingState.enabled,
     isOn: () => PaintingState.spray.enabled,
     onTap: () => PaintingState.toggleSpray(),
     onHold: () => PaintingState.cycleSpread() },
   { id: 'paint-sat-size', family: 'paint', icon: '📏',
-    pos: (s, p) => _mirrorFan(s + p * 4 + 18, 40, s, p),
     isActive: () => PaintingState.enabled,
     onTap: () => window.Sim?.resetBrushOverrides?.() },
 ];
@@ -157,6 +165,7 @@ let _downSat = null, _downAt = 0, _held = false, _holdTimer = null;
 
 function _visibleSats() {
   const { safe, pad } = _cssVars();
+  const layout = _resolveLayout(safe, pad);
   const out = [];
   for (const def of _sats) {
     // Defensive isolation: _visibleSats() backs BOTH render() and
@@ -171,9 +180,10 @@ function _visibleSats() {
     // will show exactly which satellite and why.
     try {
       if (!def.isActive()) continue;
-      out.push({ def, rect: def.pos(safe, pad) });
+      const rect = layout.get(def.id);
+      if (rect) out.push({ def, rect });
     } catch (err) {
-      console.error(`[CanvasSatellites] "${def.id}" isActive()/pos() threw — skipped, not blocking the rest:`, err);
+      console.error(`[CanvasSatellites] "${def.id}" isActive()/layout threw — skipped, not blocking the rest:`, err);
     }
   }
   return out;
@@ -182,7 +192,8 @@ function _visibleSats() {
 function _hitTest(x, y) {
   // REVERSE order: satellites render in registry order, so later entries
   // draw ON TOP of earlier ones wherever they overlap (aims + paint fans
-  // both open can overlap — see the fan-geometry note on _mirrorFan).
+  // could historically overlap; SunSpread makes overlap impossible by
+  // construction, but back-to-front stays correct and costs nothing).
   // The tap must go to whatever is visibly on top, so hit-test iterates
   // back-to-front. Visible ⟺ touchable, even in overlaps.
   const vis = _visibleSats();
@@ -203,6 +214,22 @@ export const CanvasSatellites = {
       if (def.id === id) return { left: rect.cx - rect.w / 2, top: rect.cy - rect.h / 2, right: rect.cx + rect.w / 2, bottom: rect.cy + rect.h / 2, width: rect.w, height: rect.h };
     }
     return null;
+  },
+
+  /** Lowest bottom edge (screen px) of a family's satellites, from the
+   *  SunSpread layout — visibility-INDEPENDENT, since consumers like the
+   *  master slider reserve the space whether or not the fan is currently
+   *  shown (same contract the old fixed clearance constant had). Null if
+   *  the family has no satellites. */
+  familyBottom(family) {
+    const { safe, pad } = _cssVars();
+    let max = null;
+    for (const r of _resolveLayout(safe, pad).values()) {
+      if (r.family !== family) continue;
+      const b = r.cy + r.h / 2;
+      if (max === null || b > max) max = b;
+    }
+    return max;
   },
 
   /** Live list of visible satellites, in AimsCast's candidate shape. */

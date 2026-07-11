@@ -201,7 +201,7 @@ export const ManualOverrides = {
   // here captures the full history with one hook. Bulk operations (profile
   // apply / reset) set _suppressUndo so they land as nothing to step back into.
   _undoStack: [],
-  _undoCap: 300,
+  _undoCap: 1000,  // the 1000 standard — same ceiling as every other stored-state list
   _suppressUndo: false,
   _undoTs: 0,
   _recordUndo(key) {
@@ -422,6 +422,96 @@ export const PhysicsGov = {
 };
 
 // ── Render Auto-Adaptation (moved from render-governor.js) ────────────────
+// ── Screen Refresh Governor ─────────────────────────────────────────────────
+// THE target. Detects the display's actual refresh rate instead of assuming
+// 60 — a 90/120/144Hz screen deserves its full rate, and every adaptive
+// governor should hold THAT, not a hardcoded number. Quality-first doctrine:
+// adaptive controllers start at their ceiling and decrease until the frame
+// rate is stable at the screen's real maximum ("perfect the visual to the
+// maximum a screen can do").
+//
+// Detection: rAF deltas are collected every frame; under load a delta
+// reflects the LOAD, not the screen — but the FASTEST sustained frames
+// always reveal the true refresh interval. So: 10th-percentile of the
+// recent delta window → Hz → snapped to the nearest common rate when
+// it's within 15%, else the raw rounded value. Re-evaluated every ~2s,
+// so plugging into an external monitor or a phone dropping to battery-
+// saver 60Hz gets picked up live.
+export const ScreenGov = {
+  COMMON: [60, 75, 90, 120, 144, 165, 240],
+  _deltas:   [],
+  _hz:       60,     // best current estimate (snapped)
+  _rawHz:    60,     // unsnapped, for the panel readout
+  _lastT:    0,
+  _lastEval: 0,
+
+  // Call once per rAF, top of the main loop (next to RenderGov.tick()).
+  tick(now) {
+    if (this._lastT > 0) {
+      const d = now - this._lastT;
+      // 1ms..100ms sanity window: throw away tab-switch stalls and
+      // duplicate-timestamp zeros so they can't poison the percentile.
+      if (d > 1 && d < 100) {
+        this._deltas.push(d);
+        if (this._deltas.length > 240) this._deltas.shift();
+      }
+    }
+    this._lastT = now;
+    if (now - this._lastEval > 2000 && this._deltas.length >= 60) {
+      this._eval();
+      this._lastEval = now;
+    }
+  },
+
+  _eval() {
+    const s = [...this._deltas].sort((a, b) => a - b);
+    const p10 = s[Math.floor(s.length * 0.1)];
+    if (!(p10 > 0)) return;
+    const raw = 1000 / p10;
+    this._rawHz = raw;
+    // ASYMMETRIC SNAP: the 10th-percentile estimate can read HIGH (timer
+    // jitter makes some deltas shorter than the true vsync interval) but
+    // essentially never LOW (load makes deltas longer, and p10 ignores
+    // those). So: raw sitting up to 12% ABOVE a common rate is jitter —
+    // snap down to it; raw sitting more than ~3% BELOW a common rate is
+    // just a screen that genuinely isn't that rate — don't inflate the
+    // target to something the display can't physically show.
+    let best = null, bd = Infinity;
+    for (const c of this.COMMON) {
+      const ok = raw >= c ? (raw - c) / c <= 0.12
+                          : (c - raw) / c <= 0.03;
+      if (!ok) continue;
+      const d = Math.abs(c - raw);
+      if (d < bd) { bd = d; best = c; }
+    }
+    this._hz = best ?? Math.max(24, Math.round(raw));
+  },
+
+  // Detected screen refresh (Hz). This is what "stable max" means.
+  get hz() { return this._hz; },
+
+  // The FPS every adaptive governor should hold. Manual override respected
+  // like every other knob; AUTO = the detected screen rate.
+  get targetFps() {
+    return ManualOverrides.get('screenTargetFps', this._hz);
+  },
+
+  get label() {
+    return ManualOverrides.isManual('screenTargetFps')
+      ? `${this.targetFps}fps MANUAL` : `${this._hz}Hz`;
+  },
+
+  get debugInfo() {
+    return {
+      hz:        this._hz,
+      raw:       this._rawHz.toFixed(1),
+      target:    this.targetFps,
+      samples:   this._deltas.length,
+      mode:      ManualOverrides.isManual('screenTargetFps') ? 'MANUAL' : 'AUTO',
+    };
+  }
+};
+
 export const RenderGov = {
   _autoFrameSkip: 0,
   _chaosLevel:    0,
@@ -431,8 +521,11 @@ export const RenderGov = {
   // Base cadence — skip count is "N out of BASE" frames.
   // Reads live from ManualOverrides so changing it via the panel
   // takes effect immediately, no extra wiring needed.
+  // AUTO default is the DETECTED SCREEN RATE (ScreenGov), not a hardcoded
+  // 60 — on a 120Hz display the skip fractions are per-120-frames, so the
+  // cadence math is aligned to what the screen actually shows.
   get BASE() {
-    return ManualOverrides.get('renderSkipBase', 60);
+    return ManualOverrides.get('renderSkipBase', ScreenGov.hz);
   },
 
   feedChaos(camVel, dt, didPhysicsTick) {
@@ -569,7 +662,13 @@ export const CacheGov = {
   // 1. Mirrors HARD_CAP in future-cache.js — keep the two 1000s in sync.
   AUTO_MIN: 1,
   AUTO_MAX: 1000,
-  _autoTarget: 60,
+  // QUALITY-FIRST START: begins at the CEILING, not a modest 60 — the
+  // doctrine is "start at maximum, decrease to what the machine holds
+  // stable". The AIMD below halves within a few pressured frames on a
+  // weak device (1000→500→250→…, budget-capped at msBudget the whole
+  // way, so the descent itself can't hurt a frame), while a strong
+  // machine simply keeps what it was given from second one.
+  _autoTarget: 1000,
 
   reportFill(budgetLimited) {
     // Only self-tune in AUTO — a manual target is the user's explicit choice.

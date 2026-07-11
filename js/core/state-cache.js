@@ -14,17 +14,35 @@ export const StateCache = {
     isReady: false,
     
     // Vault size = max of the interpolation vault and the trail's keyframe need,
-    // but capped at 130 so a high Max Trails can't balloon per-tick snapshot
-    // memory (each snapshot also stores loose particles). The trail's Density
-    // knob interpolates BETWEEN these keyframes, so length/smoothness beyond the
-    // stored keyframes comes for free without more memory.
+    // capped at 1002 so the TRAILS panel's Max Trails knob is honest across
+    // its FULL 0..1000 range (was 130 — everything above ~128 silently did
+    // nothing). Memory stays opt-in: the vault only grows to maxTrails+2,
+    // and the default Max Trails is small, so nothing is spent until the
+    // knob is actually raised. Each snapshot stores bodies + loose
+    // particles — at 1000 snapshots with a heavy scene this is real memory
+    // (tens of MB); on a weak device the practical limiter is the AUTO
+    // governors holding the screen rate, not this cap.
     get maxSize() {
-        return Math.max(CONFIG.physics.VAULT_SIZE, Math.min(130, TrailGov.maxTrails + 2));
+        return Math.max(CONFIG.physics.VAULT_SIZE, Math.min(1002, TrailGov.maxTrails + 2));
     },
 
     /** Helper: return value if finite, else fallback */
     _f(v, fallback = 0) {
         return Number.isFinite(v) ? v : fallback;
+    },
+
+    // Fallback ids for bodies that somehow lack one: NEVER the array index
+    // (indexes shift when dead bodies are spliced, and an index-shaped id
+    // cross-pairs STRANGERS in the trail's id matching — sun/body ghosts
+    // jumping between owners). A WeakMap keyed on the body OBJECT gives a
+    // stable synthetic id for the body's whole life instead.
+    _synthIds: new WeakMap(),
+    _synthSeq: 0,
+    _idOf(b) {
+        if (b.id != null) return b.id;
+        let sid = this._synthIds.get(b);
+        if (sid === undefined) { sid = `synth_${this._synthSeq++}`; this._synthIds.set(b, sid); }
+        return sid;
     },
 
     captureSnapshot(bodies, loose) {
@@ -38,7 +56,7 @@ export const StateCache = {
             const b = bodies[i];
             if (b.dead) continue;
             snapshotBodies.push({
-                id: (b.id != null) ? b.id : `b_${i}`,
+                id: this._idOf(b),
                 cx: this._f(b.cx, 0),
                 cy: this._f(b.cy, 0),
                 vx: this._f(b.vx, 0),

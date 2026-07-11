@@ -17,6 +17,7 @@ import { CycleMeter } from './core/cycle-meter.js';
 import { Gate } from './core/gate.js';
 import { TetrisFan } from './modules/debug/tetris-fan.js';
 window._TetrisFan = TetrisFan;
+window._CanvasSatellites = CanvasSatellites; // master-slider-renderer queries familyBottom('paint') at runtime (import would risk a cycle through debug-router)
 import { AsteroidsModule } from './modules/entities/asteroids.js';
 import { Accumulator } from './modules/rendering/accumulator.js';
 import { EffectsModule } from './modules/rendering/effects.js';
@@ -25,6 +26,7 @@ import { ConfigMenuModule } from './modules/ui/config-menu.js';
 import { PrefsStore } from './core/prefs-store.js';
 import { SelectionPanelExtras } from './modules/debug/selection-panel-extras.js';
 import { UpdateFeed } from './core/update-feed.js';
+import { WarmupFlow } from './modules/ui/warmup-flow.js';
 import { DebugRouter } from './modules/debug/debug-router.js';
 import { ConsoleView } from './modules/debug/console-view.js';
 import { GuiGovernor } from './modules/debug/gui-governor.js';
@@ -32,7 +34,7 @@ import { TuningLayer } from './modules/tuning/tuning-layer.js';
 import { MsProbe } from './core/ms-probe.js';
 import { FpsCounter } from './modules/debug/fps-counter.js';
 import { DEBUG_STATE } from './modules/debug/debug-state.js';
-import { PhysicsGov, RenderGov, CacheGov, ManualOverrides } from './modules/debug/governor.js';
+import { PhysicsGov, RenderGov, CacheGov, ScreenGov, ManualOverrides } from './modules/debug/governor.js';
 import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { Benchmark } from './modules/debug/benchmark.js';
 import { QueOps } from './core/que-ops.js';
@@ -59,6 +61,7 @@ let isPreCalculating = true;
 let preCalcCounter = 0;
 let frameCount = 0;
 let lastFpsTime = 0;
+let pendingFpsPaint = null;   // measured every second, PAINTED inside shouldRender (the law)
 let lastFrameTime = 0;
 
 const fpsEl = document.getElementById("fpsCounter");
@@ -236,6 +239,7 @@ export async function init() {
   }
 
   UpdateFeed.push('UPDATE BAR ONLINE');
+  WarmupFlow.start();   // Captain's greeting → staged warm-up benchmark (see warmup-flow.js)
 
   // BUG FIX ("InAims does not work"): window._InAims was ONLY ever set
   // inside resetGame() — which nothing calls at startup (it's exposed for
@@ -647,6 +651,7 @@ function mainLoop(t) {
   window._FpsCounter = FpsCounter;
   FpsCounter.tick(t, RenderGov.frameSkip, RenderGov.BASE);
   RenderGov.tick();
+  ScreenGov.tick(t);   // display refresh detection — the target every adaptive governor holds
 
   const rawDt = Math.min((t - lastFrameTime) / 1000, 0.1);
   lastFrameTime = t;
@@ -654,10 +659,12 @@ function mainLoop(t) {
   frameCount++;
   if (t - lastFpsTime >= 1000) {
     const fps = Math.round((frameCount * 1000) / (t - lastFpsTime));
-    if (fpsEl) {
-      fpsEl.textContent = fps + " FPS";
-      fpsEl.className = "fps-counter " + (fps >= 55 ? "good" : fps >= 30 ? "okay" : "low");
-    }
+    // MEASUREMENT is unconditional (counting must see every frame); the
+    // DOM WRITE is a paint and paints only inside shouldRender — stash it.
+    pendingFpsPaint = {
+      text: fps + " FPS",
+      cls:  "fps-counter " + (fps >= 55 ? "good" : fps >= 30 ? "okay" : "low"),
+    };
     frameCount = 0;
     lastFpsTime = t;
   }
@@ -895,11 +902,20 @@ function mainLoop(t) {
     // Never visible while disabled. See _drawAimCursor's own header for
     // why it no longer draws a separate offset/bias line.
     if (InAims.enabled) { _drawAimCursor(ctx); _drawAimsBulb(ctx); _drawAimsStatus(ctx); }
-  }
 
-  if (cursorEl) {
-    cursorEl.style.left = InputState.mouseX + "px";
-    cursorEl.style.top = InputState.mouseY + "px";
+    // DOM paints born in this loop obey the same gate as canvas paints
+    // (rules.md: whatever is painted is painted inside shouldRender —
+    // a must). Inputs and physics above stay constant; only the PAINT
+    // skips with the frame.
+    if (pendingFpsPaint && fpsEl) {
+      fpsEl.textContent = pendingFpsPaint.text;
+      fpsEl.className   = pendingFpsPaint.cls;
+      pendingFpsPaint = null;
+    }
+    if (cursorEl) {
+      cursorEl.style.left = InputState.mouseX + "px";
+      cursorEl.style.top = InputState.mouseY + "px";
+    }
   }
 }
 

@@ -51,6 +51,10 @@ Hit that on the C71 and it *flies* on anything newer. So the constraint became t
 
 > The engine now scales **upward** too: multiple LOD (level-of-detail) tiers mean the same code that survives on the C71 can spread its wings on higher-end devices. Built at the bottom, aimed at the whole ladder.
 
+> 🎯 **Current prime goal: 160 planets · 60 constant fps** — pure frames
+> preferred, frame skipping only as the measured last resort (the Pure
+> Frames Law in `rules.md`). Tracked in `docs/todo/to_todo.md`.
+
 ---
 
 ## 🪄 The Layer Above — *See It · Cache It · Predict It*
@@ -242,6 +246,25 @@ Code expression by **Claude (Anthropic)** — the Basic Pro subscription that he
 ## The Debug Deck (latest wave)
 
 The tuning surface grew into a small operating system:
+
+- **The Sun Spread** — satellite buttons place THEMSELVES: every anchor
+  owns a 12-slot clock ring (one universal 30° spacing), a walker finds
+  the first free slot, and crowded fans grow outward rings one-wider each
+  row. No hand angles anywhere; overlap is impossible by construction.
+- **ScreenGov** — the engine detects the display's real refresh rate and
+  every adaptive governor holds *that*, not an assumed 60. Quality-first:
+  controllers start at their ceiling and decay to stable.
+- **The Pure-Frames Benchmark** — the whole refinement runs with frame
+  skipping pinned to zero; skip is appended once at the end, walked from
+  0 to the provable minimum. Plus a random exploration poke per playable
+  tier so the hill-climb can't get stuck on a local ridge.
+- **Blob cards & the Captain's warm-up** — updates and questions arrive
+  as spring-mesh grey blobs grown from the left edge (a tiny per-vertex
+  physics system, naturally); boot offers a staged benchmark physical
+  with a ticking countdown.
+- **World-glued phosphor** — the trail glow ring now camera-compensates
+  every layer, so trails and the sun stay put under pan/zoom, and the
+  sun's neighborhood self-cleans every frame.
 
 - **View transform** — zoom (0.15–2.5×) and pan the whole panel layer; FIT
   frames every visible panel. The world and the deck have separate cameras.

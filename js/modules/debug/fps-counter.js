@@ -17,7 +17,12 @@
  * Read .debugInfo for the panel.
  */
 
-const RING = 120; // rolling window — 2 seconds at 60fps
+const RING = 120; // rolling window — one entry per SECOND (ring is fed inside the
+                  // 1000ms update gate below), so this is a ~2-MINUTE average.
+                  // The old comment claimed "2 seconds at 60fps" — that was the
+                  // per-frame-feed assumption, never the behavior. Kept at 120:
+                  // it is a display smoothing window, not a caching route — the
+                  // benchmark no longer reads it (measures directly, isolated).
 
 export const FpsCounter = {
   // public readable state

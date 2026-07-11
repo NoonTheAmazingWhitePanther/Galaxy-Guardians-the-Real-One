@@ -84,10 +84,25 @@ export const Accumulator = {
   get stageCtx()    { return this._bufs[this._head]?.ctx ?? null; },
   get stageCanvas() { return this._bufs[this._head]?.canvas ?? null; },
 
-  beginFrame(ticksThisFrame = 1) {
+  // Parse the flat background color once (hex → rgb) for the soft clean
+  // zone gradient below. Falls back to black on anything unparseable.
+  _bgRgb: null,
+  _bgRgbFor(color) {
+    if (this._bgRgb && this._bgRgb.src === color) return this._bgRgb;
+    let r = 0, g = 0, b = 0;
+    const m6 = /^#([0-9a-f]{6})$/i.exec(color);
+    const m3 = /^#([0-9a-f]{3})$/i.exec(color);
+    if (m6) { const v = parseInt(m6[1], 16); r = v >> 16 & 255; g = v >> 8 & 255; b = v & 255; }
+    else if (m3) { const v = m3[1]; r = parseInt(v[0] + v[0], 16); g = parseInt(v[1] + v[1], 16); b = parseInt(v[2] + v[2], 16); }
+    this._bgRgb = { src: color, r, g, b };
+    return this._bgRgb;
+  },
+
+  beginFrame(ticksThisFrame = 1, cam = null, cleanZone = null) {
     if (!this._ready) return;
     const n   = this._bufs.length;
-    const ctx = this._bufs[this._head].ctx;
+    const stage = this._bufs[this._head];
+    const ctx = stage.ctx;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
@@ -109,19 +124,64 @@ export const Accumulator = {
     // Redraw each prior complete frame onto the next stage, in sequence,
     // fading with age. Every layer is the real frame, full resolution —
     // exactly what it is, one drawImage call, nothing else done to it.
+    const d = this._dpr;
     for (let step = window; step >= 1; step--) {
       const bufIdx = (this._head - step + n) % n;
+      const buf    = this._bufs[bufIdx];
       const age    = 1 - (step / (window + 1));   // 0=oldest shown, →1 newest
       const alpha  = Math.pow(age, 1.4) * (1 - this.fadeAlpha);
       if (alpha < 0.005) continue;
       ctx.globalAlpha              = alpha;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(this._bufs[bufIdx].canvas, 0, 0);
+      // CAMERA COMPENSATION (the "blit not 100% secure" fix): each prior
+      // layer was drawn under ITS OWN camera. Compositing it raw meant its
+      // content sat at STALE SCREEN positions — the sun (and every ghost)
+      // visibly jumped whenever the camera panned or zoomed. Reproject each
+      // layer by the camera delta instead, so phosphor stays glued to WORLD
+      // positions. Derivation: a world point W lands in a layer drawn with
+      // camera (c0, z0) at raw px p0 = dpr·((W−c0)·z0 + S/2); under the
+      // current camera (c, z) it belongs at p = k·p0 + dpr·((c0−c)·z +
+      // (S/2)(1−k)) with k = z/z0 — verified by arithmetic in the session
+      // test. Identity fast-path when the camera hasn't moved.
+      if (cam && buf.cam &&
+          (buf.cam.x !== cam.x || buf.cam.y !== cam.y || buf.cam.zoom !== cam.zoom)) {
+        const k  = cam.zoom / buf.cam.zoom;
+        const tx = d * ((buf.cam.x - cam.x) * cam.zoom + (this._w / 2) * (1 - k));
+        const ty = d * ((buf.cam.y - cam.y) * cam.zoom + (this._h / 2) * (1 - k));
+        ctx.setTransform(k, 0, 0, k, tx, ty);
+      } else {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+      ctx.drawImage(buf.canvas, 0, 0);
     }
 
     ctx.globalAlpha              = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // SUN CLEAN ZONE: the sun's rays/halos/tentacles are ANIMATED — their
+    // phosphor ghosts read as fog/dirt that pops, lingers, and never looks
+    // clean. Softly repaint the background over the sun's neighborhood
+    // AFTER compositing the priors and BEFORE the fresh scene draws: the
+    // zone starts every frame clean, the sun redraws crisp, and the soft
+    // skirt keeps body trails from hitting a hard circular wall.
+    if (cleanZone && cleanZone.r > 0) {
+      const cx = cleanZone.x * d, cy = cleanZone.y * d, r = cleanZone.r * d;
+      if (cx + r > 0 && cy + r > 0 &&
+          cx - r < ctx.canvas.width && cy - r < ctx.canvas.height) {
+        const { r: br, g: bg2, b: bb } = this._bgRgbFor(CONFIG.render.BACKGROUND_COLOR);
+        const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+        grad.addColorStop(0,    `rgba(${br},${bg2},${bb},1)`);
+        grad.addColorStop(0.55, `rgba(${br},${bg2},${bb},1)`);
+        grad.addColorStop(1,    `rgba(${br},${bg2},${bb},0)`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      }
+    }
+
+    // Record the camera this frame's scene is about to be drawn with —
+    // it's what future compositing compensates against.
+    stage.cam = cam ? { x: cam.x, y: cam.y, zoom: cam.zoom } : null;
     // Renderer draws fresh scene here
   },
 
