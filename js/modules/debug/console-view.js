@@ -59,8 +59,16 @@ const CSS = `
   scrollbar-color:rgba(130,210,255,0.35) transparent; }
 #gg-console .list::-webkit-scrollbar{ width:5px; }
 #gg-console .list::-webkit-scrollbar-thumb{ background:rgba(130,210,255,0.32); border-radius:3px; }
-#gg-console .grp{ padding:5px 12px 2px; font-size:9px; font-weight:700; letter-spacing:.16em;
+#gg-console .grp{ display:flex; align-items:center; gap:7px; padding:7px 12px 5px;
+  font-size:9px; font-weight:700; letter-spacing:.16em; cursor:pointer; user-select:none;
+  color:rgba(130,210,255,0.55); }
+#gg-console .grp .caret{ font-size:9px; color:rgba(130,210,255,0.5); transition:transform .15s ease; }
+#gg-console .grp.open .caret{ transform:rotate(90deg); }
+#gg-console .grp .t{ flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#gg-console .grp .badge{ font-size:8.5px; font-weight:700; letter-spacing:.12em;
   color:rgba(130,210,255,0.34); }
+#gg-console .grp .badge.man{ color:#ffd77f; }
+#gg-console .grp-body.collapsed{ display:none; }
 
 #gg-console .row{ position:relative; display:flex; align-items:center; gap:6px;
   height:22px; padding:0 12px; font-size:11.5px; line-height:1; }
@@ -248,26 +256,56 @@ export const ConsoleView = {
     }, 50);
   },
 
-  // Walk every panel's `buttons` lines → one row each, deduped, grouped by
-  // panel title. Same Governor the panels use.
+  // Walk every panel's `buttons` lines → one row each, deduped, regrouped by
+  // SUBJECT (Noon's console law, 2026-07-12): frame skipping is pulled out of
+  // its home panels into ONE dedicated subject pinned above everything; every
+  // other subject sorts alphabetically, rows sort alphabetically inside their
+  // subject, and subjects are COLLAPSIBLE — collapsed by default, header shows
+  // AUTOMATED, or MANUAL when any knob inside carries a manual override, so a
+  // subject you won't change never even opens. Collapse state persists.
   _buildRows() {
     const panels = this._router._config?.panels || [];
     const seen = new Set();
+    const items = [];                         // { line, title }
     for (const p of panels) {
-      const lines = (p.lines || []).filter(l => l.type === 'buttons' && l.variable);
-      if (!lines.length) continue;
-      let headerDrawn = false;
-      for (const line of lines) {
+      for (const line of (p.lines || []).filter(l => l.type === 'buttons' && l.variable)) {
         if (seen.has(line.variable)) continue;
+        seen.add(line.variable);
+        items.push({ line, title: (p.title || p.id || '').toUpperCase() });
+      }
+    }
+
+    const SKIP = 'FRAME SKIPPING';
+    const isSkip = (v) => /frameskip|skipbase/i.test(v);
+    const groups = new Map();
+    for (const it of items) {
+      const key = isSkip(it.line.variable) ? SKIP : it.title;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    }
+    const names = [...groups.keys()].filter(n => n !== SKIP).sort((a, b) => a.localeCompare(b));
+    if (groups.has(SKIP)) names.unshift(SKIP);   // the individual, always on top
+
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('gg-console-collapse') || '{}'); } catch (_) {}
+
+    this._groups = [];
+    for (const name of names) {
+      const its = groups.get(name)
+        .sort((a, b) => (a.line.text || a.line.variable).localeCompare(b.line.text || b.line.variable));
+
+      const open = saved[name] === 1;          // default COLLAPSED
+      const g = document.createElement('div');
+      g.className = 'grp' + (open ? ' open' : '');
+      g.innerHTML = '<span class="caret">&#9656;</span><span class="t">' + name + '</span><span class="badge"></span>';
+      const body = document.createElement('div');
+      body.className = 'grp-body' + (open ? '' : ' collapsed');
+
+      const grp = { name, el: g, body, badge: g.querySelector('.badge'), recs: [] };
+
+      for (const { line } of its) {
         const variable = resolveVariable(line.variable);
         if (!variable) continue;
-        seen.add(line.variable);
-
-        if (!headerDrawn) {
-          const g = document.createElement('div');
-          g.className = 'grp'; g.textContent = (p.title || p.id || '').toUpperCase();
-          this._listEl.appendChild(g); headerDrawn = true;
-        }
 
         const gov = new Governor(variable, line.governor || {});
         const el = document.createElement('div');
@@ -288,11 +326,36 @@ export const ConsoleView = {
         // then. Range is precomputed once so drags are pure math.
         el.querySelector('.lab').addEventListener('click', () => this._toggleSlider(rec));
         el.querySelector('.val').addEventListener('click', () => this._toggleSlider(rec));
-        this._listEl.appendChild(el);
+        body.appendChild(el);
         this._rows.push(rec);
+        grp.recs.push(rec);
         this._paintRow(rec);
       }
+
+      if (!grp.recs.length) continue;          // resolveVariable dropped everything
+
+      g.addEventListener('click', () => {
+        const nowOpen = !body.classList.toggle('collapsed');
+        g.classList.toggle('open', nowOpen);
+        saved[name] = nowOpen ? 1 : 0;
+        try { localStorage.setItem('gg-console-collapse', JSON.stringify(saved)); } catch (_) {}
+        if (nowOpen) for (const r of grp.recs) this._paintRow(r);   // fresh on reveal
+      });
+
+      this._listEl.appendChild(g);
+      this._listEl.appendChild(body);
+      this._paintBadge(grp);
+      this._groups.push(grp);
     }
+  },
+
+  // Collapsed truth-in-one-word: MANUAL the moment any knob inside carries a
+  // manual override, AUTOMATED otherwise. Rows without a ManualOverrides key
+  // (raw variables) don't vote.
+  _paintBadge(grp) {
+    const manual = grp.recs.some(r => r.manualKey && ManualOverrides.isManual(r.manualKey));
+    grp.badge.textContent = manual ? 'MANUAL' : 'AUTOMATED';
+    grp.badge.classList.toggle('man', manual);
   },
 
   // ── Lazy tweened slider ──────────────────────────────────────────────────
@@ -475,7 +538,17 @@ export const ConsoleView = {
     if (!debugOn && this._consoleMode) this._router.setConsoleMode?.(false);
   },
 
-  _refreshOnce() { for (const rec of this._rows) this._paintRow(rec); },
+  _refreshOnce() {
+    if (this._groups && this._groups.length) {
+      for (const grp of this._groups) {
+        this._paintBadge(grp);
+        if (!grp.body.classList.contains('collapsed'))
+          for (const rec of grp.recs) this._paintRow(rec);
+      }
+    } else {
+      for (const rec of this._rows) this._paintRow(rec);
+    }
+  },
 };
 
 export default ConsoleView;

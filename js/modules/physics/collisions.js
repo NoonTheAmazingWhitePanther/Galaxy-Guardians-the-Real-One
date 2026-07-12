@@ -12,6 +12,7 @@ import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
 import { PhysicsCounter } from '../debug/physics-counter.js';
 import { GravityField } from './gravity-field.js';
+import { CollisionFields, ImpactField } from '../../core/map-rule.js';
 
 // Soft landing for freshly plane-merged bodies: while either body's
 // mergeSoft ramp is running, collision response scales 0 → 1 (smoothstep).
@@ -60,6 +61,7 @@ export const interBodyCollisions = () => {
       if (cd2 > thresh * thresh) continue;
 
       const soft = _pairSoft(A, B);   // 0→1 ease for freshly merged bodies
+      let pairImpulse = 0;            // Map Rule: accumulate → ONE pulse per pair
 
       // Clear persistent grid
       _grid.clear();
@@ -134,6 +136,7 @@ export const interBodyCollisions = () => {
               if (denom <= 0 || !Number.isFinite(denom)) continue;
               const jVal = -(1.35) * vn * soft / denom;  // eased impulse too
               PhysicsCounter.add('collisionsResolved');
+              pairImpulse += Math.abs(jVal);
               GravityField.noteCollision(pa.x, pa.y, 1); // HARD — into the weight map segment
               pa.vx += jVal * nx / ma; pa.vy += jVal * ny / ma;
               pb.vx -= jVal * nx / mb; pb.vy -= jVal * ny / mb;
@@ -143,6 +146,16 @@ export const interBodyCollisions = () => {
             }
           }
         }
+      }
+
+      // Map Rule wiring: contact presence on the COLLISION grid, and — if any
+      // impulse actually fired — one pulse somewhere on the IMPACT grid, at
+      // the pair midpoint, scaled by the summed impulse. Awareness + flash;
+      // resolution above stays pairwise-exact, untouched.
+      if (pairImpulse > 0) {
+        const mx = (A.cx + B.cx) * 0.5, my = (A.cy + B.cy) * 0.5;
+        CollisionFields.mark(mx, my, 1);
+        ImpactField.pulse(mx, my, Math.min(10, pairImpulse * 0.01));
       }
     }
   }

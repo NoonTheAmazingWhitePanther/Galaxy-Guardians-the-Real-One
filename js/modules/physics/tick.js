@@ -21,6 +21,9 @@ import { TweenGovernor } from '../../core/tween-governor.js';
 import { BurningParticles } from '../../core/burning-particles.js';
 import { BurningSystem } from '../../core/burning-system.js';
 import { Dormancy } from '../../core/dormancy.js';
+import { ManualOverrides } from '../debug/governor.js';
+import { SunGravMap } from './sun-grav-map.js';
+import { BodyFields, ForceField, ImpactField } from '../../core/map-rule.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -84,16 +87,79 @@ export const solveSprings = (body, dt) => {
 };
 
 const _gfOut = { x: 0, y: 0 };   // scratch for GravityField.sampleInto (no alloc)
+const _sunOut = { x: 0, y: 0 };  // scratch for SunGravMap.sampleInto (no alloc)
+const _ffOut  = { x: 0, y: 0 };  // scratch for ForceField.absorbInto (no alloc)
+
+// ── GHOST FAR-CLUSTER MAP (Noon, 2026-07-11) ──────────────────────────────
+// The grid's own far/near law, applied to the ghost sim. Ghost mode can't
+// ride the live grid (stale-field rule), so its legacy loop paid exact
+// O(particles × bodies) gravity — 5–20× a live tick, which is what detonated
+// frames whenever the conveyor produced. Instead: once per ghost tick,
+// collapse every FAR planet pair to a COM-level force ("their offset like a
+// gravity map" — a cluster map, N² body pairs, trivial at any sane N) and
+// keep only NEAR planets (rA + rB + cacheFarDist px) in the exact
+// per-particle loop — collisions and wakes stay byte-honest exactly where
+// Dormancy's classifier watches them. Bounded approximation, same premise
+// as cacheDirtySubsteps, knob-gated (cacheFarCluster, default ON).
+let _ghostFarOn = false;
+const _farNear = [];   // per body index: NEAR body refs → exact per-particle loop
+const _farFx = [];     // per body index: aggregated far force per (mass/nParticles)
+const _farFy = [];
+
+const prepGhostFar = (bodies, gravConst) => {
+  _ghostFarOn = false;
+  if (!GravityField.ghostMode) return;                          // live rides the grid; this is ghost-only
+  if (ManualOverrides.get('cacheFarCluster', 1) === 0) return;  // knob: 0 = exact legacy loop (old behavior)
+  const N = bodies.length;
+  if (N < 3) return;                                            // nothing worth clustering
+  const pad = ManualOverrides.get('cacheFarDist', 400);
+  for (let i = 0; i < N; i++) {
+    bodies[i]._farIdx = i;
+    (_farNear[i] || (_farNear[i] = [])).length = 0;
+    _farFx[i] = 0; _farFy[i] = 0;
+  }
+  for (let i = 0; i < N; i++) {
+    const A = bodies[i];
+    const rA = (Number.isFinite(A.radius) && A.radius > 0) ? A.radius : 8;
+    for (let j = 0; j < N; j++) {
+      if (j === i) continue;
+      const B = bodies[j];
+      const dx = B.cx - A.cx, dy = B.cy - A.cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > B.mass * 10000) continue;            // same negligible-force cull as the exact loop
+      const rB = (Number.isFinite(B.radius) && B.radius > 0) ? B.radius : 8;
+      const thr = rA + rB + pad;
+      if (d2 < thr * thr) { _farNear[i].push(B); continue; }   // near → stays exact
+      const d = Math.sqrt(d2) + 0.1;
+      const f = (gravConst * B.mass) / (d2 + 300); // per (mass/nParticles) unit, COM-to-COM
+      _farFx[i] += (dx / d) * f;
+      _farFy[i] += (dy / d) * f;
+    }
+  }
+  _ghostFarOn = true;
+};
 
 export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodies, sunGrav) => {
-  // ── ONE for the Sun: always analytic, always exact ──
+  // ── ONE for the Sun ──
+  // MAP path (Noon, 2026-07-12): the sun's geometry is a constant — read the
+  // precomputed direction×falloff cell and multiply in the LIVE mass/G/mults.
+  // Mass changes and bursts are free; sqrt was paid once at build.
+  // Falls back to analytic when the cell isn't built yet, inside the
+  // near-exact ring, or outside the span — never wrong, only unbuilt.
   const gm = (p.body && p.body.gravMult != null) ? p.body.gravMult : sunGrav;
-  const sdx = sunX - p.x, sdy = sunY - p.y;
-  const sd2 = sdx * sdx + sdy * sdy;
-  const sd = Math.sqrt(sd2) + 0.1;
-  const sf = (gravConst * sunMass * gm / (sd2 + 500)) / nParticles;
-  p.fx += (sdx / sd) * sf * p.mass;
-  p.fy += (sdy / sd) * sf * p.mass;
+  if (SunGravMap.enabled && SunGravMap.sampleInto(p.x, p.y, _sunOut)) {
+    const k = (gravConst * sunMass * gm / nParticles) * p.mass;
+    p.fx += _sunOut.x * k;
+    p.fy += _sunOut.y * k;
+  } else {
+    // analytic: always exact, always available
+    const sdx = sunX - p.x, sdy = sunY - p.y;
+    const sd2 = sdx * sdx + sdy * sdy;
+    const sd = Math.sqrt(sd2) + 0.1;
+    const sf = (gravConst * sunMass * gm / (sd2 + 500)) / nParticles;
+    p.fx += (sdx / sd) * sf * p.mass;
+    p.fy += (sdy / sd) * sf * p.mass;
+  }
 
   // ── MANY for the planets: grid far field + live near ring ──
   // Ghost stepping (FutureCache) and warmup fall through to the legacy loop
@@ -114,6 +180,29 @@ export const applyGravity = (p, nParticles, gravConst, sunMass, sunX, sunY, bodi
     // Truthful counters: 1 field sample + only the near-ring body evals.
     PhysicsCounter.add('gravityGridSamples');
     if (nearChecks) PhysicsCounter.add('gravityChecks', nearChecks);
+    return;
+  }
+
+  // ── GHOST FAR-CLUSTER path: far planets pre-collapsed to COM offsets;
+  // only the prepped NEAR list runs the exact per-particle math ──
+  if (_ghostFarOn && p.body && p.body._farIdx != null) {
+    const idx = p.body._farIdx;
+    p.fx += _farFx[idx] * (p.mass / nParticles);
+    p.fy += _farFy[idx] * (p.mass / nParticles);
+    const near = _farNear[idx];
+    let nChecks = 0;
+    for (let ni = 0; ni < near.length; ni++) {
+      const b = near[ni];
+      const dx = b.cx - p.x, dy = b.cy - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > b.mass * 10000) continue;
+      nChecks++;
+      const d = Math.sqrt(d2) + 0.1;
+      const f = (gravConst * b.mass / (d2 + 300)) / nParticles;
+      p.fx += (dx / d) * f * p.mass;
+      p.fy += (dy / d) * f * p.mass;
+    }
+    if (nChecks) PhysicsCounter.add('gravityChecks', nChecks);
     return;
   }
 
@@ -325,6 +414,7 @@ export const tickBodies = (scaledDt) => {
   const nAlives = new Array(numBodies);
 
   for (let sub = 0; sub < config.SUBSTEPS; sub++) {
+    const forceHot = ForceField.hot;   // one read; cold field costs the loop nothing
     // ── PHASE 1: Count alive (first substep only) ──
     if (sub === 0) {
       for (let bi = 0; bi < numBodies; bi++) {
@@ -335,6 +425,12 @@ export const tickBodies = (scaledDt) => {
         }
         nAlives[bi] = n || 1;
       }
+      // Ghost far-cluster map — refreshed once per tick from the COMs the
+      // previous tick left behind (fresher than any round-robin, and the N²
+      // COM pass is trivial). No-op + flag-off on the live path.
+      prepGhostFar(bodies, gravConst);
+      // Sun map growth — live ticks only; ghosts read whatever is built.
+      if (_probe) SunGravMap.update();
     }
 
     // ── PHASE 2: Fused gravity + integration + burn ──
@@ -354,6 +450,14 @@ export const tickBodies = (scaledDt) => {
       const coastMult = Dormancy.coastMultiplier(body);
       if (coastMult === 0) continue;
       const bodyDt = coastMult === 1 ? dt : dt * coastMult;
+      // Swept-collision arming (×12 tunneling fix): a catch-up step moves
+      // K ticks of distance in one integration — record the launch COM so
+      // the post-substep sweep can ray-check the jump it just made.
+      if (coastMult > 1 && sub === 0) {
+        body._coastFromX = body.cx;
+        body._coastFromY = body.cy;
+        body._coastJump = true;
+      }
 
       const na = nAlives[bi];
       const particles = body.particles;
@@ -364,6 +468,12 @@ export const tickBodies = (scaledDt) => {
 
         // 1. Gravity
         applyGravity(p, na, gravConst, sunMass, sunX, sunY, bodies, sunGrav);
+
+        // 1b. Force grid absorption (Map Rule command grid) — only while hot
+        if (forceHot && ForceField.absorbInto(p.x, p.y, _ffOut)) {
+          p.fx += _ffOut.x * p.mass;
+          p.fy += _ffOut.y * p.mass;
+        }
 
         // 2. Integration (inlined for speed)
         p.vx = (p.vx + (p.fx / p.mass) * bodyDt) * damping;
@@ -430,6 +540,64 @@ export const tickBodies = (scaledDt) => {
     // OPTIMIZATION: Skip tweening bodies (position/rotation fixed)
     if (TweenGovernor.shouldPause(bodies[bi].id)) continue;
     updateCOM(bodies[bi]);
+  }
+
+  // Map Rule: one delta-deposit per body per live tick (ghost ticks refused
+  // inside — clones must never write the live maps).
+  BodyFields.tick(bodies);
+  if (!GravityField.ghostMode) ForceField.coolOne();
+
+  // ── SWEPT COAST CHECK — the "Collided?" flag (Noon, 2026-07-12) ──────────
+  // A K×dt catch-up jump can cross a body without either endpoint ever
+  // overlapping it — classic tunneling, which showed at ×12 when stale
+  // classifications let bodies coast through events. Here the jump itself is
+  // ray-cast: the segment launch-COM → landed-COM against every same-plane
+  // body's circle. On a crossing: the body is pulled BACK along its own jump
+  // to the impact fraction (the measured "moment of explosion" inside the
+  // jump), flagged `coastHit` with that fraction in `coastHitT`, and force-
+  // woken — next tick, normal exact collision physics detonates at the true
+  // point instead of never. Runs only for bodies that jumped this tick.
+  for (let bi = 0; bi < numBodies; bi++) {
+    const A = bodies[bi];
+    if (!A._coastJump) continue;
+    A._coastJump = false;
+    const x0 = A._coastFromX, y0 = A._coastFromY;
+    const dxJ = A.cx - x0, dyJ = A.cy - y0;
+    const jump2 = dxJ * dxJ + dyJ * dyJ;
+    if (jump2 < 1) continue;                                  // barely moved
+    const rA = (Number.isFinite(A.radius) && A.radius > 0) ? A.radius : 8;
+    let bestT = Infinity;
+    for (let bj = 0; bj < numBodies; bj++) {
+      if (bj === bi) continue;
+      const B = bodies[bj];
+      if ((B.plane | 0) !== (A.plane | 0)) continue;          // self-plane law
+      const rB = (Number.isFinite(B.radius) && B.radius > 0) ? B.radius : 8;
+      const R = rA + rB;
+      // segment (x0,y0)+t·J vs circle(B.cx,B.cy,R), t ∈ [0,1] — smaller root
+      const mx = x0 - B.cx, my = y0 - B.cy;
+      const b2 = mx * dxJ + my * dyJ;
+      const c2 = mx * mx + my * my - R * R;
+      if (c2 <= 0) { bestT = 0; break; }                      // launched overlapping
+      const disc = b2 * b2 - jump2 * c2;
+      if (disc <= 0) continue;                                // never crosses
+      const t = (-b2 - Math.sqrt(disc)) / jump2;
+      if (t >= 0 && t <= 1 && t < bestT) bestT = t;
+    }
+    if (bestT <= 1) {
+      // pull the whole body back to just before the impact fraction
+      const back = Math.max(0, bestT - 0.02);
+      const cx = x0 + dxJ * back, cy = y0 + dyJ * back;
+      const ddx = cx - A.cx, ddy = cy - A.cy;
+      const ps = A.particles;
+      for (let pi = 0; pi < ps.length; pi++) { ps[pi].x += ddx; ps[pi].y += ddy; }
+      A.cx = cx; A.cy = cy;
+      A.coastHit = true;                                      // the Collided? flag
+      A.coastHitT = bestT;                                    // the tick-inside-the-jump measure
+      Dormancy.wake(A.id);
+      ImpactField.pulse(A.cx, A.cy, 1);                       // the flash on the impact grid
+    } else if (A.coastHit) {
+      A.coastHit = false;                                     // clean jump → clear
+    }
   }
   // Queue splitDeadParticles for bodies that had spring breaks OR burn
   // deaths this tick. Stable bodies with neither skip this entirely —

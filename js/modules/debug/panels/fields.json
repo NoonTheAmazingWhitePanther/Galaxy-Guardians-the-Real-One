@@ -1,0 +1,52 @@
+{
+ "id": "fields",
+ "title": "FIELDS",
+ "position": {
+  "x": 16,
+  "y": 120
+ },
+ "refreshRate": 500,
+ "minimized": true,
+ "summaryVariable": "MapRule.stats.channels",
+ "summaryLabel": "Channels",
+ "lines": [
+  {
+   "type": "header",
+   "text": "FIELDS",
+   "value": "MapRule.stats.channels",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "\u2014 the Map Rule census \u2014"
+  },
+  {
+   "type": "display",
+   "text": "renters",
+   "value": "MapRule.stats.renters"
+  },
+  {
+   "type": "display",
+   "text": "channels",
+   "value": "MapRule.stats.channels"
+  },
+  {
+   "type": "display",
+   "text": "cells",
+   "value": "MapRule.stats.cells"
+  },
+  {
+   "type": "display",
+   "text": "force hot",
+   "value": "MapRule.stats.forceHot"
+  },
+  {
+   "type": "display",
+   "text": "roster",
+   "value": "MapRule.stats.roster"
+  }
+ ],
+ "maxHeight": 300,
+ "background": null
+}

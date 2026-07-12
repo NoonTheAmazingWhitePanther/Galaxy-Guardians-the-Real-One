@@ -296,39 +296,66 @@ export const FutureCache = {
     });
   },
 
-  // ── Adaptive top-up ─────────────────────────────────────────────────────
-  // Called once per frame with whatever spare time budget CacheGov decides
-  // to allow. Caches anywhere from 0 to HARD_CAP steps ahead depending on
-  // how much of that budget is actually available RIGHT NOW — this is what
-  // makes "sometimes 1, sometimes 100" happen automatically: it just keeps
-  // computing ticks until it runs out of either time or room, whichever
-  // comes first, every frame.
-  topUp(msBudget, targetAhead) {
+  // ── The conveyor (valved 1:1 pump) ──────────────────────────────────────
+  // THE LAW (2026-07-11, Noon): one tick produced per tick consumed — every
+  // logical tick computed exactly once. Depth is pure lookahead, never a
+  // per-frame cost. At ×12 the conveyor moves 12 ticks: 12 out, 12 in.
+  //
+  // THE VALVE (post-6fps-spiral fix): 1:1 is a CEILING, not an obligation.
+  // All ghost work — replacement and growth both — lives inside ONE ms
+  // budget, and a tick that (by running cost estimate) won't fit is never
+  // started. A replacement shortfall just drains the buffer: lookahead
+  // shrinking is graceful, and a drained buffer degrades to plain live
+  // grid physics at full fps — never a locked 6fps producing ghosts it
+  // can't afford. Growth obeys the ×1 rule: at most ONE tick per frame
+  // ("caching in the future just +1"), so a post-spawn rebuild replenishes
+  // at exactly ×1 speed, one step ahead per frame, on top of replacement.
+  _ghostMsEma: 0.5,   // running cost of one ghost tick (ms) — optimistic start:
+                      // worst case is ONE over-budget tick at spawn, then the
+                      // EMA blocks further ones until it decays enough to retry.
+
+  _timedShadowTick() {
+    const t0 = performance.now();
+    this._shadowTick();
+    this._ghostMsEma = this._ghostMsEma * 0.8 + (performance.now() - t0) * 0.2;
+  },
+
+  pump(consumed, msBudget, targetAhead) {
     // No planets yet — nothing to cache, and caching an empty world is exactly
     // what wipes the first plant. Do nothing until a body exists.
     if (!this.active) return 0;
     const cap = Math.min(HARD_CAP, targetAhead);
     const start = performance.now();
-    let stepsDone = 0;
-    // Respect the SHARED frame ledger (opened by QueOps.tick() at the top
-    // of this frame) in addition to our own msBudget — whichever runs out
-    // first. Previously this ran its own private clock, unaware of how
-    // much of the frame QueOps (or the physics ticks that ran between
-    // QueOps.tick() and here) had already spent. Two-plus private budgets
-    // stacking instead of sharing one frame is exactly what caused
-    // frame-time spikes under load — this is the fix for that.
-    while (this.bufferedAhead < cap
-        && (performance.now() - start) < msBudget
-        && QueOps.remaining() > 0) {
-      this._shadowTick();
-      stepsDone++;
-    }
-    // Fill-pressure signal for the AUTO controller: if we couldn't reach the
-    // cap, we ran out of time this frame (overloaded) — else we kept up with
-    // room to spare. CacheGov uses this to walk its AUTO target between 1 and
-    // 1000 all by itself. (No-op when CacheGov is in MANUAL mode.)
-    CacheGov.reportFill(this.bufferedAhead < cap);
-    return stepsDone;
+    // "Will one more tick fit?" — elapsed + estimated cost inside the budget,
+    // AND the shared frame ledger still open. Checked BEFORE every tick, so
+    // an expensive ghost tick is never started on a hunch.
+    const fits = () =>
+      (performance.now() - start) + this._ghostMsEma * 0.75 <= msBudget
+      && QueOps.remaining() > 0;
+
+    let steps = 0;
+
+    // Replacement — the conveyor. Up to one produced per consumed (misses
+    // excluded: a miss already paid live physics this frame; ghosting it too
+    // is the double-pay this design kills). If the buffer sits ABOVE cap,
+    // owed is 0 and consumption alone drains it down — no special case.
+    let owe = Math.min(consumed, Math.max(0, cap - this.bufferedAhead));
+    while (owe > 0 && fits()) { this._timedShadowTick(); steps++; owe--; }
+    const starved = owe > 0;   // couldn't keep 1:1 → real pressure signal
+
+    // Growth — the ×1 law: at most ONE step deeper per frame, spare-room only.
+    if (this.bufferedAhead < cap && fits()) { this._timedShadowTick(); steps++; }
+
+    // If ghost work is priced out entirely (EMA > budget), decay the estimate
+    // slowly so caching re-tries once conditions improve (bodies died, scene
+    // calmed) instead of staying priced out forever on a stale number.
+    if (steps === 0 && this.bufferedAhead < cap) this._ghostMsEma *= 0.98;
+
+    // Pressure for CacheGov AUTO: only a genuine replacement shortfall halves
+    // the target. "Not full yet" is the normal state of a ×1 fill and must
+    // never read as overload (that misread once collapsed 1000→1 every boot).
+    CacheGov.reportFill(starved);
+    return steps;
   },
 
   // ── Candidate splice — the orbit preview IS the Future Cache ────────────

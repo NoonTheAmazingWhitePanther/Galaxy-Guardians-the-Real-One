@@ -110,6 +110,14 @@ export const ManualOverrides = {
   cacheTargetAhead:         { isManual: false, value: 100 },  // "amount of future steps to cache"
   cacheMsBudget:            { isManual: false, value: 2.0 },  // spare ms/frame spent caching ahead
   cacheDirtySubsteps:       { isManual: false, value: 0 },    // ghost-sim substeps for the FUTURE cache; 0 = exact (same as live). >0 = dirty/cheaper future.
+  cacheFarCluster:          { isManual: false, value: 1 },    // 0/1 — ghost gravity: FAR planets collapse to COM offsets (cluster map), NEAR stay exact. The affordable-future law (Noon, 2026-07-11).
+  cacheFarDist:             { isManual: false, value: 400 },  // px beyond rA+rB where a ghost pair goes far/clustered. Lower = cheaper + dirtier; raise if predicted collisions drift.
+  sunGravMap:               { isManual: false, value: 1 },    // 0/1 — Noon's Sun Gravity Map: precomputed geometry field (mass factored out — bursts free). 0 = pure analytic. A/B via physics.grav.
+  sunMapNearR:              { isManual: false, value: 1500 }, // px — inside this ring of the sun, gravity stays analytic-exact (gradient too steep for cells; keeps tight orbits smooth).
+  sunMapSpan:               { isManual: false, value: 12000 },// px — world span the sun map covers, centered on the sun. Outside → analytic fallback. Change triggers rebuild.
+  mapRuleOn:                { isManual: false, value: 1 },    // 0/1 — the Singular Map Rule: BodyFields renter (weight/heat/momentum/threat) on the one lattice.
+  mapRuleRes:               { isManual: false, value: 1 },    // 0.25..4 — tessellation dial: resolution multiplier for Map Rule renters. Governor's hand on accuracy vs cost.
+  mapRuleSkip:              { isManual: false, value: 4 },    // ticks between smoothing passes (registered skip — visible to Skip Action Panels).
 
   // TrajectoryPreview — the orbit-preview line IS the Future Cache: it
   // walks FutureCache's already-computed future (peekAt) instead of a
@@ -136,7 +144,7 @@ export const ManualOverrides = {
   dormancyTween:            { isManual: false, value: 0 },    // 0/1 — witness the locked cold-body tween overlay
   dormancyTweenLock:        { isManual: false, value: 8 },    // frames per keyframe span (LOCKED Δ; higher = slower, smoother glide)
   dormancyRadiusK:          { isManual: false, value: 1.0 },   // ×declared body.radius for the wake extent (central offset + declared radius; 1.0 = as-built, no sprawl)
-  dormancyStage2:           { isManual: false, value: 0 },     // 0/1 — LIVE physics cadence for coasting bodies, not just the witness overlay. Off by default; test deliberately.
+  dormancyStage2:           { isManual: false, value: 1 },     // 0/1 — LIVE physics cadence for coasting bodies, not just the witness overlay. ON by default (2026-07-11, Noon's call) — the prime-goal lever.
   dormancyCoastK:           { isManual: false, value: 4 },     // Stage 2: coasting bodies take 1 real step per K ticks, sized K× (folds in the skipped ticks). 1 = same as off.
 
   // GUI Governor — starve the sim to reserve the frame for the interface
@@ -654,12 +662,15 @@ export const CacheGov = {
 
   // ── Automated cache-ahead depth ─────────────────────────────────────────
   // In AUTO the target isn't a fixed number — it walks itself between a floor
-  // of 1 and a ceiling of 1000 based on whether FutureCache is keeping up.
-  // FutureCache.topUp() calls reportFill() once a frame with the pressure
-  // signal; AIMD converges on the deepest buffer the machine can actually
-  // sustain: climbs when there's spare time, halves the moment it falls
-  // behind. High-end machines settle near 1000; a busy scene collapses toward
-  // 1. Mirrors HARD_CAP in future-cache.js — keep the two 1000s in sync.
+  // of 1 and a ceiling of 1000. FutureCache.pump() calls reportFill() once a
+  // frame; under the CONVEYOR LAW (one produced per consumed, see pump) the
+  // pressure signal is STARVATION ONLY — the shared frame ledger ran dry
+  // mid-replacement. "Buffer not full yet" is the normal state of a fill and
+  // no longer reads as overload (that misread used to collapse 1000→1 on
+  // every boot). Depth is pure lookahead under the conveyor — halving it
+  // relieves ledger pressure from growth, not steady-state cost. High end
+  // settles near 1000, low end near 1 — same per-frame price either way.
+  // Mirrors HARD_CAP in future-cache.js — keep the two 1000s in sync.
   AUTO_MIN: 1,
   AUTO_MAX: 1000,
   // QUALITY-FIRST START: begins at the CEILING, not a modest 60 — the

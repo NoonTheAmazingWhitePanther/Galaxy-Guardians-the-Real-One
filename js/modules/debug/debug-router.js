@@ -11,6 +11,7 @@ import { Accumulator } from '../rendering/accumulator.js';
 import { PhysicsCounter } from './physics-counter.js';
 import { DrawCallCounter } from './draw-call-counter.js';
 import { QueOps } from '../../core/que-ops.js';
+import { MapRule } from '../../core/map-rule.js';
 import { Aims } from '../../core/aims.js';
 import { config } from '../../core/config.js';
 import { FpsCounter } from './fps-counter.js';
@@ -59,6 +60,7 @@ export const DebugRouter = {
     GovernorRegistry.register('Accumulator',      Accumulator);
     GovernorRegistry.register('config',           config);
     GovernorRegistry.register('FpsCounter',       FpsCounter);
+    GovernorRegistry.register('MapRule',          MapRule);
     GovernorRegistry.register('MsProbe',          MsProbe);
     GovernorRegistry.register('StateCache',       StateCache);
     GovernorRegistry.register('FutureCache',      FutureCache);

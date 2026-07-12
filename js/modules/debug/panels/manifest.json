@@ -17,5 +17,6 @@
  "gravitygrid.json",
  "trajectory.json",
  "cycle.json",
- "selection.json"
+ "selection.json",
+ "fields.json"
 ]

@@ -94,11 +94,32 @@ export const Dormancy = {
   wakeTick(i) { return this._states[i]?.wakeTick ?? 0; },
 
   // Called once per frame from main.js; self-throttles.
+  // TICK-BASED CADENCE (×12 tunneling fix, 2026-07-12): the old wall-clock
+  // throttle alone breaks at speed multipliers — at ×12, 180ms of wall time
+  // is ~130+ sim ticks, LONGER than the whole classified horizon, so bodies
+  // ran off the end of expired classifications and coasted blind through
+  // collision points. Now the scan also fires whenever the sim has advanced
+  // a third of the horizon since the last scan, whichever comes first —
+  // classifications can never expire faster than they refresh, at any speed.
+  _lastScanTick: -1,
   tick() {
     const now = performance.now();
-    if (now - this._lastScan < SCAN_INTERVAL_MS) return;
+    const ref = FutureCache.frontierTick;
+    const H   = Math.max(MIN_HORIZON, Math.round(ManualOverrides.get('dormancyHorizon', DEF_HORIZON)));
+    const tickDue = this._lastScanTick < 0 || (ref - this._lastScanTick) >= (H / 3);
+    const timeDue = (now - this._lastScan) >= SCAN_INTERVAL_MS;
+    if (!tickDue && !timeDue) return;
     this._lastScan = now;
+    this._lastScanTick = ref;
     this.classify();
+  },
+
+  /** Force-wake a body NOW (e.g. a swept coast step detected a crossing):
+   *  exact stepping resumes immediately; the next classify() re-evaluates. */
+  wake(bodyId) {
+    const st = this._byId.get(bodyId);
+    if (st) { st.cold = false; st.wakeTick = 0; }
+    this._coastPhase.delete(bodyId);
   },
 
   classify() {

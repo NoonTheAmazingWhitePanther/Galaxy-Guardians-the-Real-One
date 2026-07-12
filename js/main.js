@@ -721,6 +721,7 @@ function mainLoop(t) {
       if (Gate.pass('physics.gravField')) MsProbe.call('physics.gravField', () => GravityField.update());
 
       let stepsThisFrame = 0;
+      let cacheHitsThisFrame = 0;   // consumed ticks — the conveyor owes one produced tick per each
       while (physicsAccumulator >= currentPhysicsStep && stepsThisFrame < MAX_STEPS_PER_FRAME) {
         if (isPreCalculating) {
           if (runPreCalc()) {
@@ -735,6 +736,7 @@ function mainLoop(t) {
           // StateCache's interpolation buffer stays consistent either way).
           StateCache.push(StateCache.captureSnapshot(state.bodies, state.loose));
           FutureCache.playNext();
+          cacheHitsThisFrame++;
         } else {
           physicsTick();
           FutureCache.recordLiveTick();
@@ -769,13 +771,14 @@ function mainLoop(t) {
       // law's ground truth) + the banked remainder still owed to physics.
       CycleMeter.frame(stepsThisFrame, physicsAccumulator, currentPhysicsStep);
 
-      // Adaptive cache-ahead top-up — spend whatever spare ms CacheGov
-      // allows pre-computing more future ticks, right now, while there's
-      // still budget left in this frame. Some frames that's 1 step, some
-      // frames it's 100 — purely a function of how much time is actually
-      // available, never a fixed count.
+      // The conveyor pump (1:1 law) — one tick produced at the frontier for
+      // every tick consumed this frame, so every logical tick is computed
+      // exactly once, ever. Depth is pure lookahead, not per-frame cost.
+      // Growth toward CacheGov.targetAhead happens only inside the spare-ms
+      // budget; replacement itself is unconditional (ledger-valved). Gate/
+      // probe label kept as 'cache.topUp' — same namespace, new engine.
       if (CacheGov.enabled && !isPreCalculating) {
-        if (Gate.pass('cache.topUp')) MsProbe.call('cache.topUp', () => FutureCache.topUp(CacheGov.msBudget, CacheGov.targetAhead));
+        if (Gate.pass('cache.topUp')) MsProbe.call('cache.topUp', () => FutureCache.pump(cacheHitsThisFrame, CacheGov.msBudget, CacheGov.targetAhead));
       }
       if (Gate.pass('dormancy.tick')) MsProbe.call('dormancy.tick', () => Dormancy.tick());   // Stage 1: measure hot/cold from the cached future (throttled, read-only)
     }

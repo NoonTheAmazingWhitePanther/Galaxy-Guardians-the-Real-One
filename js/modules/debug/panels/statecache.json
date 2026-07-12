@@ -326,6 +326,70 @@
    "type": "display",
    "text": "loose",
    "value": "StateCache.debugInfo.loose"
+  },
+  {
+   "type": "buttons",
+   "text": "Vault Size",
+   "variable": "ManualOverrides.cacheVaultSize.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 10,
+    "max": 1000,
+    "step": 10
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Snap Interval",
+   "variable": "ManualOverrides.cacheSnapshotInterval.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 1,
+    "max": 10,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Far Cluster",
+   "variable": "ManualOverrides.cacheFarCluster.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "Far Dist",
+   "variable": "ManualOverrides.cacheFarDist.value",
+   "buttons": [
+    "+",
+    "=",
+    "\u2212"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 100,
+    "max": 1200,
+    "step": 50
+   }
   }
  ],
  "minimized": true,
