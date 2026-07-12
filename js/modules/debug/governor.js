@@ -146,6 +146,9 @@ export const ManualOverrides = {
   dormancyRadiusK:          { isManual: false, value: 1.0 },   // ×declared body.radius for the wake extent (central offset + declared radius; 1.0 = as-built, no sprawl)
   dormancyStage2:           { isManual: false, value: 1 },     // 0/1 — LIVE physics cadence for coasting bodies, not just the witness overlay. ON by default (2026-07-11, Noon's call) — the prime-goal lever.
   dormancyCoastK:           { isManual: false, value: 4 },     // Stage 2: coasting bodies take 1 real step per K ticks, sized K× (folds in the skipped ticks). 1 = same as off.
+  dormancySenses:           { isManual: false, value: 1 },     // 0/1 — field senses join the oracle: threat/contact can VETO cold (never grant it)
+  dormancySenseThreat:      { isManual: false, value: 0.35 },  // smoothed `threat` on the FUTURE path above this → stay hot
+  dormancySenseContact:     { isManual: false, value: 1.0 },   // smoothed `contact` at current/mid position above this → stay hot
 
   // GUI Governor — starve the sim to reserve the frame for the interface
   guiGovMode:               { isManual: false, value: 0 },     // 0 OFF · 1 SLOW · 2 PAUSE · 3 HALT

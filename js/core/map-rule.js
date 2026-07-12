@@ -49,9 +49,11 @@ class Renter {
     this.name = name;
     this.channels = contract.channels.slice();          // channel names, in order
     this.cellSize = contract.cellSize || 96;            // px per cell at res ×1
-    this.smoothing = contract.smoothing ?? 1;           // blur passes per refresh
+    this.smoothing = contract.smoothing ?? 1;           // blur passes per refresh · 0 = never (raw-only renters)
     this.skip = Math.max(1, contract.skip ?? 4);        // smooth every N ticks
     this.decay = contract.decay || {};                  // channelName -> per-tick factor
+    this.resBias = contract.resBias ?? 1;               // per-renter resolution bias (× the global dial)
+    this.version = 0;                                   // bumps whenever geometry actually changes
     // span comes from THE ALIGNMENT LAW — the shared anchor, never private
     this._res = 0;                                      // applied resolution mult
     this._deposits = new Map();                         // id -> {cx, cy, vals:Float32Array}
@@ -64,9 +66,10 @@ class Renter {
   }
 
   _applyResolution(mult) {
-    const m = Math.max(0.25, Math.min(4, mult || 1));
+    const m = Math.max(0.25, Math.min(4, (mult || 1) * this.resBias));
     if (m === this._res) return;
     this._res = m;
+    this.version++;                                     // owners watch this to invalidate caches
     const span = MapRule.anchorSpan;
     const n = Math.max(8, Math.min(512, Math.round(span / (this.cellSize / m))));
     if (!this.grid) this.grid = new FieldGrid(n, n, this.channels.length);
@@ -167,11 +170,21 @@ class Renter {
       // re-anchor them.
       this._lastDecayTick = tick;
     }
-    // smoothing — every `skip` ticks (registered; Skip Action Panels read us)
-    if (this._lastSmoothTick < 0 || tick - this._lastSmoothTick >= this.skip) {
+    // smoothing — every `skip` ticks (registered; Skip Action Panels read us).
+    // smoothing:0 renters never blur — their product is the RAW grid (gravity,
+    // sun geometry) and blurring would corrupt exact math.
+    if (this.smoothing > 0 &&
+        (this._lastSmoothTick < 0 || tick - this._lastSmoothTick >= this.skip)) {
       this._lastSmoothTick = tick;
       this._smooth();
     }
+  }
+
+  /** Zero everything — grid, smoothed buffer, tracked deposits. Owner's reset. */
+  wipe() {
+    this.grid.clear();
+    this.smoothed.fill(0);
+    this._deposits.clear();
   }
 
   /** Box blur raw → smoothed, `smoothing` passes. Neighbor-summed averages. */
@@ -224,11 +237,30 @@ export const MapRule = {
   /** THE ALIGNMENT LAW's single anchor — one span for every grid. */
   get anchorSpan() { return ManualOverrides.get('sunMapSpan', 12000); },
 
+  _anchor: { x: NaN, y: NaN, span: 0 },
+
+  /**
+   * THE ALIGNMENT LAW, enforced live: if the sun moved or the span knob
+   * changed, every renter re-anchors (bounds re-applied, deposits void,
+   * version bumped so owners rebuild). Three compares when nothing changed.
+   * Called from refreshAll AND from the physics renters' own updates, so
+   * physics grids stay honest even with mapRuleOn = 0.
+   */
+  anchorWatch() {
+    const a = this._anchor, span = this.anchorSpan;
+    if (a.x === SUN.x && a.y === SUN.y && a.span === span) return false;
+    a.x = SUN.x; a.y = SUN.y; a.span = span;
+    const res = ManualOverrides.get('mapRuleRes', 1);
+    for (const r of this._renters.values()) { r._res = 0; r._applyResolution(res); }
+    return true;
+  },
+
   /** Live census for the FIELDS panel — how much of physics the law holds. */
   stats: { renters: 0, channels: 0, cells: 0, roster: '', forceHot: 0 },
 
   /** Advance every renter's decay + smoothing to `tick`. One call per live tick. */
   refreshAll(tick) {
+    this.anchorWatch();
     let ch = 0, cells = 0;
     const names = [];
     for (const r of this._renters.values()) {
@@ -328,6 +360,7 @@ export const BodyFields = {
     const r = this._ensure();
     r.skip = Math.max(1, Math.round(ManualOverrides.get('mapRuleSkip', 4)));
     this._tick++;
+    PlaneFields.clear();                       // PAINT law: this tick's truth only
     const seen = _seen; seen.clear();
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i];
@@ -346,6 +379,8 @@ export const BodyFields = {
       } else _vals[5] = 0;
       _vals[6] = b.particles ? b.particles.length : 0;   // density census
       r.deposit(b.id, b.cx, b.cy, _vals);
+      const pr = (Number.isFinite(b.radius) && b.radius > 0) ? b.radius : 8;
+      PlaneFields.mark(b.cx, b.cy, pr, b.plane | 0);
       if (prev) { prev.x = b.cx; prev.y = b.cy; }
       else this._prev.set(b.id, { x: b.cx, y: b.cy });
     }
@@ -450,5 +485,75 @@ export const ForceField = {
   absorbInto(x, y, out) {
     const r = this.renter;
     return r.grid.sample2(x, y, 0, 1, out, r.smoothed);
+  },
+  /**
+   * GHOST HONESTY (th_nova law): a ghost tick must feel the field decayed
+   * to ITS tick, not the live decay state — decay is a pure function of
+   * tick index. Returns decay^ticksAhead; the caller computes it once per
+   * ghost tick and multiplies the absorbed acceleration per particle.
+   * Live ticks pass 0 → scale 1.
+   */
+  ghostScale(ticksAhead) {
+    if (ticksAhead <= 0) return 1;
+    return Math.pow(this.renter.decay.fx ?? 0.96, ticksAhead);
+  },
+};
+
+/** LOOSE DEBRIS — density census. THE PAINT LAW: tickLoose repaints it every
+ *  live tick, one splat per live loose particle. No decay, no tracking —
+ *  clear-and-repaint, an authority rewriting the whole truth each tick.
+ *  Absorb the smoothed `density` for "how much junk is around here". */
+export const LooseFields = {
+  get renter() {
+    return MapRule.declare('looseFields', {
+      channels: ['density'], cellSize: 192, smoothing: 1, skip: 4, decay: {},
+    });
+  },
+  get enabled() { return ManualOverrides.get('mapRuleOn', 1) >= 0.5; },
+  clear() { this.renter.grid.clear(); },
+  mark(x, y, v = 1) { this.renter.grid.splat(x, y, 0, v); },
+};
+
+/** PLANE OCCUPANCY — which planes live where. THE PAINT LAW with OR-BLEND
+ *  (the third blend after sum and max): cleared and repainted per live tick
+ *  by BodyFields; each body ORs 1<<plane over its radius footprint.
+ *  Float32 holds integers exactly to 2^24 → 24 planes, index clamped.
+ *  NEVER smoothed and NEVER absorbed bilinearly — an interpolated bitmask
+ *  is garbage. Read RAW: maskAt / hasPlane / otherPlanesAt. */
+export const PlaneFields = {
+  get renter() {
+    return MapRule.declare('planeFields', {
+      channels: ['mask'], cellSize: 192, smoothing: 0, skip: 4, decay: {},
+    });
+  },
+  clear() { this.renter.grid.clear(); },
+
+  /** OR the body's plane bit over its footprint cells (bbox of radius). */
+  mark(x, y, radius, plane) {
+    const g = this.renter.grid, d = g.data;
+    const bit = 1 << Math.max(0, Math.min(23, plane | 0));
+    const c0 = g.colOf(x - radius), c1 = g.colOf(x + radius);
+    const r0 = g.rowOf(y - radius), r1 = g.rowOf(y + radius);
+    for (let rr = r0; rr <= r1; rr++) {
+      const base = rr * g.cols;                  // 1 channel → index == cell
+      for (let cc = c0; cc <= c1; cc++) d[base + cc] = d[base + cc] | bit;
+    }
+  },
+
+  /** The raw bitmask at world (x,y). 0 outside the span. */
+  maskAt(x, y) {
+    const g = this.renter.grid;
+    if (!g.contains(x, y)) return 0;
+    return g.data[g.rowOf(y) * g.cols + g.colOf(x)] | 0;
+  },
+
+  /** Is plane N present at (x,y)? */
+  hasPlane(x, y, plane) {
+    return (this.maskAt(x, y) & (1 << Math.max(0, Math.min(23, plane | 0)))) !== 0;
+  },
+
+  /** Any plane OTHER than mine at (x,y)? (merge-clearance sense) */
+  otherPlanesAt(x, y, plane) {
+    return (this.maskAt(x, y) & ~(1 << Math.max(0, Math.min(23, plane | 0)))) !== 0;
   },
 };

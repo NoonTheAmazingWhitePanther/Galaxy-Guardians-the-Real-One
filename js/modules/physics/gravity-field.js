@@ -2,59 +2,59 @@
  * js/modules/physics/gravity-field.js
  * Prime Module: GravityField — the planet gravity grid (weight map).
  *
- * ONE for the Sun, MANY for the planets:
- *   · The sun's field stays ANALYTIC — computed exactly per particle in
- *     applyGravity (one softened inverse-square, cheap, always correct).
- *   · Every planet's pull flows through this grid. Each physics frame the
- *     world box around the live cluster is divided into cells; each cell is
- *     declared with HOW MUCH gravity (Σ mass) and WHERE (mass-weighted center
- *     of mass). The far field is then rebuilt from those cell aggregates —
- *     each occupied cell acting as a single point mass — giving a global
- *     gravity scope with O(1) lookup per particle instead of O(bodies).
+ * MIGRATED UNDER THE MAP RULE (2026-07-12) — the biggest outlaw brought in.
+ * Geometry and storage now come from the one lattice; the sliced far-field
+ * build, the near/far Ewald split, gatherNear, and the double buffer survive
+ * INTACT — only where the cells live changed.
  *
- * Near/far split (correctness):
- *   The force field per target cell EXCLUDES occupied cells within `near`
- *   ring cells. At gather time applyGravity direct-computes bodies found in
- *   the same ring via the live cell→bodies index. Close encounters therefore
- *   keep exact per-body forces (and the p.body self-skip); only the smooth
- *   far field is interpolated.
+ * What the law changed:
+ *   · Bounds hysteresis is DEAD. THE ALIGNMENT LAW anchors the weight map on
+ *     the sun with the shared span (sunMapSpan) — the same X,Y is the same
+ *     cell on every grid, forever. No re-anchoring, no wandering box.
+ *   · Storage is two renters:
+ *       'gravityField'     channels m · mx · my   (Σmass, Σm·x, Σm·y)
+ *       'gravityCollision' channels hard · soft   (impulse heat per segment)
+ *     Separate renters per THE SEPARATION RULE — never new channels on
+ *     someone else's grid. Both rent at cellSize 250 so gravGridCols 48
+ *     reproduces the classic 48×48 over the default 12000 span; the knob now
+ *     drives the renter's resBias (cols/48) on top of the mapRuleRes dial.
+ *   · Mass moved from PAINT to THE DEPOSIT LAW: per-body delta deposits
+ *     (+1/−1) — same cell → value diffs only, moved → subtract old / add
+ *     new, dead → retire. No more O(cells) clear every frame.
+ *   · The far-field FRAME is now a WINDOW: frozen back-frame geometry covers
+ *     only the occupied cell bbox + the classic pad (15% + 600px), snapped to
+ *     the shared lattice — build cost stays proportional to the cluster, not
+ *     the span. Outside the window, sampleInto falls back exactly as before.
  *
- * Double buffer:
- *   The field builds into a BACK frame in slices (gravGridBudget cells per
- *   frame) from a mass-map snapshot, then swaps. Sampling always reads a
- *   COHERENT front frame with its own frozen geometry. Bounds use hysteresis
- *   so build/gather geometry stays aligned across frames.
- *
- * Dominant tracking:
- *   The heaviest body in the box is exposed as `dominant` — the current
- *   "sun role" the rest of the cluster is falling toward. Purely
- *   informational for now (camera / UI / future rules).
- *
- * GHOST MODE (FutureCache):
- *   Predictions must never learn from a stale field. While FutureCache body-
- *   swaps and steps ghosts, `ghostMode` is set and applyGravity falls back to
- *   the exact legacy loop. The cached future stays exact; only live frames
- *   ride the grid.
- *
- * COLLISION MAP (weight map, second tenant):
- *   Beyond HOW MUCH gravity and WHERE, each segment now records WHERE
- *   collisions happen: HARD (body↔body impulses) and SOFT (loose-debris
- *   hits), deposited by collisions.js at resolve time, decaying ~1s.
- *   Ghost-gated — predicted collisions never paint the live map. The
- *   overlay writes both into the segment's text: `1.2k ⚡3 ∙5`.
- *
- * The lattice itself is the generic core/field-grid.js — this module is just
- * gravity renting cells in it (the collision map rents alongside).
+ * What did NOT change (the build logic, byte-honest):
+ *   · ONE for the Sun (analytic / SunGravMap), MANY for the planets here.
+ *   · Smooth force splitting: far share f·S(d) lives in the field, exact
+ *     near share f·(1−S(d)) added per body at gather — the two always sum
+ *     to the exact force, no exclusion-set mismatch at cell boundaries.
+ *   · Double buffer: build into BACK in gravGridBudget-cell slices from a
+ *     mass snapshot, swap when done; sampling always reads a coherent FRONT.
+ *   · gatherNear subtracts the aggregate's blended split share (same 4
+ *     corners, same weights, same S) and adds exact per-body forces.
+ *   · GHOST MODE: while FutureCache body-swaps, applyGravity falls back to
+ *     the exact legacy loop; ghost collisions never paint the live map.
+ *   · Grid SLEEPS below gravGridMinBodies and wakes at scale.
+ *   · Collision heat decay: 0.94 per rAF with the 0.05 floor — private
+ *     upkeep over renter storage (contract decay {}), byte-identical to the
+ *     old arrays. (The tick-indexed PULSE law can claim it later if wanted.)
  */
 
-import { FieldGrid } from '../../core/field-grid.js';
 import { config } from '../../core/config.js';
 import { state } from '../../core/state.js';
 import { ManualOverrides } from '../debug/governor.js';
 import { MsProbe } from '../../core/ms-probe.js';
+import { MapRule } from '../../core/map-rule.js';
 
 const SOFT = 300;            // same softening as the legacy per-body loop
-const _c = { x: 0, y: 0 };   // scratch cell-center
+const BASE_COLS = 48;        // gravGridCols value that means resBias 1
+const CELL_PX = 250;         // 12000 default span / 48 — the classic lattice
+
+const _v3 = new Float32Array(3);   // deposit scratch: m, m·x, m·y
+const _seen = new Set();           // live keys this frame (retire the rest)
 
 const _mkFrame = () => ({
   x0: 0, y0: 0, cellW: 1, cellH: 1, invCW: 1, invCH: 1,
@@ -65,37 +65,58 @@ const _mkFrame = () => ({
 });
 
 export const GravityField = {
-  // ── lattice + live near index ─────────────────────────────────────────────
-  grid: new FieldGrid(24, 24, 3),     // channels: 0=Σm · 1=Σm·x · 2=Σm·y
+  // ── renters (lazy — the law may not be awake at import time) ────────────
+  _renter: null,             // 'gravityField'      m · mx · my
+  _collRenter: null,         // 'gravityCollision'  hard · soft
+  _geomV: -1,                // renter geometry version we built against
+
+  _r() {
+    if (this._renter) return this._renter;
+    this._renter = MapRule.declare('gravityField', {
+      channels: ['m', 'mx', 'my'],
+      cellSize: CELL_PX,
+      smoothing: 0,          // gravity reads RAW — blur would corrupt COMs
+      skip: 4,
+      decay: {},             // DEPOSIT law: sources are exact, nothing forgets
+    });
+    return this._renter;
+  },
+  _cr() {
+    if (this._collRenter) return this._collRenter;
+    this._collRenter = MapRule.declare('gravityCollision', {
+      channels: ['hard', 'soft'],
+      cellSize: CELL_PX,     // same lattice pitch → segment == weight-map segment
+      smoothing: 0,
+      skip: 4,
+      decay: {},             // decayed privately per rAF (0.94 + floor), as always
+    });
+    return this._collRenter;
+  },
+
+  /** The weight-map lattice — the renter's grid (kept as `.grid` for all readers). */
+  get grid() { return this._r().grid; },
+
+  // ── live near index ──────────────────────────────────────────────────────
   cellBodies: [],                      // live cell→bodies index (refs, rebuilt per frame)
   _cellBodiesLen: 0,
 
-  // ── double-buffered far field ────────────────────────────────────────────
+  // ── double-buffered far field (WINDOW frames on the shared lattice) ─────
   _front: _mkFrame(),
   _back:  _mkFrame(),
 
   // ── build state ──────────────────────────────────────────────────────────
   _building: false,
   _cursor: 0,
-  _occ: [],                            // snapshot: {cx,cy,x,y,gm} per occupied cell
+  _occ: [],                            // snapshot: {x,y,gm} per occupied cell
   _occLen: 0,
-
-  // ── bounds hysteresis (keeps geometry stable so build == gather) ─────────
-  _bx0: 0, _by0: 0, _bw: 0, _bh: 0, _hasBounds: false,
+  _occC0: 0, _occC1: 0, _occR0: 0, _occR1: 0,   // occupied cell bbox at snapshot
 
   _G: 120,                             // GRAV_CONST captured each update
   ghostMode: false,                    // set by FutureCache around ghost stepping
   dominant: null,                      // heaviest live body (the "sun role")
 
-  // ── collision map: WHERE collisions happen, per weight-map segment ──────
-  // Persistent heat (decays ~1s), separate from the per-frame mass channels
-  // (grid.clear() wipes those every deposit; this must survive frames).
-  // HARD = body↔body impulses · SOFT = loose-debris hits. Ghost-gated:
-  // predicted collisions never paint the live map.
-  _collHard: null,
-  _collSoft: null,
-  _collLen: 0,
-  _collOn: false,                      // true only while the grid is awake (geometry valid)
+  _collOn: false,                      // true only while the grid is awake
+  _awake: false,                       // for wipe-on-sleep transitions
 
   stats: {
     on: 0, occupied: 0, bodies: 0, dominantMass: 0,
@@ -111,46 +132,69 @@ export const GravityField = {
     return this.enabled && !this.ghostMode && this._front.ready;
   },
 
+  // Going quiet (OFF / EMPTY / SMALL): frames down, deposits retired once so
+  // the census and overlay never show a stale weight map. Collision heat is
+  // NOT wiped — it froze during sleep before and resumes decay on wake.
+  _sleep() {
+    this._front.ready = false;
+    this._building = false;
+    this._collOn = false;
+    if (this._awake) { this._r().wipe(); this._awake = false; }
+  },
+
   // ═══════════════════════════════════════════════════════════════════════
   // update() — once per rAF, before the physics substep loop.
-  // Deposit is O(bodies). Build is sliced under gravGridBudget cells/frame.
+  // Deposit is O(bodies) delta-law. Build is sliced under gravGridBudget.
   // ═══════════════════════════════════════════════════════════════════════
   update() {
     const s = this.stats;
     s.gridHits = 0; s.directFalls = 0;
     s.collHard = 0; s.collSoft = 0;                       // per-frame counts (deposits land after us, during substeps)
-    if (!this.enabled) { s.mode = 'OFF'; s.on = 0; this._front.ready = false; this._building = false; this._collOn = false; return; }
+    if (!this.enabled) { s.mode = 'OFF'; s.on = 0; this._sleep(); return; }
     s.on = 1;
     this._G = config.GRAV_CONST;
+
+    // ── geometry under the law — self-driven, so gravity stays honest even
+    // with mapRuleOn 0 (the lattice is storage; mapRuleOn gates awareness) ──
+    const gr = this._r(), cr = this._cr();
+    MapRule.anchorWatch();
+    const cols = Math.max(8, Math.min(96, ManualOverrides.get('gravGridCols', BASE_COLS) | 0));
+    gr.resBias = cols / BASE_COLS;
+    cr.resBias = cols / BASE_COLS;
+    const res = ManualOverrides.get('mapRuleRes', 1);
+    gr._applyResolution(res);
+    cr._applyResolution(res);
+    if (gr.version !== this._geomV) {                     // lattice changed → all caches void
+      this._geomV = gr.version;                           // (renter already zeroed itself)
+      this._front.ready = false;
+      this._building = false;
+      this._cellBodiesLen = 0;
+    }
 
     const bodies = state.bodies;
     const n = bodies.length;
     s.bodies = n;
-    if (n === 0) { s.mode = 'EMPTY'; s.occupied = 0; this._front.ready = false; this._building = false; this.dominant = null; this._collOn = false; return; }
+    if (n === 0) { s.mode = 'EMPTY'; s.occupied = 0; this.dominant = null; this._sleep(); return; }
 
     // Below the threshold the legacy direct loop (with its distance cull) is
     // cheaper than field upkeep + gather — the grid SLEEPS and wakes at scale.
     if (n < ManualOverrides.get('gravGridMinBodies', 80)) {
       s.mode = 'SMALL'; s.occupied = 0;
-      this._front.ready = false; this._building = false;
-      this._collOn = false;                               // asleep grid = frozen geometry: no deposits
+      this._sleep();
       // still track the dominant body — the "sun role" is wanted regardless
       let dom = null, domM = -1;
       for (let i = 0; i < n; i++) { const b = bodies[i]; if (b.mass > domM) { domM = b.mass; dom = b; } }
       this.dominant = dom; s.dominantMass = Math.round(domM);
       return;
     }
-
-    const cols = Math.max(8, Math.min(96, ManualOverrides.get('gravGridCols', 48) | 0));
-    this.grid.resize(cols, cols, 3);
+    this._awake = true;
 
     // Grid time has a name: two children under the physics.gravField parent
     // (auto-nested in the msProbeTree), mirrored into stats for the panel.
     // update() only ever runs on the LIVE path (main loop, pre-substeps) —
     // ghosts never come through here, so no ghost gating is needed.
     const _t0 = performance.now();
-    const reanchored = this._updateBounds(bodies, n);
-    this._collUpkeep(reanchored);                         // decay heat · count hot segments · realloc
+    this._collUpkeep();                                   // decay heat · count hot segments
     this._deposit(bodies, n);
     const _t1 = performance.now();
     this._buildSlice(Math.max(16, ManualOverrides.get('gravGridBudget', 512) | 0));
@@ -161,30 +205,24 @@ export const GravityField = {
     s.msBuild   = +(_t2 - _t1).toFixed(2);
     s.msUpdate  = +(_t2 - _t0).toFixed(2);
 
-    s.cols = cols;
-    s.cellSize = Math.round(this.grid.cellW);
+    s.cols = gr.grid.cols;
+    s.cellSize = Math.round(gr.grid.cellW);
     s.mode = this._front.ready ? 'GRID' : 'WARMUP';
   },
 
-  // Collision-map upkeep: (re)allocate to the current cell count, wipe when
-  // the bounds re-anchored (old heat would sit in wrong world segments),
-  // decay everything toward zero (~1s half-life), count hot segments.
-  _collUpkeep(reanchored) {
-    const cells = this.grid.cols * this.grid.rows;
-    if (this._collLen !== cells) {
-      this._collHard = new Float32Array(cells);
-      this._collSoft = new Float32Array(cells);
-      this._collLen = cells;
-    } else if (reanchored) {
-      this._collHard.fill(0);
-      this._collSoft.fill(0);
-    }
-    const H = this._collHard, S = this._collSoft;
+  // Collision-map upkeep over RENTER storage: decay everything toward zero
+  // (~1s half-life, 0.05 floor — byte-identical to the old private arrays),
+  // count hot segments. No realloc, no reanchor wipe: the lattice never
+  // moves, and a resolution change already zeroed the renter.
+  _collUpkeep() {
+    const g = this._cr().grid;
+    const d = g.data, cells = g.cols * g.rows;
     let hot = 0;
     for (let i = 0; i < cells; i++) {
-      let h = H[i], sf = S[i];
-      if (h > 0) { h *= 0.94; if (h < 0.05) h = 0; H[i] = h; }
-      if (sf > 0) { sf *= 0.94; if (sf < 0.05) sf = 0; S[i] = sf; }
+      const j = i * 2;
+      let h = d[j], sf = d[j + 1];
+      if (h > 0) { h *= 0.94; if (h < 0.05) h = 0; d[j] = h; }
+      if (sf > 0) { sf *= 0.94; if (sf < 0.05) sf = 0; d[j + 1] = sf; }
       if (h + sf > 0.5) hot++;
     }
     this.stats.collCells = hot;
@@ -199,48 +237,17 @@ export const GravityField = {
    */
   noteCollision(x, y, hard) {
     if (this.ghostMode || !this._collOn) return;
-    const g = this.grid;
-    const ci = g.rowOf(y) * g.cols + g.colOf(x);
-    if (hard) { this._collHard[ci] += 1; this.stats.collHard++; }
-    else      { this._collSoft[ci] += 1; this.stats.collSoft++; }
+    const g = this._cr().grid;
+    const j = (g.rowOf(y) * g.cols + g.colOf(x)) * 2;
+    if (hard) { g.data[j] += 1;     this.stats.collHard++; }
+    else      { g.data[j + 1] += 1; this.stats.collSoft++; }
   },
 
-  // Bounds: bbox of body COMs + margin, with hysteresis — only re-anchor when
-  // the cluster escapes the current box or shrinks well inside it. A stable
-  // box keeps cell geometry identical between field build and gather.
-  _updateBounds(bodies, n) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (let i = 0; i < n; i++) {
-      const b = bodies[i];
-      if (b.cx < minX) minX = b.cx;
-      if (b.cx > maxX) maxX = b.cx;
-      if (b.cy < minY) minY = b.cy;
-      if (b.cy > maxY) maxY = b.cy;
-    }
-    const pad = Math.max((maxX - minX), (maxY - minY)) * 0.15 + 600;
-    const nx0 = minX - pad, ny0 = minY - pad;
-    const nw = (maxX - minX) + pad * 2, nh = (maxY - minY) + pad * 2;
-
-    const escaped = !this._hasBounds
-      || nx0 < this._bx0 || ny0 < this._by0
-      || nx0 + nw > this._bx0 + this._bw
-      || ny0 + nh > this._by0 + this._bh;
-    const shrunk = this._hasBounds && (nw < this._bw * 0.5 || nh < this._bh * 0.5);
-
-    if (escaped || shrunk) {
-      this._bx0 = nx0; this._by0 = ny0; this._bw = nw; this._bh = nh;
-      this._hasBounds = true;
-      this.grid.setBounds(this._bx0, this._by0, this._bw, this._bh);
-      return true;                    // re-anchored — segment identities changed
-    }
-    this.grid.setBounds(this._bx0, this._by0, this._bw, this._bh);
-    return false;
-  },
-
-  // Deposit: Σm, Σm·x, Σm·y per cell + live cell→bodies index + dominant.
+  // THE DEPOSIT LAW: Σm, Σm·x, Σm·y per cell as per-body delta deposits —
+  // same cell → value diffs only, moved → subtract old / add new, gone →
+  // retire. Plus the live cell→bodies index + dominant, same single pass.
   _deposit(bodies, n) {
-    const g = this.grid;
-    g.clear();
+    const r = this._r(), g = r.grid;
     const cells = g.cols * g.rows;
     // reuse the index arrays (truncate, never reallocate the outer array)
     if (this._cellBodiesLen !== cells) {
@@ -252,61 +259,86 @@ export const GravityField = {
     }
 
     let dom = null, domM = -1;
-    const d = g.data;
+    _seen.clear();
     for (let i = 0; i < n; i++) {
       const b = bodies[i];
-      const cx = g.colOf(b.cx), cy = g.rowOf(b.cy);
-      const ci = (cy * g.cols + cx);
-      const di = ci * 3;
-      d[di]     += b.mass;
-      d[di + 1] += b.mass * b.cx;
-      d[di + 2] += b.mass * b.cy;
+      const key = b.id != null ? b.id : b;   // id-stable across clone swaps; ref as last resort
+      _seen.add(key);
+      _v3[0] = b.mass;
+      _v3[1] = b.mass * b.cx;
+      _v3[2] = b.mass * b.cy;
+      r.deposit(key, b.cx, b.cy, _v3);
+      const ci = g.rowOf(b.cy) * g.cols + g.colOf(b.cx);
       (this.cellBodies[ci] || (this.cellBodies[ci] = [])).push(b);
       if (b.mass > domM) { domM = b.mass; dom = b; }
+    }
+    // retire the dead / despawned — their mass leaves the map exactly
+    for (const key of r._deposits.keys()) {
+      if (!_seen.has(key)) r.retire(key);
     }
     this.dominant = dom;
     this.stats.dominantMass = Math.round(domM);
   },
 
-  // Sliced far-field build into the back frame, then swap.
+  // Sliced far-field build into the back frame, then swap. The frame is a
+  // WINDOW on the shared lattice: occupied cell bbox + the classic pad
+  // (15% of extent + 600px) in whole cells — build cost tracks the cluster,
+  // and the window's cells ARE lattice cells (Alignment Law preserved).
   _buildSlice(budget) {
-    const g = this.grid;
-    const cells = g.cols * g.rows;
+    const g = this._r().grid;
 
     if (!this._building) {
       // ── snapshot occupied cells (each becomes one point mass at its COM) ──
+      // COMs are Σm·x/Σm — exact world positions even in span-edge cells.
       const d = g.data;
       let k = 0;
+      let c0 = g.cols, c1 = -1, r0 = g.rows, r1 = -1;
       const G = config.GRAV_CONST;
       for (let cy = 0; cy < g.rows; cy++) {
         for (let cx = 0; cx < g.cols; cx++) {
           const di = (cy * g.cols + cx) * 3;
           const m = d[di];
           if (m <= 0) continue;
-          const o = this._occ[k] || (this._occ[k] = { cx: 0, cy: 0, x: 0, y: 0, gm: 0 });
-          o.cx = cx; o.cy = cy;
+          const o = this._occ[k] || (this._occ[k] = { x: 0, y: 0, gm: 0 });
           o.x = d[di + 1] / m;
           o.y = d[di + 2] / m;
           o.gm = G * m;
           k++;
+          if (cx < c0) c0 = cx;
+          if (cx > c1) c1 = cx;
+          if (cy < r0) r0 = cy;
+          if (cy > r1) r1 = cy;
         }
       }
       this._occLen = k;
       this.stats.occupied = k;
+      if (k === 0) { this._front.ready = false; return; }   // nothing to build from
 
-      // ── freeze back-frame geometry ──
+      // ── the window: occupied bbox + pad, snapped to whole lattice cells ──
+      const extW = (c1 - c0 + 1) * g.cellW, extH = (r1 - r0 + 1) * g.cellH;
+      const pad = Math.max(extW, extH) * 0.15 + 600;
+      const padC = Math.ceil(pad / Math.min(g.cellW, g.cellH));
+      c0 = Math.max(0, c0 - padC); c1 = Math.min(g.cols - 1, c1 + padC);
+      r0 = Math.max(0, r0 - padC); r1 = Math.min(g.rows - 1, r1 + padC);
+      this._occC0 = c0; this._occC1 = c1; this._occR0 = r0; this._occR1 = r1;
+
+      // ── freeze back-frame geometry (a lattice-aligned sub-rect) ──
       const f = this._back;
-      f.x0 = g.x0; f.y0 = g.y0; f.w = g.w; f.h = g.h;
       f.cellW = g.cellW; f.cellH = g.cellH; f.invCW = g.invCW; f.invCH = g.invCH;
-      f.cols = g.cols; f.rows = g.rows;
+      f.x0 = g.x0 + c0 * g.cellW;
+      f.y0 = g.y0 + r0 * g.cellH;
+      f.cols = c1 - c0 + 1;
+      f.rows = r1 - r0 + 1;
+      f.w = f.cols * f.cellW; f.h = f.rows * f.cellH;
       f.R2 = this.splitR2;                 // frozen with the frame — gather must use THIS radius
-      if (!f.fx || f.fx.length !== cells) { f.fx = new Float32Array(cells); f.fy = new Float32Array(cells); }
+      const fcells = f.cols * f.rows;
+      if (!f.fx || f.fx.length !== fcells) { f.fx = new Float32Array(fcells); f.fy = new Float32Array(fcells); }
       this._cursor = 0;
       this._building = true;
     }
 
     const f = this._back;
-    if (f.cols * f.rows !== cells) { this._building = false; return; }   // shape changed mid-build → restart next frame
+    const fcells = f.cols * f.rows;
 
     // Smooth force splitting (Ewald-style): every body's force is divided by
     // TRUE DISTANCE into a smooth far part f·S(d) (lives in the field, safe to
@@ -315,7 +347,7 @@ export const GravityField = {
     // to the exact force — no exclusion-set mismatch at cell boundaries.
     const R2 = f.R2, R1 = R2 * 0.5, invRange = R2 > R1 ? 1 / (R2 - R1) : 0;
     const occ = this._occ, occLen = this._occLen;
-    const end = Math.min(cells, this._cursor + budget);
+    const end = Math.min(fcells, this._cursor + budget);
 
     for (let ci = this._cursor; ci < end; ci++) {
       const tcx = ci % f.cols, tcy = (ci / f.cols) | 0;
@@ -341,9 +373,9 @@ export const GravityField = {
       f.fy[ci] = ay;
     }
     this._cursor = end;
-    this.stats.buildPct = Math.round((end / cells) * 100);
+    this.stats.buildPct = Math.round((end / fcells) * 100);
 
-    if (end >= cells) {
+    if (end >= fcells) {
       f.ready = true;
       const t = this._front; this._front = this._back; this._back = t;
       this._building = false;                 // next frame snapshots fresh masses
@@ -356,7 +388,7 @@ export const GravityField = {
 
   /**
    * Far field at (x,y) → out {x,y} force per unit mass.
-   * false → point outside front frame → caller uses the legacy loop.
+   * false → point outside front window → caller uses the legacy loop.
    */
   sampleInto(x, y, out) {
     const f = this._front;
@@ -497,13 +529,13 @@ export const GravityField = {
   // ═══════════════════════════════════════════════════════════════════════
   drawOverlay(ctx) {
     if (ManualOverrides.get('gravGridOverlay', 0) < 0.5) return;
-    if (!this.enabled || !this._hasBounds) return;
+    if (!this.enabled) return;
     const g = this.grid;
     const d = g.data;
 
     ctx.save();
 
-    // faint lattice
+    // faint lattice — the FULL shared anchor now (the Alignment Law, visible)
     ctx.strokeStyle = 'rgba(120,180,255,0.10)';
     ctx.lineWidth = Math.max(1, g.cellW * 0.01);
     ctx.beginPath();
@@ -517,13 +549,22 @@ export const GravityField = {
     }
     ctx.stroke();
 
+    // the built window — where the far field actually lives right now
+    const fr = this._front;
+    if (fr.ready) {
+      ctx.strokeStyle = 'rgba(120,255,180,0.35)';
+      ctx.lineWidth = Math.max(2, g.cellW * 0.02);
+      ctx.strokeRect(fr.x0, fr.y0, fr.w, fr.h);
+    }
+
     // occupied cells: heat by mass share + COM dot + segment text.
-    // The segment's text now reads: mass · ⚡hard · ∙soft — HOW MUCH gravity,
+    // The segment's text reads: mass · ⚡hard · ∙soft — HOW MUCH gravity,
     // and HOW MUCH collision is happening in this box right now.
     let maxM = 0;
     for (let ci = 0; ci < g.cols * g.rows; ci++) maxM = Math.max(maxM, d[ci * 3]);
-    const cH = this._collHard, cS = this._collSoft;
-    const collOk = this._collOn && cH && cH.length === g.cols * g.rows;
+    const cg = this._cr().grid;
+    const cd = cg.data;
+    const collOk = this._collOn && cg.cols === g.cols && cg.rows === g.rows;
     if (maxM > 0 || collOk) {
       const fontPx = Math.max(10, g.cellH * 0.18);
       ctx.font = `${fontPx}px monospace`;
@@ -533,8 +574,8 @@ export const GravityField = {
           const ci = cy * g.cols + cx;
           const di = ci * 3;
           const m = d[di];
-          const hard = collOk ? cH[ci] : 0;
-          const soft = collOk ? cS[ci] : 0;
+          const hard = collOk ? cd[ci * 2] : 0;
+          const soft = collOk ? cd[ci * 2 + 1] : 0;
           const hasColl = (hard + soft) > 0.5;
           if (m <= 0 && !hasColl) continue;
           const x = g.x0 + cx * g.cellW, y = g.y0 + cy * g.cellH;

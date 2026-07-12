@@ -28,6 +28,7 @@
 import { state, SUN } from './state.js';
 import { FutureCache } from './future-cache.js';
 import { ManualOverrides } from '../modules/debug/governor.js';
+import { MapRule } from './map-rule.js';
 
 // ── Fixed tunables (the live ones — margin / sun pad / horizon — are knobs) ──
 const SCAN_INTERVAL_MS = 180;   // self-throttle — "check from time to time"
@@ -218,6 +219,47 @@ export const Dormancy = {
       }
     }
 
+    // ── FIELD SENSES (THE ABSORPTION LAW — the fields join the oracle) ──
+    // The oracle PREDICTS from the cached future; the fields REMEMBER the
+    // present. Senses only ever VETO cold — they mark hot, never colder,
+    // so they can only make Stage 2 safer.
+    //   · contact — smoothed collision presence at the body's current and
+    //     mid-window position. A coasting body isn't colliding, so contact
+    //     nearby means SOMEONE ELSE is — busy neighborhood, stay awake.
+    //   · threat — smoothed "someone was recently here", absorbed at the
+    //     body's FUTURE path samples (mid + end). "Am I heading into
+    //     recently-busy space?" Reading ahead also dodges the self-trail:
+    //     my own threat is behind me, my path is ahead. Bodies that barely
+    //     move are skipped (they'd read their own cell — and their own
+    //     threat decays away anyway, but the guard keeps it honest).
+    let threatWakes = 0, contactWakes = 0;
+    if (ManualOverrides.get('dormancySenses', 1) >= 0.5
+        && ManualOverrides.get('mapRuleOn', 1) >= 0.5) {
+      const bf = MapRule.get('bodyFields');
+      const cf = MapRule.get('collisionFields');
+      const thrT = ManualOverrides.get('dormancySenseThreat', 0.35);
+      const thrC = ManualOverrides.get('dormancySenseContact', 1.0);
+      const S = snaps.length, mid = S >> 1, last = S - 1;
+      for (let i = 0; i < N; i++) {
+        if (!states[i].cold) continue;                 // already hot — nothing to veto
+        const p0 = traj[i][0], pM = traj[i][mid], pL = traj[i][last];
+        if (cf && (cf.absorb(p0[0], p0[1], 'contact') > thrC
+                || cf.absorb(pM[0], pM[1], 'contact') > thrC)) {
+          markHot(i, from, 'contact'); contactWakes++;
+          continue;
+        }
+        if (bf) {
+          const dx = pL[0] - p0[0], dy = pL[1] - p0[1];
+          if (dx * dx + dy * dy < 96 * 96) continue;   // barely moves → own cell, skip
+          if (bf.absorb(pM[0], pM[1], 'threat') > thrT) {
+            markHot(i, from + mid * stride, 'threat'); threatWakes++;
+          } else if (bf.absorb(pL[0], pL[1], 'threat') > thrT) {
+            markHot(i, from + last * stride, 'threat'); threatWakes++;
+          }
+        }
+      }
+    }
+
     let cold = 0;
     const coldIdx = [];
     for (let i = 0; i < N; i++) if (states[i].cold) { cold++; coldIdx.push(i); }
@@ -229,6 +271,7 @@ export const Dormancy = {
       bodies: N, cold, hot: N - cold,
       coldPct: Math.round((cold / N) * 100),
       horizon, pairTests, margin: LEAD,
+      threatWakes, contactWakes,
       scanMs: +(performance.now() - t0).toFixed(2),
       reason: 'ok',
     };
@@ -375,6 +418,7 @@ export const Dormancy = {
       hot:     i.hot,
       horizon: i.horizon,
       margin:  Math.round(i.margin ?? 0) + 'px',
+      senses:  `T${i.threatWakes ?? 0} C${i.contactWakes ?? 0}`,
       scanMs:  `${i.scanMs}ms`,
       status:  i.reason,
     };

@@ -23,7 +23,10 @@ import { BurningSystem } from '../../core/burning-system.js';
 import { Dormancy } from '../../core/dormancy.js';
 import { ManualOverrides } from '../debug/governor.js';
 import { SunGravMap } from './sun-grav-map.js';
-import { BodyFields, ForceField, ImpactField } from '../../core/map-rule.js';
+import { BodyFields, ForceField, ImpactField, LooseFields } from '../../core/map-rule.js';
+// Cycle note: future-cache.js imports tick.js — safe, both sides touch each
+// other only inside functions (bufferedAhead read at tick time, never at eval).
+import { FutureCache } from '../../core/future-cache.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -245,6 +248,11 @@ export const tickLoose = (dt) => {
   // Update burn map before particle loop
   BurnMap.update(SUN, state.novas || [], state.supernovas || []);
 
+  // LOOSE DENSITY — THE PAINT LAW: clear-and-repaint per live tick; one
+  // splat per surviving particle below. Ghost ticks never paint the census.
+  const _loosePaint = LooseFields.enabled && !GravityField.ghostMode;
+  if (_loosePaint) LooseFields.clear();
+
   for (let li = looseArr.length - 1; li >= 0; li--) {
     const lp = looseArr[li];
     if (lp.life <= 0.02) continue;
@@ -324,6 +332,7 @@ export const tickLoose = (dt) => {
     }
 
     survivors.push(lp);
+    if (_loosePaint) LooseFields.mark(lp.x, lp.y, 1);
   }
   state.loose = survivors;
   if (_probe) MsProbe.record('physics.tick.loose', performance.now() - _t0);
@@ -414,7 +423,17 @@ export const tickBodies = (scaledDt) => {
   const nAlives = new Array(numBodies);
 
   for (let sub = 0; sub < config.SUBSTEPS; sub++) {
-    const forceHot = ForceField.hot;   // one read; cold field costs the loop nothing
+    // Force grid: one read; cold field costs the loop nothing. GHOST HONESTY
+    // (th_nova law): a ghost tick feels the field decayed to ITS tick —
+    // bufferedAhead+1 ticks past the live decay state. One pow per substep;
+    // fields decayed to nothing (deep ghosts) read as cold and skip the
+    // absorb entirely.
+    let forceHot = ForceField.hot;
+    let ffScale = 1;
+    if (forceHot && GravityField.ghostMode) {
+      ffScale = ForceField.ghostScale(FutureCache.bufferedAhead + 1);
+      if (ffScale < 0.01) forceHot = false;
+    }
     // ── PHASE 1: Count alive (first substep only) ──
     if (sub === 0) {
       for (let bi = 0; bi < numBodies; bi++) {
@@ -471,8 +490,8 @@ export const tickBodies = (scaledDt) => {
 
         // 1b. Force grid absorption (Map Rule command grid) — only while hot
         if (forceHot && ForceField.absorbInto(p.x, p.y, _ffOut)) {
-          p.fx += _ffOut.x * p.mass;
-          p.fy += _ffOut.y * p.mass;
+          p.fx += _ffOut.x * p.mass * ffScale;
+          p.fy += _ffOut.y * p.mass * ffScale;
         }
 
         // 2. Integration (inlined for speed)
@@ -594,7 +613,13 @@ export const tickBodies = (scaledDt) => {
       A.coastHit = true;                                      // the Collided? flag
       A.coastHitT = bestT;                                    // the tick-inside-the-jump measure
       Dormancy.wake(A.id);
-      ImpactField.pulse(A.cx, A.cy, 1);                       // the flash on the impact grid
+      // The flash on the impact grid — through QueOps, so a ghost-computed
+      // hit is CAPTURED and replayed when its tick actually plays (the
+      // "computed once, replayed exact" law), instead of painting the live
+      // map with a predicted future. Live path: fires next QueOps pass.
+      const _hx = A.cx, _hy = A.cy;
+      QueOps.add({ subject: 'physics', priority: 1, cost: 1,
+                   fn: () => ImpactField.pulse(_hx, _hy, 1) });
     } else if (A.coastHit) {
       A.coastHit = false;                                     // clean jump → clear
     }
