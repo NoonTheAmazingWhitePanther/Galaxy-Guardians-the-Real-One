@@ -218,6 +218,26 @@ These apply to every file touched in every session, no exceptions:
 
 ---
 
+### New standing laws (2026-07-12, second session)
+
+- **Ghost-capture law:** any `QueOps.add` that can fire during a ghost tick
+  must capture **ids and numbers only — never object refs**. The packed
+  cache's working set keeps mutating after capture; a captured ref points
+  at the frontier, not the graph that's live at replay. Resolve by id
+  against `state.bodies` at fire time (see the split op in tick.js).
+- **Module-cycle law:** two deliberate ES-module cycles exist —
+  `map-rule.js ↔ gravity-field.js` and `tick.js ↔ future-cache.js`. Both
+  are safe ONLY because each side touches the other inside functions.
+  Never add a top-level read across either pair.
+- **Knob registration law:** `ManualOverrides.set()` silently no-ops on
+  unregistered keys. Every new knob MUST be added to the registry literal
+  in `governor.js` AND exposed in a panel JSON, or its buttons bind to
+  nothing and code reading it only ever sees the autoValue.
+- **Physics renters self-drive:** gravityField / gravityCollision /
+  sunGravMap call `MapRule.anchorWatch()` + `_applyResolution` in their own
+  updates — `mapRuleOn` gates AWARENESS deposits only, never physics
+  storage. Keep it that way.
+
 ## 6. Before Calling a Session Done
 
 - [ ] Every touched `.js` file passes both `node --check` and

@@ -13,17 +13,32 @@
 3. ~~**SunGravMap → read-only renter**~~ ✅ (2026-07-12, second session —
    private anchor math dead, analytic near ring + grow-from-sun law intact,
    hot path reads cached lattice scalars.)
-4. **Cheap channels:** ~~loose-debris density~~ ✅ ('looseFields', PAINT law,
-   repainted in tickLoose) · plane occupancy mask — OPEN DECISION first:
-   bitmask-per-cell breaks under summation (16 plane-0 bodies read as bit 4);
-   per-plane count channels need a fixed plane cap. Noon's call.
-5. **Dormancy absorbs the fields:** `threat` + `contact` around a body as
-   classifier senses alongside the FutureCache oracle — the last mile of
-   "smoothed results over and over until need to change"
-6. **Nova caller wiring** when the Nova feature lands (`NovaFields.explode`
-   is ready and waiting)
+4. ~~**Cheap channels**~~ ✅ loose-debris density ('looseFields', PAINT law)
+   + plane occupancy mask ('planeFields', PAINT with **OR-blend** — Noon
+   approved 24-plane cap; maskAt / hasPlane / otherPlanesAt, never smoothed)
+5. ~~**Dormancy absorbs the fields**~~ ✅ senses VETO cold, never grant it:
+   `contact` at current+mid, `threat` on the FUTURE path (dodges self-trail).
+   Knobs dormancySenses / SenseThreat (0.35) / SenseContact (1.0) — container
+   guesses, POCO tunes.
+6. ~~**Nova caller wiring**~~ ✅ the whole Nova FEATURE landed (js/core/nova.js):
+   spawn = heat + force ring + real debris, splice-don't-flush; buffered
+   8..240-frame trail animation baked via QueOps under a memory cap; own
+   panel. OPEN: gameplay detonation triggers (Noon's design call) + whether
+   BurnMap's fixed 500px nova footprint should scale with nova.radius.
 7. **Render calls + drawing operations pass** (Noon: after the above is
-   implanted good)
+   implanted good — still parked on the POCO numbers)
+
+## LANDED BEYOND THE LIST (2026-07-12, second session)
+
+- Ghost honesty pass: ForceField.ghostScale (ghost feels the field decayed
+  to ITS tick) + coast-hit pulse through QueOps capture.
+- Spring solver tiers 1–5: hypot→sqrt, batched counter, baked constants,
+  springFastLen knob (off), springSoA typed views keyed by body.id (on).
+- Ceilings lifted: QueOps AUTO→1024 / manual→4096, cache HARD_CAP→4096.
+- PACKED CACHE: persistent working set + typed-array snapshots + keyframes
+  on structure change + in-place playback. ~8× memory, ~180 allocs/tick
+  instead of ~29k. cachePacked knob (on), legacy is the A/B control.
+- NEW LAW: ghost-capturable QueOps ops carry ids/numbers, never object refs.
 
 ## DEVICE — the gates (POCO + high-end), one session
 

@@ -19,6 +19,7 @@ import { MsProbe } from '../../core/ms-probe.js';
 import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { Dormancy } from '../../core/dormancy.js';
+import { Nova } from '../../core/nova.js';
 import { PaintingState } from '../../core/painting-state.js';
 import { ColorPalette } from '../../core/color-palette.js';
 import { GovernorProfiles } from './governor-profiles.js';
@@ -65,6 +66,7 @@ export const DebugRouter = {
     GovernorRegistry.register('StateCache',       StateCache);
     GovernorRegistry.register('FutureCache',      FutureCache);
     GovernorRegistry.register('Dormancy',         Dormancy);
+    GovernorRegistry.register('Nova',             Nova);
     GovernorRegistry.register('GuiGovernor',      GuiGovernor);
     GovernorRegistry.register('GovernorProfiles', GovernorProfiles);
     GovernorRegistry.register('GravityField',     GravityField);

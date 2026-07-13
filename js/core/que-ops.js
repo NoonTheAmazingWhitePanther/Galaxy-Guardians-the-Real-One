@@ -4,7 +4,7 @@
  */
 import { ManualOverrides } from '../modules/debug/governor.js';
 
-const COOLING_STATES = [16, 32, 64, 128, 256];
+const COOLING_STATES = [16, 32, 64, 128, 256, 512, 1024];   // AUTO may climb to 1024 (2026-07-12, Noon)
 const DEFAULT_CONFIG = {
   maxOpsPerFrame: 128, fpsSampleSize: 60,
   lowFpsThreshold: 45, highFpsThreshold: 58,
@@ -80,7 +80,7 @@ function _adaptCoolingState() {
 }
 
 function _maintainQueueSize() {
-  if (_state.queue.length > 600) { _state.queue.sort((a, b) => a.priority - b.priority); _state.queue.splice(0, _state.queue.length - 500); }
+  if (_state.queue.length > 3000) { _state.queue.sort((a, b) => a.priority - b.priority); _state.queue.splice(0, _state.queue.length - 2560); }  // headroom scaled with the 1024 budget — a queue smaller than the budget starves it
 }
 
 function _init(userConfig = {}) {

@@ -150,6 +150,28 @@ export const ManualOverrides = {
   dormancySenseThreat:      { isManual: false, value: 0.35 },  // smoothed `threat` on the FUTURE path above this → stay hot
   dormancySenseContact:     { isManual: false, value: 1.0 },   // smoothed `contact` at current/mid position above this → stay hot
 
+  // ── NOVA EXPLOSIONS (2026-07-12, Noon's design) — physics always, visuals optional ──
+  novaOn:                   { isManual: false, value: 1 },     // master — spawn() refuses at 0 (nothing burns, nothing pushes)
+  novaShow:                 { isManual: false, value: 1 },     // VISUAL gate only — forces/heat/debris apply regardless
+  novaShowPlane:            { isManual: false, value: -1 },    // visual plane filter: -1 = all planes
+  novaFrames:               { isManual: false, value: 8 },     // animation frames per variant: 8 fast … 240 silky (high-end dial)
+  novaSpritePx:             { isManual: false, value: 192 },   // sprite resolution per frame
+  novaVariants:             { isManual: false, value: 2 },     // distinct streak fields; explosions cycle through them
+  novaAtlasCapMB:           { isManual: false, value: 24 },    // memory law — wanted frames clamp to fit; panel shows capped flag
+  novaBakePerOp:            { isManual: false, value: 4 },     // frames baked per QueOps op (ms-cycled by the shared ledger)
+  novaLifeTicks:            { isManual: false, value: 90 },    // explosion duration in SIM ticks — heat + animation follow timeScale
+  novaEnergy:               { isManual: false, value: 1200 },  // NovaFields pulse energy (force ring scales with it)
+  novaRadius:               { isManual: false, value: 900 },   // world radius of field pulse AND the drawn sprite
+  novaDebris:               { isManual: false, value: 40 },    // REAL loose particles per spawn (respects the 380 loose cap)
+  novaMaxActive:            { isManual: false, value: 6 },     // pool law — oldest dies first
+  novaDrawBudget:           { isManual: false, value: 8 },     // sprite draws per frame, round-robin cycled — never too much
+  novaTest:                 { isManual: false, value: 0 },     // press + to fire one near the action; snaps back to AUTO
+
+  // ── SPRING SOLVER (2026-07-12) ──
+  springSoA:                { isManual: false, value: 1 },     // typed-array spring views (keyed by body.id, clone-proof) — 0 = legacy object loop for A/B
+  springFastLen:            { isManual: false, value: 0 },     // sqrt-free near-rest length law — exact at rest, degrades under big strain; the POCO votes
+  cachePacked:              { isManual: false, value: 1 },     // packed ghost snapshots (typed arrays, ~8× smaller, persistent working set) — 0 = legacy clone-per-tick
+
   // GUI Governor — starve the sim to reserve the frame for the interface
   guiGovMode:               { isManual: false, value: 0 },     // 0 OFF · 1 SLOW · 2 PAUSE · 3 HALT
   guiGovSlowFactor:         { isManual: false, value: 0.15 },  // sim-time rate in SLOW mode
@@ -675,7 +697,7 @@ export const CacheGov = {
   // settles near 1000, low end near 1 — same per-frame price either way.
   // Mirrors HARD_CAP in future-cache.js — keep the two 1000s in sync.
   AUTO_MIN: 1,
-  AUTO_MAX: 1000,
+  AUTO_MAX: 4096,   // mirrors HARD_CAP in future-cache.js — keep the two in sync
   // QUALITY-FIRST START: begins at the CEILING, not a modest 60 — the
   // doctrine is "start at maximum, decrease to what the machine holds
   // stable". The AIMD below halves within a few pressured frames on a

@@ -18,5 +18,6 @@
  "trajectory.json",
  "cycle.json",
  "selection.json",
- "fields.json"
+ "fields.json",
+ "nova.json"
 ]

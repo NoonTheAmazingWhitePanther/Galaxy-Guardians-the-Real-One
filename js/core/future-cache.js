@@ -36,7 +36,7 @@ import { config } from './config.js';
 // memory use, independent of whatever the user dials in. Raised to 1000 for
 // higher-end targets; the AUTO controller (CacheGov) still ranges 1..1000
 // on its own, so this only bites a manual over-dial.
-const HARD_CAP = 1000;
+const HARD_CAP = 4096;   // raised from 1000 (2026-07-12, Noon: 1024 at least) — mirror AUTO_MAX in governor.js
 
 // Fail-safe ceiling for the tick counters. playhead/frontier are otherwise
 // monotonic and grow forever over a long session; hits/misses too. When the
@@ -65,12 +65,121 @@ function cloneAsteroids(asteroids) {
   return asteroids.map(a => ({ ...a }));
 }
 
+// ── PACKED SNAPSHOTS (2026-07-12, Noon: the 1024-depth enabler) ────────────
+// An object-clone snapshot costs ~3MB/tick at 160 planets (≈3GB at depth
+// 1024) and ~29k allocations per ghost tick. Packed, a tick stores:
+//   · desc[]  — one shallow body descriptor per body ({...b} minus the
+//     particle/spring arrays) — Dormancy/TrajectoryPreview read cx/cy/mass/
+//     radius off these exactly as before, and splice pushes into them.
+//   · pdata   — Float64Array, 5 values per particle (x y vx vy heat).
+//     Float64 ON PURPOSE: playback must be byte-for-byte what the ghost
+//     computed. fx/fy are zeroed at tick start — never stored.
+//   · pdead / sbrk — Uint8 per particle / per spring. Spring NUMBERS are
+//     static for a spring's whole life (only `broken` evolves).
+// ≈ 8× smaller, ~180 allocations per tick instead of ~29k.
+//
+// STRUCTURE GENERATIONS: particle/spring arrays never change length in a
+// body's life; structure changes only when bodies are born/die (splits,
+// merges, spawns). Each such tick stores a full-clone KEYFRAME instead of a
+// packed entry; packed entries in between share the keyframe's structure.
+// Playback of a packed tick pairs descriptors with the CURRENT live graph
+// by id and writes the floats into the existing particle objects in place —
+// zero allocation on the play path, and body/particle object identity stays
+// stable across played ticks (kinder to selection + trails than the old
+// adopt-a-new-graph-every-tick flow). Any pairing surprise bails to a cache
+// miss + invalidate — live physics recomputes, never corrupts.
+//
+// THE WORKING SET: the ghost no longer clones the whole world every tick.
+// One persistent graph (_ws) lives at the frontier and keeps stepping;
+// each tick packs a snapshot of it. _ws is (re)seeded from LIVE state only,
+// and only when null — and null ⟺ buffer empty (invalidate/wrap/reset all
+// null it), so a stale working set can never extend a live frontier.
+const PSTRIDE = 5;
+
 export const FutureCache = {
-  _buffer: new Map(),     // tickIndex -> { bodies, loose, asteroids, astTimer, events }
+  _buffer: new Map(),     // tickIndex -> entry (packed | keyframe | legacy clone)
   _frontierTick: 0,       // furthest tick index computed & cached (>= playhead, always)
   _playheadTick: 0,       // tick index currently live/displayed
   _hits: 0,               // running counters for the debug panel
   _misses: 0,
+
+  _ws: null,              // persistent ghost working set (bodies/loose/asteroids/astTimer)
+  _wsSig: null,           // structure signature: [{id, np, ns}] of _ws.bodies
+  _wsGen: 0,              // structure generation of _ws
+  _liveGen: -1,           // generation of the CURRENT live graph (for in-place playback)
+  _genSeq: 0,             // generation id source
+  _bytes: 0,              // approximate bytes held by the buffer (panel truth)
+
+  get packed() { return ManualOverrides.get('cachePacked', 1) >= 0.5; },
+
+  _sig(bodies) {
+    const s = new Array(bodies.length);
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      s[i] = { id: b.id, np: b.particles.length, ns: b.springs.length };
+    }
+    return s;
+  },
+  _sigMatches(bodies) {
+    const s = this._wsSig;
+    if (!s || s.length !== bodies.length) return false;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i], e = s[i];
+      if (b.id !== e.id || b.particles.length !== e.np || b.springs.length !== e.ns) return false;
+    }
+    return true;
+  },
+
+  _entryBytes(e) {
+    if (e.kind === 'packed') {
+      return e.pdata.byteLength + e.pdead.byteLength + e.sbrk.byteLength
+        + e.bodies.length * 400 + e.loose.length * 200 + 512;
+    }
+    // keyframe / legacy clone — rough object-graph estimate
+    let p = 0, sN = 0;
+    for (const b of e.bodies) { p += b.particles ? b.particles.length : 0; sN += b.springs ? b.springs.length : 0; }
+    return p * 180 + sN * 100 + e.bodies.length * 400 + e.loose.length * 200 + 512;
+  },
+  _store(tick, e) { this._buffer.set(tick, e); this._bytes += e._sz = this._entryBytes(e); },
+
+  _packEntry(gen, events) {
+    const bodies = this._ws.bodies;
+    let tp = 0, ts = 0;
+    for (let i = 0; i < bodies.length; i++) { tp += bodies[i].particles.length; ts += bodies[i].springs.length; }
+    const desc = new Array(bodies.length);
+    const pdata = new Float64Array(tp * PSTRIDE);
+    const pdead = new Uint8Array(tp);
+    const sbrk = new Uint8Array(ts);
+    let pi = 0, di = 0, si = 0;
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      const d = { ...b };
+      d.particles = null;                 // structure lives in the generation's keyframe
+      d.springs = null;
+      desc[i] = d;
+      const ps = b.particles;
+      for (let k = 0; k < ps.length; k++) {
+        const p = ps[k];
+        pdata[di]     = p.x;
+        pdata[di + 1] = p.y;
+        pdata[di + 2] = p.vx;
+        pdata[di + 3] = p.vy;
+        pdata[di + 4] = p.heat;
+        di += PSTRIDE;
+        pdead[pi++] = p.dead ? 1 : 0;
+      }
+      const ss = b.springs;
+      for (let k = 0; k < ss.length; k++) sbrk[si++] = ss[k].broken ? 1 : 0;
+    }
+    return {
+      kind: 'packed', gen,
+      bodies: desc, pdata, pdead, sbrk,
+      loose: cloneLoose(this._ws.loose),
+      asteroids: cloneAsteroids(this._ws.asteroids),
+      astTimer: this._ws.astTimer,
+      events,
+    };
+  },
 
   // ── Invalidation ──────────────────────────────────────────────────────
   // Call whenever something outside the deterministic tick sequence
@@ -80,6 +189,8 @@ export const FutureCache = {
   invalidate() {
     this._buffer.clear();
     this._frontierTick = this._playheadTick;
+    this._ws = null; this._wsSig = null;       // null ⟺ empty buffer — the invariant
+    this._bytes = 0;
   },
 
   // Full reset — new session / game restart.
@@ -89,6 +200,9 @@ export const FutureCache = {
     this._playheadTick = 0;
     this._hits = 0;
     this._misses = 0;
+    this._ws = null; this._wsSig = null;
+    this._liveGen = -1;
+    this._bytes = 0;
   },
 
   get bufferedAhead() {
@@ -132,6 +246,8 @@ export const FutureCache = {
     this._frontierTick = 0;
     this._hits   = 0;
     this._misses = 0;
+    this._ws = null; this._wsSig = null;
+    this._bytes = 0;
   },
 
   // Peek — true if the next tick is already cached, without consuming it.
@@ -166,7 +282,23 @@ export const FutureCache = {
       return false;
     }
 
-    state.bodies    = cached.bodies;
+    if (cached.kind === 'packed') {
+      // ── materialize IN PLACE: floats into the existing live particle
+      // objects, descriptors become the bodies with the arrays reattached.
+      // Zero allocation; identity of particles/springs stays stable.
+      if (!this._materialize(cached)) {
+        // pairing surprise (live graph diverged from the cached generation)
+        // → honest miss: throw the future away, live physics recomputes.
+        this.invalidate();
+        this._misses++;
+        return false;
+      }
+    } else {
+      // keyframe / legacy clone — adopt the frozen graph directly (its only
+      // referent is this entry; nothing re-reads it after consumption).
+      state.bodies = cached.bodies;
+      this._liveGen = cached.gen ?? this._liveGen;
+    }
     state.loose     = cached.loose;
     state.asteroids = cached.asteroids;
     state.astTimer  = cached.astTimer;
@@ -185,9 +317,48 @@ export const FutureCache = {
     }
 
     this._buffer.delete(nextTick);
+    this._bytes -= cached._sz || 0;
     this._playheadTick = nextTick;
     this._hits++;
     this._wrapGuard();
+    return true;
+  },
+
+  /** Write a packed entry into the current live graph. True on success;
+   *  false on any pairing surprise (caller treats as a miss). */
+  _materialize(e) {
+    if (e.gen !== this._liveGen) return false;
+    const live = state.bodies;
+    const desc = e.bodies, pdata = e.pdata, pdead = e.pdead, sbrk = e.sbrk;
+    let map = null;                                 // built only if index pairing slips
+    let di = 0, pi = 0, si = 0;
+    for (let i = 0; i < desc.length; i++) {
+      const d = desc[i];
+      if (d.particles) continue;                    // spliced ghost — already a full body
+      let lb = live[i];
+      if (!lb || lb.id !== d.id) {
+        if (!map) { map = new Map(); for (let j = 0; j < live.length; j++) map.set(live[j].id, live[j]); }
+        lb = map.get(d.id);
+        if (!lb) return false;
+      }
+      d.particles = lb.particles;
+      d.springs = lb.springs;
+      const ps = lb.particles;
+      for (let k = 0; k < ps.length; k++) {
+        const p = ps[k];
+        p.x    = pdata[di];
+        p.y    = pdata[di + 1];
+        p.vx   = pdata[di + 2];
+        p.vy   = pdata[di + 3];
+        p.heat = pdata[di + 4];
+        di += PSTRIDE;
+        p.dead = pdead[pi++] === 1;
+        p.fx = 0; p.fy = 0;
+      }
+      const ss = lb.springs;
+      for (let k = 0; k < ss.length; k++) ss[k].broken = sbrk[si++] === 1;
+    }
+    state.bodies = desc;                            // descriptors are now the bodies
     return true;
   },
 
@@ -207,43 +378,65 @@ export const FutureCache = {
   },
 
   // ── Cache-ahead (the ghost simulation) ──────────────────────────────────
-  // Runs ONE tick worth of physics on an isolated clone — never the live
-  // state — and stores the result. Each tick gets a freshly-cloned working
-  // copy (seeded from the previous tick's stored result, or live state at
-  // the very frontier) which is mutated exactly once and then stored as-is.
-  // This is what makes it safe for QueOps closures captured during the
-  // tick to hold direct references into that object graph: nothing will
-  // ever mutate it again after this function returns.
+  // Runs ONE tick of physics on an isolated graph — never the live state —
+  // and stores the result. PACKED mode (default): one persistent working set
+  // lives at the frontier and keeps stepping; each tick stores a packed
+  // snapshot (typed arrays), with a full-clone keyframe only when structure
+  // changes. Ghost-captured QueOps closures must hold ids/numbers, never
+  // object refs (see the split op in tick.js) — the working set keeps
+  // mutating after capture. LEGACY mode (cachePacked 0): the original
+  // clone-per-tick flow, frozen graphs stored as-is.
   _shadowTick() {
-    const seed = this._buffer.get(this._frontierTick);
-    // If a seed exists in the buffer, it's already an isolated clone from
-    // when IT was computed (frozen, nothing has touched it since) — safe
-    // to clone once from it. Otherwise seed fresh from live state, since
-    // frontier === playhead means nothing's cached yet.
-    const freshWorking = seed
-      ? {
-          bodies:    cloneBodies(seed.bodies),
-          loose:     cloneLoose(seed.loose),
-          asteroids: cloneAsteroids(seed.asteroids),
-          astTimer:  seed.astTimer,
-        }
-      : {
+    const packed = this.packed;
+    let working;
+    if (packed) {
+      // ── THE WORKING SET: one persistent graph at the frontier ──
+      if (!this._ws) {
+        // null ⟺ empty buffer. If entries somehow exist without a working
+        // set (knob flipped mid-flight), they extend a frontier we can no
+        // longer step — drop them and restart from live.
+        if (this.bufferedAhead > 0) this.invalidate();
+        this._ws = {
           bodies:    cloneBodies(state.bodies),
           loose:     cloneLoose(state.loose),
           asteroids: cloneAsteroids(state.asteroids),
           astTimer:  state.astTimer,
         };
+        this._wsSig = this._sig(this._ws.bodies);
+        this._wsGen = ++this._genSeq;
+        this._liveGen = this._wsGen;       // seeded from live → same structure
+      }
+      working = this._ws;
+    } else {
+      // ── legacy flow: clone per tick from the frontier entry ──
+      const seed = this._buffer.get(this._frontierTick);
+      const seedOk = seed && seed.kind !== 'packed';   // packed entries can't seed the legacy path
+      working = seedOk
+        ? {
+            bodies:    cloneBodies(seed.bodies),
+            loose:     cloneLoose(seed.loose),
+            asteroids: cloneAsteroids(seed.asteroids),
+            astTimer:  seed.astTimer,
+          }
+        : {
+            bodies:    cloneBodies(state.bodies),
+            loose:     cloneLoose(state.loose),
+            asteroids: cloneAsteroids(state.asteroids),
+            astTimer:  state.astTimer,
+          };
+      if (seed && !seedOk) this.invalidate();          // mixed chain — restart clean
+    }
 
     // ── swap live → ghost ──
     GravityField.ghostMode = true;   // predictions use the EXACT legacy loop, never the grid
     const liveBodies = state.bodies, liveLoose = state.loose, liveFlashes = state.flashes,
           liveAsteroids = state.asteroids, liveAstTimer = state.astTimer;
 
-    state.bodies    = freshWorking.bodies;
-    state.loose     = freshWorking.loose;
+    state.bodies    = working.bodies;
+    state.loose     = working.loose;
     state.flashes   = [];              // capture-only: anything pushed here is "born on this tick"
-    state.asteroids = freshWorking.asteroids;
-    state.astTimer  = freshWorking.astTimer;
+    state.asteroids = working.asteroids;
+    state.astTimer  = working.astTimer;
 
     const queueCapture = [];
     QueOps.beginGhostCapture(queueCapture);
@@ -274,8 +467,8 @@ export const FutureCache = {
 
     const events = { flashes: state.flashes, queueOps: queueCapture };
 
-    // capture the mutated result BEFORE restoring live — this object graph
-    // is now frozen: nothing will touch it again, safe to store as-is.
+    // capture the mutated result BEFORE restoring live. tickLoose/splits may
+    // have REPLACED the arrays on state — carry the replacements back.
     const resultBodies    = state.bodies;
     const resultLoose     = state.loose;
     const resultAsteroids = state.asteroids;
@@ -290,10 +483,35 @@ export const FutureCache = {
     state.astTimer  = liveAstTimer;
 
     this._frontierTick++;
-    this._buffer.set(this._frontierTick, {
-      bodies: resultBodies, loose: resultLoose, asteroids: resultAsteroids,
-      astTimer: resultAstTimer, events,
-    });
+    if (this.packed && this._ws) {
+      this._ws.bodies    = resultBodies;
+      this._ws.loose     = resultLoose;
+      this._ws.asteroids = resultAsteroids;
+      this._ws.astTimer  = resultAstTimer;
+      if (this._sigMatches(resultBodies)) {
+        // same structure generation — the cheap, common tick
+        this._store(this._frontierTick, this._packEntry(this._wsGen, events));
+      } else {
+        // structure changed (split / merge / body death) — KEYFRAME: one
+        // full clone at the structural event, packed ticks resume after.
+        this._wsSig = this._sig(resultBodies);
+        this._wsGen = ++this._genSeq;
+        this._store(this._frontierTick, {
+          kind: 'key', gen: this._wsGen,
+          bodies: cloneBodies(resultBodies),
+          loose: cloneLoose(resultLoose),
+          asteroids: cloneAsteroids(resultAsteroids),
+          astTimer: resultAstTimer, events,
+        });
+      }
+    } else {
+      // legacy clone entry — frozen graph stored as-is (today's flow)
+      this._store(this._frontierTick, {
+        kind: 'key', gen: this._liveGen,
+        bodies: resultBodies, loose: resultLoose, asteroids: resultAsteroids,
+        astTimer: resultAstTimer, events,
+      });
+    }
   },
 
   // ── The conveyor (valved 1:1 pump) ──────────────────────────────────────
@@ -387,6 +605,20 @@ export const FutureCache = {
       cached.bodies.push(ghost);
       n++;
     }
+    // Under the persistent working set the frontier no longer re-seeds from
+    // buffer entries — the splice must enter the working set itself or the
+    // new body would never simulate in the future. Its own mutable copy;
+    // the structure change triggers a keyframe on the next packed tick.
+    if (this._ws && n > 0) {
+      const g = makeGhostAt(this._frontierTick);
+      if (g) {
+        this._ws.bodies.push({
+          ...g,
+          particles: g.particles.map(p => ({ ...p })),
+          springs: g.springs.map(s => ({ ...s })),
+        });
+      }
+    }
     return n;
   },
 
@@ -403,6 +635,10 @@ export const FutureCache = {
       const idx = bodies.findIndex(b => b.id === ghostId);
       if (idx >= 0) { bodies.splice(idx, 1); n++; }
     }
+    if (this._ws) {
+      const idx = this._ws.bodies.findIndex(b => b.id === ghostId);
+      if (idx >= 0) { this._ws.bodies.splice(idx, 1); n++; }
+    }
     return n;
   },
 
@@ -415,6 +651,8 @@ export const FutureCache = {
       hitsMisses: this.hitsMissesLabel,
       hits: this._hits,
       misses: this._misses,
+      packed: this.packed ? 1 : 0,
+      bufferMB: +(this._bytes / (1024 * 1024)).toFixed(1),
     };
   },
 };

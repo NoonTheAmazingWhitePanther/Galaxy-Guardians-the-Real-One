@@ -7,7 +7,6 @@
  * - Added defensive check in splitDeadParticles for out-of-bounds spring indices
  * - Added null-check before accessing particle properties in collision resolution
  */
-import { hypot } from '../../core/math.js';
 import { config } from '../../core/config.js';
 import { state, SUN, sunGravMult } from '../../core/state.js';
 import { interBodyCollisions, looseVsPlanets } from './collisions.js';
@@ -27,6 +26,7 @@ import { BodyFields, ForceField, ImpactField, LooseFields } from '../../core/map
 // Cycle note: future-cache.js imports tick.js — safe, both sides touch each
 // other only inside functions (bufferedAhead read at tick time, never at eval).
 import { FutureCache } from '../../core/future-cache.js';
+import { Nova } from '../../core/nova.js';
 
 export const updateCOM = (body) => {
   let sx = 0, sy = 0, sm = 0;
@@ -61,13 +61,104 @@ export const integrateParticle = (p, dt, damping) => {
   p.fy = 0;
 };
 
+// ── SPRING SOLVER VIEWS (SoA — 2026-07-12) ────────────────────────────────
+// The static per-spring numbers in flat typed arrays, keyed by body.id.
+// KEYED BY ID ON PURPOSE: FutureCache clones bodies EVERY ghost tick (fresh
+// springs arrays each time) — an array-keyed cache would rebuild per ghost
+// tick and drown in allocation. Clones share .id and spread-copy the same
+// numeric spring values, so one view serves the body's whole lifetime,
+// live and ghost. `broken` is deliberately NOT in the view — it evolves,
+// and every other consumer (splitDeadParticles, renderers) reads it off the
+// object, so the object stays the single truth and the view stays static.
+// Index-aligned with body.springs → semantics byte-identical to the object
+// loop. Splits/merges create NEW bodies with new ids; the length checks are
+// the belt. Views sweep by touch stamp so dead bodies don't accumulate.
+const _svMap = new Map();
+let _svStamp = 0;
+
+const _springView = (body) => {
+  const ss = body.springs, ps = body.particles;
+  let v = _svMap.get(body.id);
+  if (v && v.slen === ss.length && v.plen === ps.length) { v.touch = _svStamp; return v; }
+  const n = ss.length;
+  v = {
+    slen: n, plen: ps.length, touch: _svStamp,
+    a: new Int32Array(n), b: new Int32Array(n),
+    // values in Float64 ON PURPOSE — byte-identical math to the object path
+    // (Float32 rounding of stiff/weights diverges chaotic runs); indices
+    // stay Int32. ~6KB per 120-spring body — nothing.
+    stiff: new Float64Array(n), rest: new Float64Array(n), rest2: new Float64Array(n),
+    break2: new Float64Array(n), wA: new Float64Array(n), wB: new Float64Array(n),
+  };
+  for (let i = 0; i < n; i++) {
+    const sp = ss[i];
+    if (sp.a < 0 || sp.a >= ps.length || sp.b < 0 || sp.b >= ps.length) { sp.broken = true; continue; }
+    const pa = ps[sp.a], pb = ps[sp.b];
+    const ma = (pa && pa.mass) || 1, mb = (pb && pb.mass) || 1;
+    const tm = ma + mb;
+    v.a[i] = sp.a; v.b[i] = sp.b;
+    v.stiff[i] = sp.stiff;
+    v.rest[i] = sp.restLen; v.rest2[i] = sp.restLen * sp.restLen;
+    v.break2[i] = sp.breakAt * sp.breakAt;
+    v.wA[i] = mb / tm; v.wB[i] = ma / tm;
+  }
+  _svMap.set(body.id, v);
+  if (_svMap.size > 512) {                 // sweep views whose bodies are long gone
+    const cut = _svStamp - 4096;
+    for (const [k, x] of _svMap) if (x.touch < cut) _svMap.delete(k);
+  }
+  return v;
+};
+
 export const solveSprings = (body, dt) => {
   const ps = body.particles;
   const ss = body.springs;
-  for (let i = 0; i < ss.length; i++) {
+  const n = ss.length;
+  if (!n) return;
+  _svStamp++;
+  // THE FAST-LENGTH LAW (knob springFastLen, default OFF — the POCO votes):
+  // springs live near rest, so  s = stiff·dt·(d²−rest²)/(d²+rest²)  — exact
+  // value AND first derivative at rest, sqrt-free, one division. Degrades
+  // under big strain (where force matters) — a quality dial, not a free win.
+  const fast = ManualOverrides.get('springFastLen', 0) >= 0.5;
+
+  if (ManualOverrides.get('springSoA', 1) >= 0.5 && body.id != null) {
+    // ── SoA path: numbers stream from typed arrays, cache-linear ──
+    const v = _springView(body);
+    const va = v.a, vb = v.b, vs = v.stiff, vr = v.rest, vr2 = v.rest2,
+          vk2 = v.break2, vwa = v.wA, vwb = v.wB;
+    let solved = 0;
+    for (let i = 0; i < n; i++) {
+      const sp = ss[i];
+      if (sp.broken) continue;
+      const pa = ps[va[i]], pb = ps[vb[i]];
+      if (!pa || !pb || pa.dead || pb.dead) { sp.broken = true; continue; }
+      const dx = pb.x - pa.x, dy = pb.y - pa.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > vk2[i]) { sp.broken = true; continue; }   // break test in d² — breakers never pay the sqrt
+      solved++;
+      let s;
+      if (fast) {
+        s = vs[i] * dt * (d2 - vr2[i]) / (d2 + vr2[i]);
+      } else {
+        const len = Math.sqrt(d2) || 0.001;
+        s = vs[i] * (len - vr[i]) * dt / len;
+      }
+      const sx = dx * s, sy = dy * s;
+      pa.vx += sx * vwa[i];
+      pa.vy += sy * vwa[i];
+      pb.vx -= sx * vwb[i];
+      pb.vy -= sy * vwb[i];
+    }
+    if (solved) PhysicsCounter.add('springsSolved', solved);
+    return;
+  }
+
+  // ── legacy object path (springSoA 0 — the A/B control) ──
+  let solved = 0;
+  for (let i = 0; i < n; i++) {
     const sp = ss[i];
     if (sp.broken) continue;
-    PhysicsCounter.add('springsSolved');
     // FIX: Guard against out-of-bounds indices
     if (sp.a < 0 || sp.a >= ps.length || sp.b < 0 || sp.b >= ps.length) {
       sp.broken = true;
@@ -75,18 +166,41 @@ export const solveSprings = (body, dt) => {
     }
     const pa = ps[sp.a], pb = ps[sp.b];
     if (!pa || !pb || pa.dead || pb.dead) { sp.broken = true; continue; }
+    // Lazy-baked per-spring constants — particle masses are set once at
+    // creation and never change, so the mass split and breakAt² are
+    // constants that were being recomputed (2 divisions!) every substep.
+    // Lazy (not at creation) so clones and legacy springs self-heal.
+    if (sp.wA === undefined) {
+      const tm = pa.mass + pb.mass;
+      sp.wA = pb.mass / tm;
+      sp.wB = pa.mass / tm;
+      sp.breakAt2 = sp.breakAt * sp.breakAt;
+      sp.rest2 = sp.restLen * sp.restLen;
+    }
     const dx = pb.x - pa.x, dy = pb.y - pa.y;
-    const len = hypot(dx, dy) || 0.001;
-    if (len > sp.breakAt) { sp.broken = true; continue; }
-    const f = sp.stiff * (len - sp.restLen);
-    const nx = dx / len, ny = dy / len;
-    const tm = pa.mass + pb.mass;
-    const fdt = f * dt;
-    pa.vx += nx * fdt * (pb.mass / tm);
-    pa.vy += ny * fdt * (pb.mass / tm);
-    pb.vx -= nx * fdt * (pa.mass / tm);
-    pb.vy -= ny * fdt * (pa.mass / tm);
+    const d2 = dx * dx + dy * dy;
+    if (d2 > sp.breakAt2) { sp.broken = true; continue; }  // break test in d² — breakers never pay the sqrt
+    solved++;
+    let s;
+    if (fast) {
+      s = sp.stiff * dt * (d2 - sp.rest2) / (d2 + sp.rest2);
+    } else {
+      // Math.sqrt, NOT Math.hypot — hypot pays overflow-safe scaling for
+      // magnitudes this sim can never reach; in the hottest loop in the
+      // engine that tax was per spring per substep.
+      const len = Math.sqrt(d2) || 0.001;
+      // force·dt with the normalization folded in — ONE division per spring
+      // (was four: dx/len, dy/len, pb.mass/tm, pa.mass/tm)
+      s = sp.stiff * (len - sp.restLen) * dt / len;
+    }
+    const sx = dx * s, sy = dy * s;
+    pa.vx += sx * sp.wA;
+    pa.vy += sy * sp.wA;
+    pb.vx -= sx * sp.wB;
+    pb.vy -= sy * sp.wB;
   }
+  // counter hoisted out of the loop — one call per body, not per spring
+  if (solved) PhysicsCounter.add('springsSolved', solved);
 };
 
 const _gfOut = { x: 0, y: 0 };   // scratch for GravityField.sampleInto (no alloc)
@@ -274,7 +388,7 @@ export const tickLoose = (dt) => {
       lp.life -= lp.meltRate * dt * 2.5;
       // Repel away from sun (approximate direction from map)
       const sdx = sunX - lp.x, sdy = sunY - lp.y;
-      const sd = Math.hypot(sdx, sdy) + 0.1;
+      const sd = Math.sqrt(sdx * sdx + sdy * sdy) + 0.1;
       const escapeFactor = lp.detachSpeed / 15;
       lp.vx += (sdx / sd) * escapeFactor * 0.3 * dt;
       lp.vy += (sdy / sd) * escapeFactor * 0.3 * dt;
@@ -564,7 +678,7 @@ export const tickBodies = (scaledDt) => {
   // Map Rule: one delta-deposit per body per live tick (ghost ticks refused
   // inside — clones must never write the live maps).
   BodyFields.tick(bodies);
-  if (!GravityField.ghostMode) ForceField.coolOne();
+  if (!GravityField.ghostMode) { ForceField.coolOne(); Nova.tickLife(); }
 
   // ── SWEPT COAST CHECK — the "Collided?" flag (Noon, 2026-07-12) ──────────
   // A K×dt catch-up jump can cross a body without either endpoint ever
@@ -642,11 +756,18 @@ export const tickBodies = (scaledDt) => {
       // Run immediately — split must happen before filter
       splitDeadParticles(body);
     } else {
-      // Defer — queue at low priority, runs next frame if budget allows
-      const _body = body;
+      // Defer — queue at low priority, runs next frame if budget allows.
+      // Captured BY ID, not object ref: under the packed cache a ghost-
+      // captured ref would point into the frontier working set, not the
+      // graph that's live when this replays. Id resolves against whatever
+      // state.bodies is at fire time — the only honest target.
+      const _bid = body.id;
       QueOps.add({
         subject: 'physics', priority: 1, cost: 2,
-        fn: () => { if (_body && !_body.dead && _body.springs) splitDeadParticles(_body); }
+        fn: () => {
+          const b = state.bodies.find((x) => x.id === _bid);
+          if (b && !b.dead && b.springs) splitDeadParticles(b);
+        }
       });
     }
   }

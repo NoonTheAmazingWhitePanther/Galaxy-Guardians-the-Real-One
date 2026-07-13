@@ -77,7 +77,7 @@ Using spare frame-time budget, it computes physics ticks **ahead** of the live p
 
 > *"A played cached tick is NOT an approximation — it's byte-for-byte the same result live computation would have produced, including the visual side effects it triggers (collision flashes, ring spawns). Those are captured at cache time and replayed at the exact moment the tick is shown — not fired early during the silent pre-compute."*
 
-Cache ahead, play, keep caching while playing — the frontier never falls behind or overlaps itself. A time-budget governor (`CacheGov`) decides how far to look ahead (1 → **1000** ticks), and any event that would break determinism — spawning a planet, changing gravity, clearing the field — calls `invalidate()` and the buffer rebuilds. **Free, exact physics, amortised across quiet frames.**
+Cache ahead, play, keep caching while playing — the frontier never falls behind or overlaps itself. And the buffer no longer hoards object graphs: each cached tick is **packed into flat typed arrays** (five floats per particle, one bit-ish byte per spring), with a full keyframe only when the world's *structure* changes — ~8× smaller, so a 1024-deep future is something the machine can actually hold. Playback writes the floats straight back into the living particles: byte-for-byte, zero allocation. A time-budget governor (`CacheGov`) decides how far to look ahead (1 → **4096** ticks), and any event that would break determinism — spawning a planet, changing gravity, clearing the field — calls `invalidate()` and the buffer rebuilds. **Free, exact physics, amortised across quiet frames.**
 
 ### 🔮 3. Predict It — the Dormancy classifier
 
@@ -246,6 +246,16 @@ Code expression by **Claude (Anthropic)** — the Basic Pro subscription that he
 ## The Debug Deck (latest wave)
 
 The tuning surface grew into a small operating system:
+
+- **NOVA EXPLOSIONS** — physics always, visuals optional. A spawn burns
+  (BurnMap), pushes (a decaying force ring the *ghost future feels at its
+  own tick*, honestly decayed), and throws real debris — then the
+  spectacle plays as **pre-baked trail frames**: 8 on a $100 phone, 240 on
+  a monster, same one-drawImage cost either way. Baked in ms slices
+  through QueOps, capped by a memory law the panel shows you.
+- **The Map Rule, finished** — every physics grid (weight map, sun map,
+  collision heat, loose density, plane masks) now rents cells on ONE
+  sun-anchored lattice. Same X,Y, same cell, every map, forever.
 
 - **The Sun Spread** — satellite buttons place THEMSELVES: every anchor
   owns a 12-slot clock ring (one universal 30° spacing), a walker finds

@@ -18,6 +18,32 @@
    "bold": true
   },
   {
+   "type": "display",
+   "text": "buffer MB",
+   "value": "FutureCache.debugInfo.bufferMB"
+  },
+  {
+   "type": "display",
+   "text": "packed",
+   "value": "FutureCache.debugInfo.packed"
+  },
+  {
+   "type": "buttons",
+   "text": "Packed",
+   "variable": "ManualOverrides.cachePacked.value",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
    "type": "divider",
    "text": "— future cache —"
   },
@@ -280,15 +306,21 @@
    "text": "Target Ahead",
    "variable": "ManualOverrides.cacheTargetAhead.value",
    "buttons": [
-    "+",
+    "×",
     "=",
-    "−"
+    "÷"
    ],
    "governor": {
-    "mode": "add",
-    "min": 0,
-    "max": 1000,
-    "step": 10
+    "mode": "mult",
+    "steps": [
+     1,
+     60,
+     250,
+     512,
+     1024,
+     2048,
+     4096
+    ]
    }
   },
   {

@@ -7,6 +7,7 @@ import { state } from './core/state.js';
 import { StateCache } from './core/state-cache.js';
 import { FutureCache } from './core/future-cache.js';
 import { Dormancy } from './core/dormancy.js';
+import { Nova } from './core/nova.js';
 import { InputModule, InputState, InAims } from './modules/input/input.module.js';
 import { Aims } from './core/aims.js';
 import { CameraModule } from './modules/camera/camera.module.js';
@@ -839,6 +840,7 @@ function mainLoop(t) {
         InputState.mouseY,
         slider.value
       );
+      Nova.draw(drawCtx);              // buffered-frame explosions (own pass, additive)
       Dormancy.drawWitness(drawCtx);   // locked-delta cold-body tween witness (world space)
       GravityField.drawOverlay(drawCtx); // weight map: how much gravity + where, per box
     }, ticksSinceRender));
