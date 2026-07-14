@@ -20,7 +20,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 reserve power for the GUI \u2014"
+   "text": "— reserve power for the GUI —"
   },
   {
    "type": "buttons",
@@ -29,7 +29,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -65,7 +65,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -82,5 +82,6 @@
   "step": 1,
   "label": "",
   "integer": true
- }
+ },
+ "description": "GUI GOV — the interface governor (OFF/SLOW/PAUSE/HALT). Governs how hard the debug UI itself is allowed to work: SLOW decimates panel refresh, PAUSE freezes panel data, HALT stops UI work entirely while the sim runs on. Use it when the deck itself costs frames — the panels are diagnostics, and diagnostics must never become the disease. This governs UI only; it never touches physics."
 }

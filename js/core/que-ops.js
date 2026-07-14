@@ -233,6 +233,12 @@ export const QueOps = {  init: _init, add: _add, tick: _tick,
   // case something ever needs its own sub-ledger (e.g. a phase that runs
   // before QueOps.tick() one day).
   beginFrame(totalMs) { _frame.budgetMs = totalMs; _frame.startedAt = performance.now(); },
+  // THE PULSE'S DOOR (render-pulse.js): the heartbeat hands QueOps exactly
+  // the time remaining to the next beat, every frame. Work that doesn't fit
+  // is delayed — it is never allowed to push the beat.
+  setFrameCeiling(ms) {
+    _state.config.maxFrameTimeMs = Math.max(1, Math.min(16, ms));
+  },
   remaining() { return Math.max(0, _frame.budgetMs - (performance.now() - _frame.startedAt)); },
   get frameBudget()  { return _frame.budgetMs; },
   get frameElapsed() { return performance.now() - _frame.startedAt; },

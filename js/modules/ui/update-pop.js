@@ -21,7 +21,7 @@
  *   UpdatePop.ask('Warm up?', ['Yes','No'], {timeoutMs})
  *     → question blob with buttons. Optional self-dismissal (resolves null).
  *
- *   UpdatePop.choose(['Fast Bench?','Moderate Scaling','Full Inspection'],
+ *   UpdatePop.choose(['Wakeup · 1 min','Moderation · 3 min','Full · 5 min'],
  *                    {countdownSec: 5})
  *     → THE STACK. All cards together from the left, entrance staggered
  *       (they build one after another), a live counter beside each ticking

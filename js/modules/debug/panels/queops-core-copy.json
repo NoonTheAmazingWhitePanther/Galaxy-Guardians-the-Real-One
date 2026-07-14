@@ -165,5 +165,6 @@
  ],
  "minimized": true,
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "QUEUE OPS — the master kernel's operation queue. Everything but the Physics Tick flows through QueOps: queue size, per-frame budget (queOpsBudget), budget used, cooling state, delay (queOpsDelay), and deferred/skipped thresholds. When the queue backs up, work is deferred by priority instead of stalling the frame. The 1000 standard applies on all caching routes through here. Budget starvation shows as deferred counts climbing while fps holds — the frame is being protected at the cost of latency."
 }

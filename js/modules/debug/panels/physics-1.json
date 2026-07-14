@@ -208,5 +208,6 @@
  "summaryExtra": "PhysicsGov.fractionLabel",
  "minimized": true,
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "PHYSICS — the physical core. Substeps per tick, timescale, the fixed timestep accumulator (banked time is never discarded except on true overload), spring solver tier, collision counts, and dormancy classification (active / dormant Stage 1). Physics Tick does not go through QueOps — this is the one clock that answers to nothing. Timescale and substeps are time authorities: the live AutoTuner is forbidden to touch them; only the isolated benchmark may."
 }

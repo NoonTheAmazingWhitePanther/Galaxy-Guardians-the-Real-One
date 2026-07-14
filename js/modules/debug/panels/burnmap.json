@@ -110,5 +110,6 @@
   "step": 10,
   "label": "",
   "integer": true
- }
+ },
+ "description": "BURN MAP — the scorch field renter on the Singular Map lattice. Tracks where planet material burned: cell writes per tick, active burnt cells, decay rate, and the draw cost of the burn overlay. One of the field renters under the Alignment Law (one sun-centered anchor, every concern rents its own channels). High cell counts here after big collisions are normal; a burn map that never decays is a leak."
 }

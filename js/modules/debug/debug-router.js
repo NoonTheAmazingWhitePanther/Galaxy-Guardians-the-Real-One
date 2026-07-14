@@ -143,6 +143,7 @@ export const DebugRouter = {
       case 'aim':        return Aims.debugInfo;
       case 'msProbe':    return MsProbe.allAsMap();
       case 'stateCache': return StateCache.debugInfo;
+      case 'pulse':      return window.RenderPulse?.debugInfo ?? {};
       default:           return {};
     }
   },

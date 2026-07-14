@@ -93,6 +93,10 @@ export const ManualOverrides = {
   physicsSkipBase:          { isManual: false, value: 60 },  // 60/120/240/480/960 — independent from render's
   // Render
   renderFrameSkip:          { isManual: false, value: 0 },
+  // THE RENDER PULSE (render-pulse.js) — the fixed heartbeat of the frame.
+  // 60 by default (16.6ms grid), raisable on the ladder 120/240/360/480.
+  // TIME AUTHORITY: excluded from benchmark rotation and the live AutoTuner.
+  pulseHz:                   { isManual: false, value: 60 },
   renderSkipBase:           { isManual: false, value: 60 },  // 60/120/240/480/960
   // Input
   inputFrameSkip:           { isManual: false, value: 0 },

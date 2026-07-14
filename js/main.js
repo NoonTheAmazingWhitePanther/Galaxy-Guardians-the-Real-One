@@ -38,7 +38,9 @@ import { DEBUG_STATE } from './modules/debug/debug-state.js';
 import { PhysicsGov, RenderGov, CacheGov, ScreenGov, ManualOverrides } from './modules/debug/governor.js';
 import { PhysicsCounter } from './modules/debug/physics-counter.js';
 import { Benchmark } from './modules/debug/benchmark.js';
+import { AutoTuner } from './modules/debug/auto-tuner.js';
 import { QueOps } from './core/que-ops.js';
+import { RenderPulse } from './core/render-pulse.js';
 
 // ✅ NEW SYSTEMS (2026-07-07)
 import { DotAtlasRenderer } from './modules/rendering/dot-atlas-renderer.js';
@@ -122,6 +124,8 @@ export async function init() {
   const debugBtn = document.getElementById('debug-btn');
   const benchBtn = document.getElementById('bench-btn');
   const benchInfo = document.getElementById('bench-info');
+  const autoBtn = document.getElementById('auto-btn');
+  const weirdBar = document.getElementById('weird-bar');
   const renderBenchInfo = () => {
     if (!benchInfo) return;
     const info = Benchmark.info;
@@ -137,7 +141,36 @@ export async function init() {
     const on = DebugRouter.masterEnabled;
     benchBtn?.classList.toggle('on', on);
     benchInfo?.classList.toggle('on', on && !!Benchmark.info);
+    autoBtn?.classList.toggle('on', on);
+    weirdBar?.classList.toggle('on', on);
   };
+
+  // THE WEIRD DICE — each tap rolls one evaluated random-evolution round
+  // (3 random knobs, random math, group verdict). Gold while judging.
+  if (weirdBar) {
+    weirdBar.querySelectorAll('.weird-die').forEach(die => {
+      die.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        AutoTuner.rollWeird(+die.dataset.die || 1);
+        die.classList.add('rolling');
+        setTimeout(() => die.classList.remove('rolling'), 2200);
+      }, { passive: false });
+    });
+  }
+
+  // AUTOMATIC — one tap and the governor tunes itself live (auto-tuner.js).
+  // Green while engaged; its ledger lives in its OWN vault, never the
+  // benchmark's best-preferences.
+  if (autoBtn) {
+    autoBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const on = AutoTuner.toggle();
+      autoBtn.classList.toggle('engaged', on);
+      autoBtn.textContent = on ? 'AUTOMATIC · ON' : 'AUTOMATIC';
+    }, { passive: false });
+  }
   if (debugBtn) {
     if (DebugRouter.masterEnabled) debugBtn.classList.add('active');
     document.body.classList.toggle('dbg-on', DebugRouter.masterEnabled);   // vestigial — see debug-router.js's toggleAll() comment
@@ -644,8 +677,16 @@ function _drawAimsStatus(ctx) {
 }
 
 function mainLoop(t) {
+  // THE RENDER PULSE — the frame's heartbeat opens first: is a beat due,
+  // and how much of this pulse window remains? QueOps gets exactly that
+  // remainder as its ceiling — work that doesn't fit is delayed, never
+  // allowed to push the beat.
+  RenderPulse.beginFrame(t);
+  QueOps.setFrameCeiling(RenderPulse.budgetLeft());
+
   DebugRouter.resetAll();
   MsProbe.call('queops.tick', () => QueOps.tick());
+  RenderPulse.mark('queops');
   requestAnimationFrame(mainLoop);
 
   // Feed FPS counter every frame — before any frame-skip logic
@@ -790,6 +831,8 @@ function mainLoop(t) {
   InputModule.aimsTick();
 
   // ✅ FIX: Use RenderGov from unified governor
+  RenderPulse.mark('physics');   // everything since the queops mark was the sim
+
   const _camVel = Math.abs(CameraModule.cam.zoom - CameraModule.cam.targetZoom) * 100
                 + (CameraModule.isPanning ? 30 : 0);
   RenderGov.feedChaos(_camVel, 0, didPhysicsTick);
@@ -823,11 +866,18 @@ function mainLoop(t) {
 
   // Data update — every rAF, unconditionally, before any drawing
   DebugRouter.updateData();
+  RenderPulse.mark('data');
 
   // Debug panels — inside shouldRender per your architecture rule.
   // GuiGovernor.shouldRenderCanvas() throttles the whole CANVAS block in HALT
   // so the DOM console + input keep the frame; it's a no-op in every other mode.
-  if (RenderGov.shouldRender() && GuiGovernor.shouldRenderCanvas()) {
+  const _govRender = RenderGov.shouldRender();
+  // THE BEAT IS SACRED: the head (frame, bodies, first trail segment)
+  // renders on every pulse boundary no matter what RenderGov's skip says —
+  // skipping now only lives INSIDE the pulse (deferred ops, decorations).
+  // GuiGovernor HALT stays sovereign: a deliberate user hold outranks the law.
+  if ((RenderPulse.beatDue || _govRender) && GuiGovernor.shouldRenderCanvas()) {
+    RenderPulse.markRendered(t);
     const alpha = Math.min(1, physicsAccumulator / currentPhysicsStep);
 
     CycleMeter.paint();
@@ -872,10 +922,12 @@ function mainLoop(t) {
     // additionally gates whether it actually draws anything.
     if (InAims.enabled) ZoomEnhancer.render();
 
+    RenderPulse.mark('render');
     if (Gate.pass('debug.panels')) MsProbe.call('debug.panels', () => {
       DebugRouter.drawAll(ctx);
       TuningLayer.drawAll(ctx);
     });
+    RenderPulse.mark('debug');
 
     // Satellite buttons (dbg-sat / aims-sat / paint-sat) — canvas-drawn now,
     // not HTML (rules.md §8). Each gates its own visibility internally
@@ -921,7 +973,13 @@ function mainLoop(t) {
       cursorEl.style.left = InputState.mouseX + "px";
       cursorEl.style.top = InputState.mouseY + "px";
     }
+    RenderPulse.mark('render');
   }
+
+  // The frame's verdict: overran its pulse window? Name the phase that ate
+  // it. This runs every frame, rendered or not — skipped frames get judged
+  // too, that's the whole point.
+  RenderPulse.endFrame();
 }
 
 if (document.readyState === 'loading') {

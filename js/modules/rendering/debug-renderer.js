@@ -19,6 +19,7 @@ import { ControlRenderer } from '../debug/controls.js';
 import { PanelMasterSlider } from '../debug/panel-master.js';
 import { MasterSliderRenderer } from '../debug/master-slider-renderer.js';
 import { headerIcons } from '../debug/panel-style.js';
+import { PanelInfo } from '../debug/panel-info.js';
 import { SelectionPanelExtras } from '../debug/selection-panel-extras.js';
 
 function makeCanvas(w, h) {
@@ -167,13 +168,49 @@ export const DebugRenderer = {
       return;
     }
 
-    // ── Data layer — always redrawn live, no cache ────────────────────────
-    // Values come from GovernorRegistry live reads inside _resolveValue.
-    // Caching would show stale numbers. Just draw every rendered frame.
-    ctx.save();
-    ctx.translate(panel.x, panel.y);
-    this._drawData(ctx, panel, data, layout, pw, ph, sc, s);
-    ctx.restore();
+    // ── Data layer — CACHED ON THE REFRESH CLOCK (the fps fix) ───────────
+    // This used to redraw live every frame: every line a fillText, every
+    // ellipsis-fit a binary search of measureText calls, per panel, per
+    // frame, at dpr×zoom — while updateData() only refreshes the VALUES
+    // every panel.refreshRate ms anyway. Now the text is drawn into the
+    // panel's own offscreen canvas only when something actually changed
+    // (_dataDirty from the refresh tick, scroll, size, scale, or a finger
+    // on a control) and blitted otherwise. Values update exactly as often
+    // as they ever did — the refreshRate was always the truth clock; the
+    // drawing just finally respects it.
+    const scrollNow = layout.scrollOffset ?? 0;
+    const dataDirty = panel._dataDirty
+      || !panel._dataCanvas
+      || panel._dataCachedW      !== pw
+      || panel._dataCachedH      !== ph
+      || panel._dataCachedDpr    !== dpr
+      || panel._dataCachedVz     !== vz
+      || panel._dataCachedScroll !== scrollNow;
+
+    if (dataDirty) {
+      const scale = dpr * vz;
+      const cw = Math.max(1, Math.ceil(pw * scale));
+      const chh = Math.max(1, Math.ceil(ph * scale));
+      let c = panel._dataCanvas;
+      if (!c || c.width !== cw || c.height !== chh) {
+        c = makeCanvas(cw, chh);               // reallocate only on resize
+      } else {
+        c.getContext('2d').clearRect(0, 0, cw, chh);
+      }
+      const cctx = c.getContext('2d');
+      cctx.save();
+      cctx.scale(scale, scale);
+      this._drawData(cctx, panel, data, layout, pw, ph, sc, s);
+      cctx.restore();
+      panel._dataCanvas       = c;
+      panel._dataCachedW      = pw;
+      panel._dataCachedH      = ph;
+      panel._dataCachedDpr    = dpr;
+      panel._dataCachedVz     = vz;
+      panel._dataCachedScroll = scrollNow;
+      panel._dataDirty        = false;
+    }
+    ctx.drawImage(panel._dataCanvas, panel.x, panel.y, pw, ph);
 
     // PanelMasterSlider — interactive, draws on main canvas
     PanelMasterSlider.render(ctx, panel, panel.x, panel.y, pw, ph, minimized);
@@ -306,6 +343,19 @@ export const DebugRenderer = {
     ctx.fillText('⊿', pw - 2, ph - 2);
   },
   _drawData(ctx, panel, data, layout, pw, ph, sc, s) {
+    // ── SECOND PAGE — the description owns the rectangle ────────────────
+    // Title redrawn (page one's title band left with the lines), then the
+    // icon row and ONE blit of the pre-rendered description canvas. No
+    // per-line layout, no measureText — the text was drawn exactly once.
+    if (layout.infoMode) {
+      const bandFs = Math.round(s.fontSize * sc * 1.25);
+      ctx.font = `bold ${bandFs}px ${s.font}`;
+      ctx.fillStyle = 'rgba(130,210,255,0.95)';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(panel.title || panel.id, s.padX * sc, (s.padY + s.lineHeight / 2) * sc);
+      PanelInfo.drawPage(ctx, panel, pw, ph, sc, s);
+      return;
+    }
     const { lines, controls } = layout;
     const fontSize   = s.fontSize * sc;
     const padX       = s.padX * sc;
@@ -434,6 +484,8 @@ export const DebugRenderer = {
     };
     _iconBtn(edtBtnX, '🖌', 'rgba(240,245,255,0.7)');   // edit this panel's items
     _iconBtn(shrBtnX, '⤓',  'rgba(240,245,255,0.7)');   // shrink to bar
+    // ℹ — the second page. Lit while the description is showing.
+    _iconBtn(_ic.xs.nfo, 'ℹ', panel.infoMode ? 'rgba(130,210,255,1)' : 'rgba(240,245,255,0.7)');
 
     // Pin button
     if (window._DebugRouter?.masterEnabled) {

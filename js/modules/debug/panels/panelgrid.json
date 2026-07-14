@@ -20,7 +20,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 0 = free-form \u00b7 >0 = snap \u2014"
+   "text": "— 0 = free-form · >0 = snap —"
   },
   {
    "type": "buttons",
@@ -29,7 +29,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -46,5 +46,6 @@
   "step": 2,
   "label": "",
   "integer": true
- }
+ },
+ "description": "PANEL GRID — PanelArrange's snap system. Grid density, snap on/off, collision-eject behavior when panels overlap, and the guides drawn while dragging. Pure layout machinery for the debug deck itself: nothing here touches the simulation. Long-press the arrange satellite to cycle density."
 }

@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 the preview IS the future cache \u2014"
+   "text": "— the preview IS the future cache —"
   },
   {
    "type": "display",
@@ -54,7 +54,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 prediction \u2014"
+   "text": "— prediction —"
   },
   {
    "type": "display",
@@ -68,7 +68,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 on commit \u2014"
+   "text": "— on commit —"
   },
   {
    "type": "display",
@@ -77,7 +77,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 controls \u2014"
+   "text": "— controls —"
   },
   {
    "type": "buttons",
@@ -86,7 +86,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -102,7 +102,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -119,5 +119,6 @@
   }
  ],
  "maxHeight": 320,
- "background": null
+ "background": null,
+ "description": "TRAJECTORY — the live orbit preview. While placing or flinging a body, a ghost integration draws its predicted path: prediction depth in ticks, step decimation, and preview draw cost. Prediction is Fake physics by the claims law — it never writes back to the real world. Deep predictions on many-body scenes are expensive; the preview budget is governed."
 }

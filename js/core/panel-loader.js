@@ -30,7 +30,13 @@ export async function loadPanelConfigs(baseUrl) {
     try {
       const res = await fetch(`${baseUrl}${filename}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
+      const cfg = await res.json();
+      // THE LAZY LAW (panel-info.js): the description field lives in every
+      // panel json but is NEGLECTED at boot — stripped here so no panel
+      // object ever holds it. The ℹ second page re-fetches the file and
+      // copies out only that scope, the first time it's asked for.
+      delete cfg.description;
+      return cfg;
     } catch (err) {
       console.warn(`[PanelLoader] Failed to load panel "${filename}":`, err);
       return null;                 // one bad panel file doesn't take down the rest

@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 governor \u2014"
+   "text": "— governor —"
   },
   {
    "type": "display",
@@ -38,7 +38,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 tick skip \u2014"
+   "text": "— tick skip —"
   },
   {
    "type": "display",
@@ -52,7 +52,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 per frame counts \u2014"
+   "text": "— per frame counts —"
   },
   {
    "type": "displayMap",
@@ -67,16 +67,16 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 controls \u2014"
+   "text": "— controls —"
   },
   {
    "type": "buttons",
    "text": "Time Scale",
    "variable": "ManualOverrides.physicsTimeScale.value",
    "buttons": [
-    "\u00d7",
+    "×",
     "=",
-    "\u00f7"
+    "÷"
    ],
    "governor": {
     "mode": "mult",
@@ -91,7 +91,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -102,7 +102,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 tick skip control \u2014"
+   "text": "— tick skip control —"
   },
   {
    "type": "buttons",
@@ -111,7 +111,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -123,7 +123,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 skip base (out of) \u2014"
+   "text": "— skip base (out of) —"
   },
   {
    "type": "profileButtons",
@@ -172,5 +172,6 @@
  "summaryExtra": "PhysicsGov.fractionLabel",
  "minimized": true,
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "PHYSICS — the physical core. Substeps per tick, timescale, the fixed timestep accumulator (banked time is never discarded except on true overload), spring solver tier, collision counts, and dormancy classification (active / dormant Stage 1). Physics Tick does not go through QueOps — this is the one clock that answers to nothing. Timescale and substeps are time authorities: the live AutoTuner is forbidden to touch them; only the isolated benchmark may."
 }

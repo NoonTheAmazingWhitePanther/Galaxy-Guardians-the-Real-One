@@ -48,7 +48,7 @@
    "type": "groupedDisplayMap",
    "key": "pass",
    "source": "DrawCallCounter.passRows",
-   "separator": " \u2219 ",
+   "separator": " ∙ ",
    "filter": "positive",
    "sortGroups": "desc",
    "collapsedByDefault": true
@@ -60,5 +60,6 @@
   "method totals",
   "per pass"
  ],
- "background": null
+ "background": null,
+ "description": "DRAW CALLS — the render pass census. Counts every canvas draw per frame, split by pass (bodies, trails, fields, chrome, overlays), so render cost has a face. Use with MS PROBE: PROBE says which code path is slow in milliseconds, DRAW CALLS says how many strokes each pass paid. A pass whose call count explodes with planet count is the pass to LOD next. Numbers reset per frame; spikes during panning are camera invalidation."
 }

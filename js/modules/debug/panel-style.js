@@ -111,8 +111,9 @@ export function headerIcons(pw, sc) {
   const pin  = max - size - gap;
   const shr  = pin - size - gap;
   const edt  = shr - size - gap;
+  const nfo  = edt - size - gap;                    // ℹ — the second page
   return { size, gap, y, bandH: y * 2 + size,
-           xs: { edt, shr, min, pin, max } };
+           xs: { nfo, edt, shr, min, pin, max } };
 }
 
 export default PanelStyle;

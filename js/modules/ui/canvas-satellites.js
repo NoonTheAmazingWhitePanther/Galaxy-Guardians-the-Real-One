@@ -128,6 +128,11 @@ const _sats = [
   { id: 'dbg-glasses', family: 'dbg', icon: '👓',
     isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
     onTap: () => DebugRouter.cycleRatio() },
+  // 🔴 FACTORY — restores factory defaults for the WHOLE governor table:
+  // every knob → AUTO, both vaults wiped, Base profile, caches flushed.
+  { id: 'dbg-factory', family: 'dbg', icon: '🔴',
+    isActive: () => DebugRouter.masterEnabled && !DebugRouter._consoleMode,
+    onTap: () => { window.AutoTuner?.factoryReset?.(); } },
 
   // ── aims — aims-btn's ring (right edge, walks counter-clockwise) ─────
   { id: 'aims-sat-refresh', family: 'aims', icon: '↻',

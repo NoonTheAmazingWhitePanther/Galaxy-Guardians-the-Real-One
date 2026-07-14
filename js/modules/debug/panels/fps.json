@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 real fps \u2014"
+   "text": "— real fps —"
   },
   {
    "type": "display",
@@ -43,7 +43,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 virtual fps (skip \u00d7 real) \u2014"
+   "text": "— virtual fps (skip × real) —"
   },
   {
    "type": "display",
@@ -57,7 +57,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 renderer \u2014"
+   "text": "— renderer —"
   },
   {
    "type": "display",
@@ -76,7 +76,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 render skip control \u2014"
+   "text": "— render skip control —"
   },
   {
    "type": "buttons",
@@ -85,7 +85,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -96,7 +96,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 skip base (out of) \u2014"
+   "text": "— skip base (out of) —"
   },
   {
    "type": "profileButtons",
@@ -142,6 +142,6 @@
  },
  "summaryExtra": "FpsCounter.debugInfo.skipLabel",
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "FPS — real frames per second, measured on the wall clock, plus the virtual cycle rate derived through the skip ratio. The top-line health number for the prime goal (many planets at constant 60). ScreenGov detects the display's true refresh; target fps derives from it, never a hardcoded 60. If FPS is low but virtual is high, skips are hiding pain; by the Pure Frames Law prefer fixing cost over skipping frames."
 }
-

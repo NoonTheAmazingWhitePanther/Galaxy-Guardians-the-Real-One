@@ -1,81 +1,162 @@
 /**
  * js/modules/debug/benchmark.js
- * BEST PREFERENCES — device benchmark + persistence.
+ * BEST PREFERENCES — device benchmark + persistence. (Rebuilt 2026-07-13.)
  *
- * The "1000 law": the ideal is 1000 virtual cycles/sec. The benchmark loads the
- * scene to progressively heavier planet counts (30 → 960) and, at each tier,
- * walks a quality ladder to find the richest settings that still hold the
- * target frame rate. The winning settings are written to best-preferences.json
- * (and localStorage), keyed by a VARIABLE-COUNT SIGNATURE.
+ * THE SHAPE OF A RUN
+ *   Sessions climb the planet ladder: 10 → 20 → 30 → … → 1000 (the 1000
+ *   rule — 1000 planets is the ceiling and the score scale). Every planet
+ *   spawns INSIDE THE SCREEN no matter the zoom (camera world-rect), so the
+ *   benchmark always stresses what the player actually sees.
  *
- * Version check without a version number: we count how many user-changeable
- * (non-read-only) debug variables the engine exposes. If a saved file's count
- * matches the engine's current count, it's the same "shape" of engine and the
- * saved best preferences are loaded. If it differs (a newer build with more/
- * fewer knobs), we fall back to the built-in Base (BALANCE) profile.
+ * WHAT A SESSION PERFECTS
+ *   The four machines: QueOps, FutureCache, Dormancy, and the pixel maps
+ *   (Map Rule + gravity grid). Each machine exposes its time / delay /
+ *   amount / size knobs. Per knob the session:
+ *     1. measures the AUTO base (the Automatics),
+ *     2. sweeps the knob's ladder MANUALLY (the Manuals), reading fps +
+ *        virtual cycles (the Rates) and the delta vs base (the Changes),
+ *     3. RETURNS TO BASE (knob back to AUTO) before touching the next knob —
+ *        every sweep is isolated, nothing stacks.
+ *   Then the per-knob winners are composed, measured together, and the
+ *   session verdict is MANUAL vs AUTO — whichever actually holds more frames.
+ *
+ * TIME LIMITS (the modes)
+ *   WAKEUP      1 minute  — the pulse check.
+ *   MODERATION  3 minutes — the working physical.
+ *   FULL        5 minutes — the complete inspection.
+ *   The deadline governs: a run climbs sessions until the clock, the fps
+ *   floor, or the 1000 ceiling stops it. Cut short, never started mid-ladder.
+ *
+ * PURE FRAMES LAW (locked): the ENTIRE run measures at skip = 0. Frame
+ * skipping is the last resort of live play, never of measurement.
+ *
+ * SCORE — the 1000 rule made literal: score = the heaviest session (planet
+ * count) that still held the target frame rate. 320/1000 means 320 planets
+ * held; 1000/1000 is the finish line.
+ *
+ * Version check without a version number: the variable-count signature
+ * (count of user-changeable governor knobs). Match = same engine shape.
  */
 
-import { ManualOverrides, TrailGov, ScreenGov, RenderGov } from './governor.js';
+import { ManualOverrides, ScreenGov, RenderGov } from './governor.js';
 import { GovernorProfiles } from './governor-profiles.js';
 import { state, SUN, sunGravMult, PALS } from '../../core/state.js';
 import { config } from '../../core/config.js';
-import { CONFIG } from '../../config/config-index.js';
 import { makeBody } from '../physics/creation.js';
 import { hypot, clamp } from '../../core/math.js';
 import { FutureCache } from '../../core/future-cache.js';
+import { CameraModule } from '../camera/camera.module.js';
 import { DebugRouter } from './debug-router.js';
 
 const STORAGE_KEY = 'gg_best_prefs';
 const FILE_URL    = 'best-preferences.json';
 
-// Planet-count ladder — the stress steps. 1000-cycle ideal held in mind at each.
-const TIERS = [30, 60, 90, 120, 240, 480, 960];
+// ── The session ladder — the 1000 rule ────────────────────────────────────
+// 10-planet steps to the 1000 ceiling. Every rung is a session.
+const TIERS = Array.from({ length: 100 }, (_, i) => (i + 1) * 10);
 
-// Target real frame rate to hold while maximizing quality. Derived from the
-// DETECTED screen refresh (ScreenGov), not a hardcoded 60Hz assumption: the
-// old 55 was 60Hz × ~0.92 tolerance — same ratio, applied to whatever the
-// screen actually is (110 on a 120Hz panel, 83 on 90Hz…). "Stable max
-// refresh rate of the current screen" is the pass bar everywhere.
+// ── The modes — time limits own the run ──────────────────────────────────
+const MODES = {
+  WAKEUP:     { label: 'Wakeup',     seconds: 60  },
+  MODERATION: { label: 'Moderation', seconds: 180 },
+  FULL:       { label: 'Full',       seconds: 300 },
+};
+
+// THE MARCH: 20 seconds per session, then the next rung — 10 done, 20 done,
+// 30 done… A session sweeps as much as fits in its 20s (core knob order
+// rotates per session so every knob gets its day), wraps its verdict, and
+// the ladder moves. The last stretch is reserved for the verdict measure.
+const SESSION_MS      = 20000;
+const VERDICT_RESERVE = 1800;
+
+// Target real frame rate, derived from the DETECTED refresh (ScreenGov):
+// stable max refresh of the current screen × tolerance, never a hardcoded 60.
 const TARGET_RATIO = 0.92;
 const TARGET_FPS = () => Math.round(ScreenGov.hz * TARGET_RATIO);
 
-// If the leanest level still can't clear this, the device is saturated — heavier
-// tiers are pointless, so the whole run stops (your "makes no sense to continue").
+// Leanest sweep value still below this → the device is saturated; stop.
 const FLOOR_FPS = 6;
 
-// Never let the live scene itself exhaust memory: stop spawning a tier once total
-// live particles cross this, and record the actual count reached.
+// Live-memory ceiling: stop spawning a session once total particles cross it.
 const MAX_LIVE_PARTICLES = 45000;
 
-// The knobs we tune, each with its values ordered LEAN → RICH (index = richness:
-// [0] cheapest/safest, last = highest quality/cost). Cost rises with richness, so
-// a sweep can stop the moment a value drops below target. These are the REAL
-// governor variables (renderFrameSkip/physicsFrameSkip are out of 60).
-// PURE FRAMES LAW (locked): frame skipping is the LAST RESORT, never the
-// preference. Real frames beat decoration — headroom is spent on reducing
-// skip BEFORE anything else gets richer (skip knobs refine first), and the
-// Pure Frames pass afterwards actively trades decoration back for real
-// frames (see _pureFramesPass). Good engineering over frame theft.
-const KNOBS = [
-  { key: 'renderFrameSkip',  values: [50, 40, 30, 20, 10, 0], skip: true },  // rich = skip nothing
-  { key: 'physicsFrameSkip', values: [30, 20, 10, 0],         skip: true },  // rich = skip nothing
-  { key: 'physicsSubsteps',  values: [2, 3, 4, 6, 8, 12] },
-  { key: 'trailGlowDepth',   values: [4, 6, 8, 10, 12] },
-  { key: 'trailMax',         values: [6, 8, 12, 16, 24, 32] },
-  { key: 'trailDensity',     values: [8, 16, 32, 64, 120, 240] },
-  { key: 'cacheMsBudget',    values: [1, 1.5, 2, 2.5, 3] },
-  { key: 'cacheTargetAhead', values: [12, 24, 40, 60, 90, 120] },
-];
-// Decoration donors for the Pure Frames trade, cheapest sacrifice first.
-const DONORS = ['trailDensity', 'trailMax', 'trailGlowDepth', 'cacheTargetAhead', 'cacheMsBudget'];
+// Pure Frames Law keys — pinned 0 for the whole run, excluded from rotation.
+const SKIP_KEYS_LIST = ['renderFrameSkip', 'physicsFrameSkip'];
 
-// The leanest safe config — every knob at its cheapest value. Benchmarks start
-// here so the very first measurement can't crash, then climb.
-function _leanestCfg() {
-  const cfg = {};
-  for (const k of KNOBS) cfg[k.key] = k.values[0];
-  return cfg;
+// ── THE SUBJECTS — the four machines and their knobs ─────────────────────
+// Ladders ordered LEAN → RICH. Every knob here is a real ManualOverrides
+// path consumed by its machine; reset(key) hands it back to the governor.
+const SUBJECTS = [
+  { name: 'queops', knobs: [
+    { key: 'queOpsBudget',     values: [64, 128, 256, 512, 1024] },  // amount (ops/frame)
+    { key: 'queOpsDelay',      values: [0.5, 0.2, 0.1, 0.05] },      // delay (s)
+  ]},
+  { name: 'cache', knobs: [
+    { key: 'cacheMsBudget',    values: [1, 1.5, 2, 2.5, 3] },        // time (ms/frame)
+    { key: 'cacheTargetAhead', values: [60, 250, 512, 1024] },       // amount (steps)
+  ]},
+  { name: 'dormancy', knobs: [
+    { key: 'dormancyCoastK',   values: [8, 6, 4, 2, 1] },            // rate (1 real step per K)
+    { key: 'dormancyHorizon',  values: [30, 60, 120, 240] },         // amount (ticks scanned)
+  ]},
+  { name: 'fields', knobs: [
+    { key: 'mapRuleRes',       values: [0.25, 0.5, 1, 2] },          // size (lattice res ×)
+    { key: 'mapRuleSkip',      values: [8, 4, 2, 1] },               // delay (ticks/smooth)
+    { key: 'gravGridBudget',   values: [128, 256, 512, 1024] },      // amount (cells/frame)
+  ]},
+];
+const ALL_KNOBS = SUBJECTS.flatMap(s => s.knobs);
+const CORE_KEYS = new Set(ALL_KNOBS.map(k => k.key));
+
+// ── THE COVERAGE LEDGER — the cycling manual-configuration list ──────────
+// The four machines above are the CORE: manual + default, needed inside the
+// benchmark EVERY TIME, they stay. Everything else that shapes the physical
+// and graphical cores rotates through over runs: each run tests the knobs
+// the ledger says were forgotten longest (never-tested first), marks them
+// covered, and writes the list back into best-preferences so the NEXT run
+// picks up where this one left off. Not just QA — physical and graphical
+// coherence and harmony: every governor hand gets its day on the bench.
+//
+// EXCLUDED — panel settings and configuration are NOT the simulation:
+//   ps* (panel look) · panelGridSize · brush* (planting tool config) ·
+//   guiGov* (interface governor) · selectionPanSpeed · overlays/witness
+//   draws (gravGridOverlay, dormancyTween*) · test triggers (novaTest) ·
+//   the skip keys (owned by the Pure Frames Law) · the CORE keys (already
+//   swept every session). Sentinel-valued knobs (negative defaults like
+//   novaShowPlane -1 = "all") are skipped — a generic ladder around a
+//   sentinel is noise, not a test.
+const ROTATION_EXCLUDE_PREFIX = ['ps', 'brush', 'guiGov'];
+const ROTATION_EXCLUDE_KEYS = new Set([
+  'panelGridSize', 'selectionPanSpeed',
+  'gravGridOverlay', 'dormancyTween', 'dormancyTweenLock',
+  'novaTest',
+  // Skip machinery — the Pure Frames Law's domain; with skips pinned 0 for
+  // the whole run, sweeping their bases measures nothing.
+  'physicsSkipBase', 'renderSkipBase', 'inputFrameSkip', 'inputSkipBase',
+  // The 1000 law itself — a LAW, not a knob to perfect.
+  'cycleTarget',
+  // The Render Pulse heartbeat — time authority; sweeping it mid-benchmark
+  // changes what "fps" even means.
+  'pulseHz',
+  ...SKIP_KEYS_LIST,
+]);
+const ROTATION_PER_SESSION = 3;   // forgotten knobs tested per session
+
+// Generic ladder around a knob's current base value: toggles get [0,1],
+// numbers get half / base / double. LEAN→RICH ordering isn't knowable
+// generically — the sweep is isolated and returns to base, so order is
+// only cosmetic here; best-by-fps still decides.
+function _autoLadder(v) {
+  if (v === 0 || v === 1) return [0, 1];
+  if (Number.isInteger(v)) return [...new Set([Math.max(1, Math.round(v / 2)), v, v * 2])];
+  return [...new Set([+(v / 2).toFixed(3), v, +(v * 2).toFixed(3)])];
 }
+// Shared with the AutoTuner — the SAME system turns the knobs live.
+export const autoLadder = _autoLadder;
+
+// Pure Frames Law — pinned 0 for the whole run, released after.
+// (Declared as SKIP_KEYS_LIST before the ledger block that excludes them.)
+const SKIP_KEYS = SKIP_KEYS_LIST;
 
 // ── frame stepping helpers ────────────────────────────────────────────────
 const _raf = () => new Promise(res => requestAnimationFrame(() => res()));
@@ -84,15 +165,26 @@ async function _waitFrames(n) { for (let i = 0; i < n; i++) await _raf(); }
 export const Benchmark = {
   running:  false,
   status:   'idle',
-  progress: 0,          // 0..1
-  lastResults: null,    // per-tier measurements from the most recent run
-  lastPrefs:   null,    // full prefs object from load or last run (for refinement)
+  progress: 0,          // 0..1 — time elapsed over the mode's budget
+  lastResults: null,    // per-session measurements from the most recent run
+  lastPrefs:   null,    // full prefs object from load or last run
   _onStatus: null,      // optional UI callback(status, progress)
+  _deadline: 0,
+  _stopRequested: false,
+
+  // 🔴 STOP — the red button's hand. The run aborts at the next checkpoint,
+  // saves NOTHING, and leaves the screen a clean slate (new clean planets).
+  stop() { if (this.running) this._stopRequested = true; },
+
+  // A checkpoint is cut by the deadline OR the red button.
+  _cut() { return this._stopRequested || this._timeLeft() <= 0; },
+
+  // "Benchmarking... 🔴 Stop." — plain text above the bottom bar. No animation.
+  _liveStrip(on) {
+    try { document.getElementById('bench-live')?.classList.toggle('on', !!on); } catch (_) {}
+  },
 
   // ── Variable-count signature ──────────────────────────────────────────
-  // Counts the user-changeable (non-read-only) override variables. Real data
-  // records only — skips methods and accessor/proxy keys. This IS the version
-  // check: a matching count means the saved file targets this engine shape.
   signature() {
     let n = 0;
     for (const key of Object.keys(ManualOverrides)) {
@@ -110,20 +202,22 @@ export const Benchmark = {
     try { this._onStatus?.(status, progress); } catch (_) {}
   },
 
+  _timeLeft()  { return Math.max(0, this._deadline - performance.now()); },
+  _timeText()  {
+    const s = Math.ceil(this._timeLeft() / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  },
+
   // ── Persistence ─────────────────────────────────────────────────────────
-  // Load order: localStorage cache → bundled best-preferences.json. First one
-  // whose signature matches the engine wins. Otherwise fall back to Base.
   async load() {
     const sig = this.signature();
-
-    // 1) localStorage cache (survives reloads without a rebuild)
     try {
       const raw = (typeof localStorage !== 'undefined') && localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const data = JSON.parse(raw);
         if (data && data.signature === sig && data.base) {
           this._applyPreferences(data);
-          this.lastResults = data.tiers ?? null;
+          this.lastResults = data.sessions ?? null;
           this.lastPrefs = data;
           this._setStatus('loaded (cache)');
           console.log('[Benchmark] best preferences loaded from cache');
@@ -132,14 +226,13 @@ export const Benchmark = {
       }
     } catch (e) { console.warn('[Benchmark] cache load failed', e); }
 
-    // 2) bundled file
     try {
       const res = await fetch(FILE_URL, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data && data.signature === sig && data.base) {
           this._applyPreferences(data);
-          this.lastResults = data.tiers ?? null;
+          this.lastResults = data.sessions ?? null;
           this.lastPrefs = data;
           this._setStatus('loaded (file)');
           console.log('[Benchmark] best preferences loaded from', FILE_URL);
@@ -149,7 +242,6 @@ export const Benchmark = {
       }
     } catch (_) { /* no file — expected on fresh installs */ }
 
-    // 3) fallback — the Base profile we already have
     this._fallbackToBase();
     this._setStatus('base (no saved prefs)');
     return false;
@@ -160,7 +252,8 @@ export const Benchmark = {
     console.log('[Benchmark] fell back to Base (BALANCE) profile');
   },
 
-  // Apply a preferences object to the live engine + Base profile.
+  // Apply a preferences object: base holds only the knobs where MANUAL beat
+  // AUTO in the heaviest session — everything absent stays the governor's.
   _applyPreferences(data) {
     const base = data.base || {};
     for (const [key, value] of Object.entries(base)) {
@@ -168,34 +261,34 @@ export const Benchmark = {
         ManualOverrides.set(key, value);
       }
     }
-    // Fold the winning base into the Base profile so MAX/MIN and future user
-    // profiles inherit the benchmarked defaults.
     GovernorProfiles.setBase?.(base);
   },
 
-  // Build the preferences object from the current per-tier results.
-  _buildPreferences(tiers) {
-    // Base = the settings the mid-heavy tier (120) settled on; else the last
-    // tier we actually completed; else the leanest safe config.
-    const midTier = tiers.find(t => t.planets === 120) || tiers[tiers.length - 1] || null;
-    const base = midTier ? { ...midTier.settings } : _leanestCfg();
+  _buildPreferences(sessions, mode) {
+    // Base = the heaviest completed session where MANUAL won its verdict;
+    // AUTO victories leave the governor in charge (empty base entry).
+    let base = {};
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      if (s.winner === 'manual' && s.settings) { base = { ...s.settings }; break; }
+    }
     return {
       generated:  new Date().toISOString(),
       signature:  this.signature(),
-      idealCycle: 1000,               // the 1000 law, recorded for reference
+      idealCycle: 1000,               // the 1000 law (cycles), for reference
+      maxPlanets: 1000,               // the 1000 rule (this ladder's ceiling)
+      mode,
       targetFps:  TARGET_FPS(),
       base,
-      tiers,
+      sessions,
     };
   },
 
   save(prefs) {
     const json = JSON.stringify(prefs, null, 2);
-    // localStorage cache
     try {
       if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, json);
     } catch (e) { console.warn('[Benchmark] cache save failed', e); }
-    // Offer the file for baking into the repo
     try {
       const blob = new Blob([json], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
@@ -206,15 +299,7 @@ export const Benchmark = {
     } catch (e) { console.warn('[Benchmark] file export failed', e); }
   },
 
-  // ── Scene control for the benchmark ───────────────────────────────────
-  _applyCfg(cfg) {
-    for (const [key, value] of Object.entries(cfg)) {
-      if (ManualOverrides[key] && typeof ManualOverrides[key] === 'object') {
-        ManualOverrides.set(key, value);
-      }
-    }
-  },
-
+  // ── Scene control ───────────────────────────────────────────────────────
   _clearBodies() {
     state.bodies = [];
     state.loose  = [];
@@ -222,19 +307,33 @@ export const Benchmark = {
     try { FutureCache.invalidate(); } catch (_) {}
   },
 
-  // Spawn up to `n` orbiting bodies directly (bypasses the interactive cap).
-  // Stops early if total live particles hit the memory ceiling. Returns the
-  // actual body count reached.
+  // The visible world rectangle — screenToWorld over the canvas corners.
+  // Zoom is inherent to the transform: whatever the camera shows IS the rect.
+  _viewRect() {
+    const C = CameraModule;
+    const a = C.screenToWorld(0, 0);
+    const b = C.screenToWorld(C.width || 0, C.height || 0);
+    return {
+      minX: Math.min(a.x, b.x), maxX: Math.max(a.x, b.x),
+      minY: Math.min(a.y, b.y), maxY: Math.max(a.y, b.y),
+    };
+  },
+
+  // Spawn up to `n` bodies, EVERY ONE inside the screen no matter the zoom.
+  // Radius-inset so the whole blob is born visible; orbital velocity around
+  // the Sun preserved so the scene lives, not just sits. Stops early at the
+  // particle ceiling; returns the body count reached.
   _spawnTo(n) {
+    const rect = this._viewRect();
     let particles = 0;
     for (const b of state.bodies) particles += b?.particles?.length || 0;
     while (state.bodies.length < n) {
-      if (particles >= MAX_LIVE_PARTICLES) break;   // live-memory ceiling
-      const ang  = Math.random() * Math.PI * 2;
-      const dist = 180 + Math.random() * 520;
-      const x = SUN.x + Math.cos(ang) * dist;
-      const y = SUN.y + Math.sin(ang) * dist;
+      if (particles >= MAX_LIVE_PARTICLES) break;
       const radius = clamp(10 + Math.random() * 30, 16, 110);
+      const spanX = Math.max(1, (rect.maxX - rect.minX) - radius * 2);
+      const spanY = Math.max(1, (rect.maxY - rect.minY) - radius * 2);
+      const x = rect.minX + radius + Math.random() * spanX;
+      const y = rect.minY + radius + Math.random() * spanY;
       const pal = PALS[Math.floor(Math.random() * PALS.length)];
       const body = makeBody(x, y, radius, pal);
       body.gravMult = sunGravMult;
@@ -251,143 +350,162 @@ export const Benchmark = {
     return state.bodies.length;
   },
 
-  // Average real FPS over a measurement window.
-  async _measure(warmFrames, sampleFrames) {
-    await _waitFrames(warmFrames);
-    // FIX (measurement contamination): this used to sample
-    // FpsCounter.avgReal/avgVirtual — but that ring holds ONE ENTRY PER
-    // SECOND over 120 entries, i.e. a ~2-MINUTE trailing average that is
-    // never reset between config steps. Every "measurement" was mostly
-    // the history of all previous configs; adjacent knob steps differed
-    // by near-noise and the coordinate-ascent was discriminating on it.
-    // Measure DIRECTLY instead: count the sample frames against the
-    // wall clock — fully isolated to this config, nothing trailing in.
+  // Direct wall-clock measurement — TIME-boxed, not frame-boxed: at low fps
+  // a frame-counted window stretches to eternity and eats the whole session.
+  // Warm ~120ms, then count whatever frames land inside ~380ms. Fully
+  // isolated to the current config (the contamination fix stays).
+  async _measure(warmMs = 120, sampleMs = 380) {
+    const w0 = performance.now();
+    while (performance.now() - w0 < warmMs) await _raf();
     const t0 = performance.now();
-    for (let i = 0; i < sampleFrames; i++) await _raf();
-    const t1 = performance.now();
-    const real = sampleFrames * 1000 / Math.max(1, t1 - t0);
+    let frames = 0, t1 = t0;
+    do { await _raf(); frames++; t1 = performance.now(); } while (t1 - t0 < sampleMs);
+    const real = frames * 1000 / Math.max(1, t1 - t0);
     const base = RenderGov.BASE, skip = RenderGov.frameSkip;
     const virtual = real * base / Math.max(1, base - skip);
+    return { fps: +real.toFixed(1), virtual: +virtual.toFixed(1) };
+  },
+
+  // ── The rotation ledger ─────────────────────────────────────────────────
+  // Every eligible governor knob outside the core: real data entries, not
+  // panel/config, not sentinels. This IS "the list" — enumerated live from
+  // the engine, so new knobs join the rotation the day they're born.
+  _eligibleRotationKeys() {
+    const keys = [];
+    for (const key of Object.keys(ManualOverrides)) {
+      const desc = Object.getOwnPropertyDescriptor(ManualOverrides, key);
+      if (!desc || typeof desc.get === 'function') continue;
+      const entry = desc.value;
+      if (!entry || typeof entry !== 'object' || typeof entry.isManual !== 'boolean') continue;
+      if (CORE_KEYS.has(key) || ROTATION_EXCLUDE_KEYS.has(key)) continue;
+      if (ROTATION_EXCLUDE_PREFIX.some(p => key.startsWith(p))) continue;
+      if (typeof entry.value !== 'number' || entry.value < 0) continue;  // sentinel guard
+      keys.push(key);
+    }
+    return keys;
+  },
+
+  // The full tunable space — core + rotation. The AutoTuner draws from this
+  // so live tuning and benchmarking are ONE system with two clocks.
+  tunableKeys() {
+    return [...CORE_KEYS, ...this._eligibleRotationKeys()];
+  },
+
+  // Queue = forgotten-first: never-tested knobs lead, then oldest coverage.
+  // Read from the saved ledger (coverage: key → run number last tested).
+  _rotationQueue() {
+    const cov = this.lastPrefs?.coverage || {};
+    return this._eligibleRotationKeys()
+      .sort((a, b) => (cov[a] ?? -1) - (cov[b] ?? -1))
+      .map(key => ({
+        key,
+        values: _autoLadder(ManualOverrides[key].value),
+        subject: 'rotation',
+      }));
+  },
+
+  // ── ONE SESSION — perfect the four machines at this planet count ────────
+  // Returns the session record, or null if the deadline fired before the
+  // AUTO base could even be read.
+  async _session(planets, runNumber, modeBudgetMs, rotation = [], covered = null, si = 0) {
+    this._clearBodies();
+    const reached = this._spawnTo(planets);
+    const sessionEnd = performance.now() + SESSION_MS;   // the 20-second box
+    const sweepEnd   = sessionEnd - VERDICT_RESERVE;     // verdict gets the rest
+    const sCut = () => this._cut() || performance.now() >= sweepEnd;
+    const tick = (txt) => this._setStatus(
+      `#${runNumber} · ${reached}p · ${txt} · ${this._timeText()}`,
+      1 - this._timeLeft() / modeBudgetMs
+    );
+
+    // THE AUTOMATICS — core + this session's rotation knobs at AUTO,
+    // the governor's own hand. (A stray manual on a rotation knob would
+    // contaminate the base — hand it back before reading.)
+    for (const k of ALL_KNOBS) ManualOverrides.reset(k.key);
+    for (const r of rotation) ManualOverrides.reset(r.key);
+    if (this._cut()) return null;
+    const auto = await this._measure();
+    tick(`auto ${auto.fps}fps`);
+
+    const knobReport = {};
+    const settings = {};
+
+    // THE MANUALS — one plan, rotated: session i starts the core sweep at
+    // core knob i (round-robin), so when the 20s box cuts a sweep short,
+    // the NEXT session leads with the knobs this one never reached. Then
+    // this session's slice of the rotation (the forgotten variables).
+    const core = SUBJECTS.flatMap(s => s.knobs.map(k => ({ ...k, subject: s.name })));
+    const r0 = si % core.length;
+    const plan = [...core.slice(r0), ...core.slice(0, r0), ...rotation];
+    for (const knob of plan) {
+        if (sCut()) break;
+        const sweep = [];
+        let bestV = null, bestFps = -1;
+        for (const v of knob.values) {
+          if (sCut()) break;
+          ManualOverrides.set(knob.key, v);
+          const m = await this._measure();
+          tick(`${knob.subject === 'rotation' ? '↻' : ''}${knob.key}=${v} · ${m.fps}fps`);
+          sweep.push([v, m.fps, +(m.fps - auto.fps).toFixed(1)]);
+          // Best = most frames; within 1fps of the best, richer wins.
+          if (m.fps > bestFps + 1 || (m.fps > bestFps - 1 && bestV !== null &&
+              knob.values.indexOf(v) > knob.values.indexOf(bestV))) {
+            bestFps = Math.max(bestFps, m.fps); bestV = v;
+          } else if (bestV === null) { bestFps = m.fps; bestV = v; }
+        }
+        ManualOverrides.reset(knob.key);            // return to base — isolated
+        if (bestV !== null) {
+          settings[knob.key] = bestV;
+          knobReport[knob.key] = {
+            subject: knob.subject,
+            best: bestV,
+            delta: +(bestFps - auto.fps).toFixed(1), // the Change that mattered
+            sweep,                                    // [value, fps, Δ] rows
+          };
+          // The ledger: a rotation knob counts as TESTED only when its
+          // sweep actually measured something.
+          if (knob.subject === 'rotation' && covered) covered.add(knob.key);
+        }
+        if (this._cut()) break;
+    }
+
+    // THE VERDICT — compose the winners, measure together, manual vs auto.
+    let manual = null, winner = 'auto';
+    if (Object.keys(settings).length && !this._cut()) {
+      for (const [k, v] of Object.entries(settings)) ManualOverrides.set(k, v);
+      manual = await this._measure();
+      tick(`manual ${manual.fps}fps vs auto ${auto.fps}fps`);
+      winner = manual.fps > auto.fps ? 'manual' : 'auto';
+      if (winner === 'auto') for (const k of Object.keys(settings)) ManualOverrides.reset(k);
+    }
+
     return {
-      fps:     +real.toFixed(1),
-      virtual: +virtual.toFixed(1),
+      planets, reached,
+      capped:  reached < planets,
+      auto,                                  // the Automatics' rates
+      manual,                                // the composed Manuals' rates
+      winner,
+      held:    Math.max(auto.fps, manual?.fps ?? 0) >= TARGET_FPS(),
+      fps:     Math.max(auto.fps, manual?.fps ?? 0),
+      settings: winner === 'manual' ? { ...settings } : {},
+      knobs:   knobReport,
     };
   },
 
-  // Richness of a config, 0..1 — how far each knob sits toward its richest
-  // value, averaged. ×1000 gives the bench score (the 1000 law: 1000 = maxed).
-  _richness(cfg) {
-    let got = 0, max = 0;
-    for (const k of KNOBS) {
-      const idx = k.values.indexOf(cfg[k.key]);
-      got += idx < 0 ? 0 : idx;
-      max += k.values.length - 1;
-    }
-    return max > 0 ? got / max : 0;
-  },
-
-  // Refine ONE knob from a seeded value: if it already holds target, climb
-  // richer while it keeps holding (grab any new headroom); if it no longer
-  // holds (device hotter / heavier tier), retreat leaner until it does. This is
-  // what makes repeated runs converge — each press starts from the last best
-  // and nudges toward the true edge, tightening to ±1 over runs.
-  async _refineKnob(knob, cfg, startIdx, capIdx, onStep) {
-    const top = Math.min(capIdx, knob.values.length - 1);
-    let idx = Math.max(0, Math.min(startIdx, top));
-    cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg);
-    let m = await this._measure(12, 20); onStep?.(knob.key, knob.values[idx], m);
-
-    if (m.fps >= TARGET_FPS()) {
-      for (let vi = idx + 1; vi <= top; vi++) {           // climb into headroom
-        cfg[knob.key] = knob.values[vi]; this._applyCfg(cfg);
-        const mm = await this._measure(12, 20); onStep?.(knob.key, knob.values[vi], mm);
-        if (mm.fps >= TARGET_FPS()) { idx = vi; m = mm; } else break;
-      }
-    } else {
-      for (let vi = idx - 1; vi >= 0; vi--) {             // retreat to safety
-        cfg[knob.key] = knob.values[vi]; this._applyCfg(cfg);
-        const mm = await this._measure(12, 20); onStep?.(knob.key, knob.values[vi], mm);
-        idx = vi; m = mm;
-        if (mm.fps >= TARGET_FPS()) break;
-      }
-    }
-    cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg);
-    return { idx, m };
-  },
-
-  // ── PURE FRAMES PASS ──────────────────────────────────────────────────
-  // After the greedy ascent settles, actively buy real frames back: while a
-  // skip knob still skips, try stepping it toward 0; if fps breaks, step one
-  // decoration donor leaner (cheapest first) and retry. Every accepted trade
-  // converts decoration into pure frames — skip only survives when NOTHING
-  // playable can pay for its removal. Bounded so a run can't wander.
-  async _pureFramesPass(cfg, capIdx, onStep) {
-    let trades = 0;
-    for (const knob of KNOBS) {
-      if (!knob.skip) continue;
-      let idx = Math.max(0, knob.values.indexOf(cfg[knob.key]));
-      const top = Math.min(capIdx[knob.key] ?? knob.values.length - 1, knob.values.length - 1);
-      while (idx < top && trades < 8) {
-        // try one step purer
-        cfg[knob.key] = knob.values[idx + 1]; this._applyCfg(cfg);
-        let m = await this._measure(12, 20); onStep?.(knob.key, knob.values[idx + 1], m);
-        if (m.fps >= TARGET_FPS()) { idx++; trades++; continue; }
-        // doesn't hold — offer a donor
-        let paid = false;
-        for (const dk of DONORS) {
-          const donor = KNOBS.find(k => k.key === dk);
-          const di = donor.values.indexOf(cfg[dk]);
-          if (di <= 0) continue;                       // nothing left to give
-          const savedDonor = cfg[dk];
-          cfg[dk] = donor.values[di - 1]; this._applyCfg(cfg);
-          m = await this._measure(12, 20); onStep?.(`${knob.key}←${dk}`, knob.values[idx + 1], m);
-          if (m.fps >= TARGET_FPS()) { idx++; trades++; paid = true; break; }
-          cfg[dk] = savedDonor;                         // donor wasn't enough — refund
-        }
-        if (!paid) { cfg[knob.key] = knob.values[idx]; this._applyCfg(cfg); break; }
-      }
-    }
-    return trades;
-  },
-
-  // ── EXPLORATION PASS ──────────────────────────────────────────────────
-  // RULE: at least one configuration change per playable tier that the
-  // greedy ascent did NOT choose — a random knob to a random legal value,
-  // kept only if it measures better. Hill climbing finds edges; the random
-  // poke finds the ridge the climb walked past. Skip knobs are exempt (their
-  // direction is owned by the Pure Frames Law) and the monotonic tier cap
-  // is respected.
-  async _explorePass(cfg, capIdx, onStep) {
-    const pool = KNOBS.filter(k => !k.skip);
-    const knob = pool[Math.floor(Math.random() * pool.length)];
-    const top = Math.min(capIdx[knob.key] ?? knob.values.length - 1, knob.values.length - 1);
-    const cur = Math.max(0, knob.values.indexOf(cfg[knob.key]));
-    if (top < 1) return false;
-    let ri = Math.floor(Math.random() * (top + 1));
-    if (ri === cur) ri = (ri + 1) % (top + 1);
-    const saved = cfg[knob.key];
-    const before = this._richness(cfg);
-    cfg[knob.key] = knob.values[ri]; this._applyCfg(cfg);
-    const m = await this._measure(12, 20);
-    onStep?.(`?${knob.key}`, knob.values[ri], m);
-    const adopt = m.fps >= TARGET_FPS() && this._richness(cfg) > before;
-    if (!adopt) { cfg[knob.key] = saved; this._applyCfg(cfg); }
-    return adopt;
-  },
-
-  // How many stress tiers exist — for staged callers (warm-up flow).
+  // Compat for staged callers.
   get tierCount() { return TIERS.length; },
+  get modes()     { return MODES; },
 
-  // ── The benchmark ─────────────────────────────────────────────────────
-  // toTier bounds the ladder for STAGED runs (warm-up flow): 1 = Fast
-  // Bench (first tier only), ceil(n/2) = Moderate Scaling, n = Full
-  // Inspection. Always starts from tier 0 — the monotonic per-knob
-  // ceiling seeds lighter→heavier, so a run can be CUT SHORT but never
-  // started mid-ladder.
-  async run({ toTier = TIERS.length } = {}) {
+  // ── THE RUN — deadline-owned session climb ──────────────────────────────
+  // mode ∈ WAKEUP (1 min) · MODERATION (3 min) · FULL (5 min).
+  async run({ mode = 'FULL' } = {}) {
     if (this.running) return;
+    const M = MODES[mode] || MODES.FULL;
     this.running = true;
-    this._setStatus('starting…', 0);
+    this._stopRequested = false;
+    this._deadline = performance.now() + M.seconds * 1000;
+    this._liveStrip(true);
+    this._setStatus(`${M.label} · starting…`, 0);
 
     const savedBodies  = state.bodies;
     const savedLoose   = state.loose;
@@ -395,123 +513,106 @@ export const Benchmark = {
     const savedPaused  = state.paused;
     const savedSpeed   = state.physSpeed;
     const savedDebug   = DebugRouter.masterEnabled;
-
-    // Close the debug panels for the run — they render nothing useful here and
-    // just add draw + memory cost. The BEST PREFERENCES button stays visible.
     DebugRouter.masterEnabled = false;
 
     const prev = this.lastPrefs;
     const runNumber = (prev?.runs || 0) + 1;
-
-    const results = [];
+    const sessions = [];
     let collapsed = false;
+
     try {
       state.paused    = false;
       state.physSpeed = 1;
 
-      // Monotonic ceiling per knob across tiers (heavier can't exceed lighter).
-      const capIdx = {};
-      for (const k of KNOBS) capIdx[k.key] = k.values.length - 1;
+      // PURE FRAMES LAW: the whole run measures at skip = 0.
+      for (const k of SKIP_KEYS) ManualOverrides.set(k, 0);
 
-      const tierCount  = Math.max(1, Math.min(Math.round(toTier), TIERS.length));
-      const totalSteps = tierCount * KNOBS.length;
-      let step = 0;
+      // THE ROTATION — forgotten-first queue from the saved ledger; each
+      // session takes the next slice, so the whole list cycles across runs.
+      const queue = this._rotationQueue();
+      const covered = new Set();
+      let qi = 0;
 
-      for (let ti = 0; ti < tierCount; ti++) {
-        const planets = TIERS[ti];
-        this._clearBodies();
-        const reached = this._spawnTo(planets);
-
-        // Seed this tier from the PREVIOUS run's settings for the same tier (so
-        // each press refines the last best); leanest on the very first run.
-        const prevTier = prev?.tiers?.find(t => t.planets === planets);
-        const cfg = prevTier?.settings ? { ...prevTier.settings } : _leanestCfg();
-        this._applyCfg(cfg);
-        let lastM = null;
-
-        for (const knob of KNOBS) {
-          const startIdx = Math.max(0, knob.values.indexOf(cfg[knob.key]));
-          const { idx, m } = await this._refineKnob(
-            knob, cfg, startIdx, capIdx[knob.key],
-            (key, val, mm) => this._setStatus(`#${runNumber} · ${reached}p · ${key}=${val} · ${mm.fps}fps`, step / totalSteps)
-          );
-          capIdx[knob.key] = idx;
-          lastM = m;
-          step++;
-        }
-
-        // Pure Frames Law: trade decoration back for real frames.
-        if ((lastM?.fps ?? 0) > FLOOR_FPS) {
-          await this._pureFramesPass(cfg, capIdx,
-            (key, val, mm) => this._setStatus(`#${runNumber} · ${reached}p · pure:${key}=${val} · ${mm.fps}fps`, step / totalSteps));
-        }
-        // Exploration rule: at least one non-greedy change per playable tier.
-        if ((lastM?.fps ?? 0) >= TARGET_FPS()) {
-          await this._explorePass(cfg, capIdx,
-            (key, val, mm) => this._setStatus(`#${runNumber} · ${reached}p · ${key}=${val} · ${mm.fps}fps`, step / totalSteps));
-        }
-        // Re-anchor caps to the final config so heavier tiers inherit the
-        // post-pass truth, not the pre-trade greedy shape.
-        for (const k of KNOBS) capIdx[k.key] = Math.max(0, k.values.indexOf(cfg[k.key]));
-        // …and re-measure so the recorded numbers are the FINAL config's,
-        // not the pre-pass greedy snapshot.
-        if ((lastM?.fps ?? 0) > FLOOR_FPS) lastM = await this._measure(12, 20);
-
-        const richness = this._richness(cfg);
-        results.push({
-          planets, reached,
-          fps:      lastM?.fps ?? 0,
-          virtual:  lastM?.virtual ?? 0,
-          richness: +richness.toFixed(3),
-          score:    Math.round(richness * 1000),
-          capped:   reached < planets,
-          settings: { ...cfg },
-        });
-        this._setStatus(`#${runNumber} · ${reached}p done · ${lastM?.fps ?? 0}fps`, (ti + 1) / tierCount);
-
-        if ((lastM?.fps ?? 0) <= FLOOR_FPS || reached < planets) { collapsed = true; break; }
+      let si = 0;
+      for (const planets of TIERS) {
+        if (this._cut()) break;
+        const slice = queue.slice(qi, qi + ROTATION_PER_SESSION);
+        qi += slice.length;
+        const s = await this._session(planets, runNumber, M.seconds * 1000, slice, covered, si++);
+        if (!s) break;
+        sessions.push(s);
+        this._setStatus(
+          `#${runNumber} · ${s.reached}p done · ${s.fps}fps · ${s.winner} · ${this._timeText()}`,
+          1 - this._timeLeft() / (M.seconds * 1000)
+        );
+        if (s.fps <= FLOOR_FPS || s.capped) { collapsed = true; break; }
       }
 
-      // Aggregate: bench score (0..1000, the law) and average sustained fps.
-      const avgFps = +(results.reduce((s, r) => s + r.fps, 0)   / Math.max(1, results.length)).toFixed(1);
-      const score  = Math.round(results.reduce((s, r) => s + r.score, 0) / Math.max(1, results.length));
+      if (this._stopRequested) {
+        // 🔴 STOPPED — save nothing, apply nothing. The finally block hands
+        // over a clean slate instead of restoring the pre-run scene.
+        this._setStatus('stopped · clean slate', 1);
+        console.log('[Benchmark] stopped by the red button — nothing saved');
+        return;
+      }
+
+      // THE 1000-RULE SCORE: heaviest session that held the target.
+      const heaviestHeld = sessions.reduce((s, r) => r.held ? Math.max(s, r.reached) : s, 0);
+      const avgFps = +(sessions.reduce((s, r) => s + r.fps, 0) / Math.max(1, sessions.length)).toFixed(1);
+      const score  = heaviestHeld;
       const prevScore = prev?.score ?? 0;
       const improvement = score - prevScore;
 
-      const prefs = this._buildPreferences(results);
-      prefs.collapsed = collapsed;
+      const prefs = this._buildPreferences(sessions, mode);
+      // THE LEDGER, written forward: merge this run's tested rotation knobs
+      // over the saved coverage, list what's still untested — the NEXT run
+      // reads this and starts with the forgotten ones.
+      const coverage = { ...(prev?.coverage || {}) };
+      for (const key of covered) coverage[key] = runNumber;
+      const eligible = this._eligibleRotationKeys();
+      prefs.coverage = coverage;
+      prefs.untested = eligible.filter(k => !(k in coverage));
+      prefs.rotationTested = [...covered];
+      prefs.collapsed   = collapsed;
       prefs.runs        = runNumber;
-      prefs.score       = score;
+      prefs.score       = score;          // planets held — x/1000
       prefs.avgFps      = avgFps;
       prefs.prevScore   = prevScore;
       prefs.improvement = improvement;
-      prefs.history     = [...(prev?.history || []), { run: runNumber, score, avgFps }].slice(-30);
+      prefs.history     = [...(prev?.history || []), { run: runNumber, mode, score, avgFps }].slice(-30);
 
-      this.lastResults = results;
+      this.lastResults = sessions;
       this.lastPrefs   = prefs;
       this.save(prefs);
       this._applyPreferences(prefs);
-      this._setStatus(
-        `done · ${score}/1000 ${improvement >= 0 ? 'Δ+' : 'Δ'}${improvement}`,
-        1
-      );
+      this._setStatus(`done · ${score}/1000 planets ${improvement >= 0 ? 'Δ+' : 'Δ'}${improvement}`, 1);
       console.log('[Benchmark] complete', prefs);
     } catch (e) {
       console.error('[Benchmark] failed', e);
       this._setStatus('failed', this.progress);
     } finally {
-      state.bodies    = savedBodies;
-      state.loose     = savedLoose;
-      state.flashes   = savedFlashes;
-      state.paused    = savedPaused;
-      state.physSpeed = savedSpeed;
+      for (const k of SKIP_KEYS) ManualOverrides.reset(k);   // release Pure Frames pins
+      if (this._stopRequested) {
+        // Clean slate — like a fresh clear: new clean planets, no restore.
+        for (const k of ALL_KNOBS) ManualOverrides.reset(k.key);
+        state.bodies = []; state.loose = []; state.flashes = [];
+        state.paused    = savedPaused;
+        state.physSpeed = savedSpeed;
+      } else {
+        state.bodies    = savedBodies;
+        state.loose     = savedLoose;
+        state.flashes   = savedFlashes;
+        state.paused    = savedPaused;
+        state.physSpeed = savedSpeed;
+      }
       DebugRouter.masterEnabled = savedDebug;
       try { FutureCache.invalidate(); } catch (_) {}
+      this._liveStrip(false);
+      this._stopRequested = false;
       this.running = false;
     }
   },
 
-  // Compact summary for the under-button strip. Null when no saved prefs yet.
   get info() {
     const p = this.lastPrefs;
     if (!p || !p.runs) return null;

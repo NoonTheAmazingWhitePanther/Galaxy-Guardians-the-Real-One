@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 select profile \u2014"
+   "text": "— select profile —"
   },
   {
    "type": "profileButtons",
@@ -44,7 +44,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 current \u2014"
+   "text": "— current —"
   },
   {
    "type": "display",
@@ -73,5 +73,6 @@
   }
  ],
  "maxHeight": 360,
- "background": null
+ "background": null,
+ "description": "GOVERNOR — the master table of every ManualOverrides knob. Each row is a knob: AUTO means the governor's own hand rules it live, MANUAL means a human (or the benchmark, or the AutoTuner) pinned it. This is the single source the benchmark sweeps, the AutoTuner iterates, and the 🔴 factory satellite resets. If the sim behaves strangely, look here first for a forgotten manual pin."
 }

@@ -304,5 +304,6 @@
    "text": "capped by MB law",
    "value": "Nova.stats.capped"
   }
- ]
+ ],
+ "description": "NOVA EXPLOSIONS — the Nova system. Detonation counters, live nova fields (a renter on the Singular Map), shockwave radius and falloff, spawned debris, sprite budget (novaFrames, novaSpritePx), and the show/plane filters. Open detonation triggers and the 500px footprint-vs-radius question are still your calls. If fps craters on explosions, the sprite budget and field write load are the first suspects."
 }

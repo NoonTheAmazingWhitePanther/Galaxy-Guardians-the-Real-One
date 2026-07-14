@@ -58,6 +58,22 @@ canvas#c {
 #zoom-bar { top: var(--safe); right: var(--safe); }
 #ui { bottom: var(--safe); left: 50%; transform: translateX(-50%); max-width: 98vw; }
 
+/* BENCHMARK LIVE STRIP — plain text, no animation, sits just above #ui.
+   pointer-events none: it labels the 🔴 in the bar, it never eats a tap. */
+#bench-live {
+    position: fixed;
+    bottom: calc(var(--safe) + 54px);
+    left: 50%; transform: translateX(-50%);
+    z-index: 50;
+    display: none;
+    font-family: var(--ui-font); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--ui-text);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    pointer-events: none; user-select: none; white-space: nowrap;
+}
+#bench-live.on { display: block; }
+
 /* ========================================
 5. INTERACTIVE ELEMENTS
 ======================================== */
@@ -357,10 +373,68 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
    stays intact — the benchmark is still reachable via the Tetris fan 🏆 —
    and !important beats the .on toggle, so nothing can re-show it until this
    rule is deleted. */
-#bench-btn {
+/* AUTOMATIC — governor live self-tuning toggle, directly beneath the FPS
+   text. Same glass language as the bench button; green when engaged. */
+#auto-btn {
     display: none !important;
     position: fixed;
     top: calc(var(--safe) + 36px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    display: none;
+    align-items: center; justify-content: center;
+    height: 22px; padding: 0 12px;
+    font-family: var(--ui-font); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--ui-accent);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 11px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    cursor: pointer; white-space: nowrap;
+    touch-action: none; user-select: none;
+    transition: transform 0.1s, background 0.1s, color 0.2s;
+}
+#auto-btn.on      { display: inline-flex !important; }
+#auto-btn:active  { transform: translateX(-50%) scale(0.94); }
+#auto-btn.engaged { color: #8fe08f; border-color: rgba(143,224,143,0.6); }
+
+/* THE WEIRD — three dice in a row beneath AUTOMATIC. Same glass; a die
+   flashes gold while its round is being judged. */
+#weird-bar {
+    position: fixed;
+    top: calc(var(--safe) + 64px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    display: none;
+    gap: 6px;
+}
+#weird-bar.on { display: flex; }
+.weird-die {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 22px; padding: 0 10px;
+    font-family: var(--ui-font); font-size: 11px; font-weight: 700;
+    color: var(--ui-accent);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    border-radius: 11px;
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    cursor: pointer; white-space: nowrap;
+    touch-action: none; user-select: none;
+}
+.weird-die:active  { transform: scale(0.94); }
+.weird-die.rolling { color: #ffd77f; border-color: rgba(255,215,127,0.6); }
+
+#bench-btn {
+    display: none !important;
+    position: fixed;
+    top: calc(var(--safe) + 92px);
     left: 50%;
     transform: translateX(-50%);
     z-index: 60;
@@ -387,7 +461,7 @@ button:hover, .sp-btn:hover, .zm-btn:hover { background: rgba(255, 255, 255, 0.1
 /* Benchmark history strip — runs + score/improvement, just under the button. */
 #bench-info {
     position: fixed;
-    top: calc(var(--safe) + 62px);
+    top: calc(var(--safe) + 118px);
     left: 50%;
     transform: translateX(-50%);
     z-index: 60;

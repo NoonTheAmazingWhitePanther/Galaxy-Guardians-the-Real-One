@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 last \u00b7 avg \u00b7 max ms \u00b7 tap \u25b6 to open \u2014"
+   "text": "— last · avg · max ms · tap ▶ to open —"
   },
   {
    "type": "msProbeTree"
@@ -27,5 +27,6 @@
  ],
  "minimized": true,
  "maxHeight": 420,
- "background": null
+ "background": null,
+ "description": "MS PROBE — the hierarchical millisecond profiler. Every probed code path reports wall-clock ms into a dot-path tree (physics.grav, physics.spring, render.trails…), collapsible by prefix. This is the deciding witness for all optimization votes: the grav/spring/coll/cache split on the POCO is the standing gate before further optimization. Gates key on these dot-labels. If a number here didn't move, the optimization didn't happen."
 }

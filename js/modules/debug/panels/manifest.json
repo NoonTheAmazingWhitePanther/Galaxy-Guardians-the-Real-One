@@ -19,5 +19,6 @@
  "cycle.json",
  "selection.json",
  "fields.json",
- "nova.json"
+ "nova.json",
+ "pulse.json"
 ]

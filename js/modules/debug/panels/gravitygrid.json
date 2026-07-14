@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 one for the Sun \u00b7 many for the planets \u2014"
+   "text": "— one for the Sun · many for the planets —"
   },
   {
    "type": "buttons",
@@ -28,7 +28,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -44,7 +44,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -60,7 +60,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -76,7 +76,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -92,7 +92,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -108,7 +108,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -119,7 +119,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 live \u2014"
+   "text": "— live —"
   },
   {
    "type": "display",
@@ -158,7 +158,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 grid ms \u00b7 in the MsProbe tree \u2014"
+   "text": "— grid ms · in the MsProbe tree —"
   },
   {
    "type": "display",
@@ -167,26 +167,26 @@
   },
   {
    "type": "display",
-   "text": "\u00b7 deposit ms",
+   "text": "· deposit ms",
    "value": "GravityField.stats.msDeposit"
   },
   {
    "type": "display",
-   "text": "\u00b7 build ms",
+   "text": "· build ms",
    "value": "GravityField.stats.msBuild"
   },
   {
    "type": "divider",
-   "text": "\u2014 collisions in the map \u2014"
+   "text": "— collisions in the map —"
   },
   {
    "type": "display",
-   "text": "coll \u26a1hard",
+   "text": "coll ⚡hard",
    "value": "GravityField.stats.collHard"
   },
   {
    "type": "display",
-   "text": "coll \u2219soft",
+   "text": "coll ∙soft",
    "value": "GravityField.stats.collSoft"
   },
   {
@@ -201,7 +201,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -217,7 +217,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -233,7 +233,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -249,7 +249,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -265,7 +265,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -281,7 +281,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -298,5 +298,6 @@
   "step": 4,
   "label": "",
   "integer": true
- }
+ },
+ "description": "GRAVITY GRID — GravityField, the Ewald-style force splitter. Near forces stay exact per-particle; far mass folds into grid cells (gravGridCols) rebuilt within a per-frame budget (gravGridBudget), with ghost far-cluster gravity beyond that. Shows cell count, rebuild cost, budget used, and ghost mode state. The overlay knob draws the grid for the eyes only. If orbits drift when planet counts rise, check budget starvation here."
 }

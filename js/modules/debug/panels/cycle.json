@@ -28,7 +28,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 you decide the law \u2014"
+   "text": "— you decide the law —"
   },
   {
    "type": "buttons",
@@ -37,7 +37,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -48,7 +48,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 what you're getting \u2014"
+   "text": "— what you're getting —"
   },
   {
    "type": "display",
@@ -75,5 +75,6 @@
    "text": "banked ms",
    "value": "CycleMeter.stats.bankMs"
   }
- ]
+ ],
+ "description": "CYCLE — the CycleMeter and the 1000 law. Real frames vs virtual cycles: virtual = real fps scaled by the skip ratio, and 1000 virtual cycles is the ideal the whole engine is scored against. Watch the cycle rate, current target, and how far the live sim sits from the law. If virtual and real diverge hard, frame skipping is active — by the Pure Frames Law that is the last resort, so investigate what forced it."
 }

@@ -9,6 +9,7 @@ import { StateCache } from '../../core/state-cache.js';
 import { FutureCache } from '../../core/future-cache.js';
 import { InputState } from './input.module.js';
 import { DEBUG_STATE } from '../debug/debug-state.js';
+import { Benchmark } from '../debug/benchmark.js';
 
 // View-zoom (debug + panel mode): the zoom bar zooms the debug panel layer
 // (pure view transform) instead of the camera. It does NOT resize panels —
@@ -81,9 +82,12 @@ export const InUI = {
       });
     }
 
-    // Clear Button
+    // Clear Button — 🔴. During a benchmark this is the STOP button: the run
+    // aborts (nothing saved) and the clear below IS the clean slate — the
+    // benchmark's own teardown skips restoring the pre-run scene when stopped.
     const clearBtn = document.getElementById('clear-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
+      try { Benchmark.stop(); } catch (_) {}
       state.bodies = []; state.loose = []; state.flashes = [];
       StateCache.clear();
       FutureCache.reset();

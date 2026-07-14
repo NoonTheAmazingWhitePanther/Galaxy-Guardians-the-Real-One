@@ -479,5 +479,6 @@
  ],
  "minimized": true,
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "CACHE — FutureCache and the vault. The conveyor pump precomputes future ticks under strict 1:1 tick discipline with an EMA-valved cost estimator: target ahead (cacheTargetAhead, HARD_CAP 1024/4096 lifted), ms budget (cacheMsBudget), packed storage (~8× memory), snapshot interval and vault size. Snapshot knobs are STATE AUTHORITY — flipping them live caused the 100-tick leap-and-return loop, so the AutoTuner is banned from them and every live knob change flushes futures. Physics claims here are tagged Real/Fake/Cached."
 }

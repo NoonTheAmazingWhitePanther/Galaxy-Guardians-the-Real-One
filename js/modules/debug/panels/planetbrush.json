@@ -155,7 +155,14 @@
    ],
    "governor": {
     "mode": "cycle",
-    "options": ["ember", "ocean", "violet", "emerald", "magenta", "gold"]
+    "options": [
+     "ember",
+     "ocean",
+     "violet",
+     "emerald",
+     "magenta",
+     "gold"
+    ]
    }
   },
   {
@@ -182,5 +189,6 @@
   "step": 2,
   "label": "",
   "integer": true
- }
+ },
+ "description": "PLANET BRUSH — the planting tool. Brush radius, palette/color, plane, spawn velocity mode, and spray cadence for painting new bodies into the world. Brush knobs are configuration, excluded from benchmarks and the AutoTuner. What you paint is what the physics gets — the brush itself costs nothing per frame once idle."
 }

@@ -41,6 +41,7 @@ import { InputState } from './input.module.js';
 import { SatBlobs } from '../debug/sat-blobs.js';
 import { SelectionTool } from './in-selection-tool.js';
 import { SelectionPanelExtras } from '../debug/selection-panel-extras.js';
+import { PanelInfo } from '../debug/panel-info.js';
 
 // "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
 // debug+panel mode → a selection rectangle. On release, every panel it caught
@@ -447,6 +448,24 @@ export const InDebug = {
       if (hit.type === 'pin') {
         panel.togglePin();
         try { window._InAims?.syncDebugPanels(); } catch (_) {}
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
+
+      // ── ℹ Info — flip this panel to/from its second page ─────────────
+      if (hit.type === 'info') {
+        PanelInfo.toggle(panel);
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return true;
+      }
+
+      // ── Second-page icon row: copy / font−  / font+ ───────────────────
+      if (hit.type === 'infoCopy' || hit.type === 'infoFontDown' || hit.type === 'infoFontUp') {
+        if (hit.type === 'infoCopy') PanelInfo.copy(panel);
+        else PanelInfo.fontDelta(hit.type === 'infoFontUp' ? 1 : -1,
+                                 window._DebugRouter?.panels || []);
         e.preventDefault();
         e.stopImmediatePropagation();
         return true;

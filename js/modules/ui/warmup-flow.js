@@ -12,9 +12,11 @@
  * cards, entrance staggered so they build one after another, a live
  * counter beside each ticking 5.0 → 0.0:
  *
- *   "Fast Bench?"        → first tier only — the pulse check.
- *   "Moderate Scaling"   → tiers up to half the ladder.
- *   "Full Inspection"    → the whole ladder (a normal run).
+ *   "Wakeup · 1 min"     → the pulse check (time-limited).
+ *   "Moderation · 3 min" → the working physical.
+ *   "Full · 5 min"       → the complete inspection.
+ * The deadline owns the run — sessions climb 10 → 1000 planets (the 1000
+ * rule) until the clock stops them.
  *
  * Tap one card: it resolves that depth and the others let go in the same
  * staggered rhythm they arrived with. Counter hits 0.0 untouched: the
@@ -58,17 +60,16 @@ export const WarmupFlow = {
     // THE STACK: all three depths together from the left, staggered build,
     // a 5.0 → 0.0 counter beside each. One tap picks the depth and the
     // rest let go in the same rhythm; silence at 0.0 postpones the physical.
-    const n = Benchmark.tierCount;
-    const depths = [1, Math.ceil(n / 2), n];
+    const modes = ['WAKEUP', 'MODERATION', 'FULL'];
     const pick = await UpdatePop.choose(
-      ['Fast Bench?', 'Moderate Scaling', 'Full Inspection'],
+      ['Wakeup · 1 min', 'Moderation · 3 min', 'Full · 5 min'],
       { countdownSec: 5 }
     );
 
     let ranAny = false;
     try {
       if (pick !== null) {
-        await Benchmark.run({ toTier: depths[pick] });
+        await Benchmark.run({ mode: modes[pick] });
         ranAny = true;
       }
     } finally {

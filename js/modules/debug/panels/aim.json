@@ -74,7 +74,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -90,7 +90,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -106,7 +106,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -141,5 +141,6 @@
   "max": 3,
   "label": "x",
   "integer": false
- }
+ },
+ "description": "AIM CURSOR — the AIMS adaptive input system. Shows the live pixel map the cursor reads (self-healing _resolve), the active input profile, charge delay, and AimsEdge corner correction state. Use it to see how a touch becomes an aim: which map cell was sampled, what correction was applied, and how the edge zones bend input near the screen border. If aiming feels wrong, check the profile and refresh the map before touching physics."
 }

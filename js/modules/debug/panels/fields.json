@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 the Map Rule census \u2014"
+   "text": "— the Map Rule census —"
   },
   {
    "type": "display",
@@ -48,5 +48,6 @@
   }
  ],
  "maxHeight": 300,
- "background": null
+ "background": null,
+ "description": "FIELDS — the Singular Map Rule census. One sun-centered lattice anchor; every concern is a separate renter: bodyFields, novaFields, collisionFields, impactField, forceField, burnMap. Shows renter count, channels used, lattice resolution (mapRuleRes), smoothing skip (mapRuleSkip), and per-renter write load. The Alignment Law lives here — if two renters disagree about the anchor, everything downstream shears. mapRuleOn is the master A/B for the whole machine."
 }

@@ -23,6 +23,19 @@
 <!-- Top Middle Fps Counter -->
 <div id="fpsCounter" role="toolbar" aria-label="Frames per second" class="fps-counter">0 FPS</div>
 
+<!-- AUTOMATIC — the Governor gone fully automatic (live self-tuning).
+     Beneath the FPS text; shown with debug like the bench button. -->
+<div id="auto-btn" title="Governor Automatic — live self-tuning" aria-label="Governor Automatic" role="button">AUTOMATIC</div>
+
+<!-- THE WEIRD — three dice, three intensities of random evolution. Each
+     press rolls one evaluated round: 3 random knobs, random math, group
+     verdict, group revert on loss. Also fires by itself inside AUTOMATIC. -->
+<div id="weird-bar" aria-label="Random Evolution Dice">
+  <div class="weird-die" data-die="1" title="Weird — random evolution ×1" role="button">🎲1</div>
+  <div class="weird-die" data-die="2" title="Weirder — random evolution ×2" role="button">🎲2</div>
+  <div class="weird-die" data-die="3" title="Weirdest — random evolution ×3" role="button">🎲3</div>
+</div>
+
 <!-- BEST PREFERENCES / benchmark button (under FPS counter, shown when debug is on) -->
 <div id="bench-btn" title="Benchmark this device & save best preferences" aria-label="Best Preferences" role="button">BEST PREFERENCES</div>
 <!-- Benchmark history strip: runs completed + score/improvement (shown when prefs exist) -->
@@ -69,6 +82,11 @@
 <div id="painting-btn" title="Toggle Painting Mode" aria-label="Toggle Painting" role="button">🎨</div>
 
 <!-- PAINTING SATELLITES — canvas-drawn now, see canvas-satellites.js -->
+
+<!-- BENCHMARK LIVE STRIP — plain text above the bottom bar while a run is on.
+     No animation. The 🔴 (clear) button in the bar below stops the run and
+     resets the screen to a clean slate. -->
+<div id="bench-live" aria-hidden="true">Benchmarking... 🔴 Stop.</div>
 
 <div id="ui" role="toolbar" aria-label="Planet & Gravity Controls">
   <span class="lbl">📐</span>

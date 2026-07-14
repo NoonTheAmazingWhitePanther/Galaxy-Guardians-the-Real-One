@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 dreamy trails \u2014"
+   "text": "— dreamy trails —"
   },
   {
    "type": "profileButtons",
@@ -49,7 +49,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 length \u2014"
+   "text": "— length —"
   },
   {
    "type": "buttons",
@@ -58,7 +58,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -74,7 +74,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -90,7 +90,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -106,7 +106,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -117,7 +117,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 look \u2014"
+   "text": "— look —"
   },
   {
    "type": "buttons",
@@ -126,7 +126,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -142,7 +142,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -158,7 +158,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -174,7 +174,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -185,7 +185,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 buffer \u2014"
+   "text": "— buffer —"
   },
   {
    "type": "buttons",
@@ -194,7 +194,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -210,7 +210,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -221,7 +221,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 live \u2014"
+   "text": "— live —"
   },
   {
    "type": "display",
@@ -251,5 +251,6 @@
  ],
  "minimized": true,
  "maxHeight": 320,
- "background": null
+ "background": null,
+ "description": "TRAILS — orbit trail rendering. Length measured in physics ticks (never frames, so skips don't shorten history), width, fade, glow, decimation, and per-trail draw cost. The heaviest pure-graphics system in the engine and the classic first victim when frames are needed — every trail knob is in the benchmark rotation. trailEnabled is the master A/B."
 }

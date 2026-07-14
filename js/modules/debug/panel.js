@@ -4,6 +4,7 @@
  */
 import { DEBUG_STATE } from './debug-state.js';
 import { headerIcons } from './panel-style.js';
+import { PanelInfo } from './panel-info.js';
 import { PanelStyle } from './panel-style.js';
 import { GovernorRegistry, resolveVariable, Governor } from './governor.js';
 import { ControlRenderer, ControlType } from './controls.js';
@@ -216,6 +217,7 @@ export class Panel {
 
   scroll(deltaY) {
     this._scrollOffset = Math.max(0, this._scrollOffset + deltaY);
+    // (data-layer cache keys on scrollOffset — scrolling redraws itself)
   }
 
   pin() {
@@ -808,6 +810,27 @@ export class Panel {
       return { w: fw, h: fh, lines: [], controls: [], minimized: true };
     }
 
+    // ── SECOND PAGE — the description owns the rectangle ──────────────
+    // Same width rules as page one; lines and controls all leave; height
+    // and scroll come from the pre-rendered description canvas.
+    if (this.infoMode) {
+      let ipw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
+      ipw = Math.floor(ipw * 0.75);
+      if (this._userW) ipw = Math.max(MIN_W, this._userW);
+      const totalContentH = PanelInfo.contentHeight(this, ipw, sc);
+      let clampedH = Math.min(totalContentH, this.config.maxHeight ?? 260 * sc);
+      if (this._userH) clampedH = Math.max(MIN_H, this._userH);
+      if (this._scrollOffset > totalContentH - clampedH) {
+        this._scrollOffset = Math.max(0, totalContentH - clampedH);
+      }
+      return {
+        w: ipw, h: clampedH, totalContentH,
+        scrollOffset: this._scrollOffset,
+        scrollable: totalContentH > clampedH,
+        lines: [], controls: [], infoMode: true,
+      };
+    }
+
     const lines = this.buildLines(data);
     let pw = Math.max(180, (s.labelW + s.valW + s.padX * 2) * sc);
     pw = Math.floor(pw * 0.75);
@@ -899,6 +922,15 @@ export class Panel {
       if (lx >= minBtnX && lx <= minBtnX + minBtnSize) return { type: 'minimize' };
       if (lx >= shrBtnX && lx <= shrBtnX + minBtnSize) return { type: 'shrink' };
       if (lx >= edtBtnX && lx <= edtBtnX + minBtnSize) return { type: 'edit' };
+      if (lx >= _ic.xs.nfo && lx <= _ic.xs.nfo + minBtnSize) return { type: 'info' };
+    }
+
+    // SECOND PAGE — the info icon row eats its own taps; the body stays
+    // 'panel' so the existing drag/scroll path moves the description.
+    if (this.infoMode) {
+      const ih = PanelInfo.hitTest(this, lx, ly, sc);
+      if (ih) return ih;
+      return { type: 'panel' };
     }
 
     // Hit test section headers
@@ -941,6 +973,7 @@ export class Panel {
   }
 
   handlePointerDown(x, y, layout) {
+    this._dataDirty = true;   // finger on a control → data layer goes live
     const hit = this.hitTest(x, y, layout);
     if (!hit) return false;
 
@@ -1052,6 +1085,7 @@ export class Panel {
   }
 
   handlePointerMove(x, y, layout) {
+    this._dataDirty = true;   // dragging a slider/knob → follow the finger
     let changed = false;
     // Match hitTest: map the tap into unscrolled content space so hover/drag
     // tracking stays aligned with the drawn controls when the panel is scrolled.
@@ -1119,6 +1153,7 @@ export class Panel {
   }
 
   handlePointerUp(x, y, layout) {
+    this._dataDirty = true;   // final state after release
     for (const ctrl of layout.controls) {
       if (ctrl.type === ControlType.BUTTON) ctrl.state.pressIdx = -1;
       else ctrl.state.dragging = false;

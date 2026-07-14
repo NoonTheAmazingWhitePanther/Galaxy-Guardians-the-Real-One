@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 governor \u2014"
+   "text": "— governor —"
   },
   {
    "type": "display",
@@ -38,7 +38,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 controls \u2014"
+   "text": "— controls —"
   },
   {
    "type": "buttons",
@@ -47,7 +47,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -59,7 +59,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 skip base (out of) \u2014"
+   "text": "— skip base (out of) —"
   },
   {
    "type": "profileButtons",
@@ -100,5 +100,6 @@
  "summaryExtra": "InputGov.fractionLabel",
  "minimized": true,
  "maxHeight": 280,
- "background": null
+ "background": null,
+ "description": "INPUT — the raw input pipeline. Pointer events per frame, gesture state (drag, pinch, long-press), input frame skipping, and latency between touch and sim response. When touch feels laggy, this tells you whether events are arriving late (browser/OS side) or being consumed late (sim side). Input skip knobs are governed; keep them at 0 unless the POCO votes otherwise."
 }

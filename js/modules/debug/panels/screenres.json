@@ -19,7 +19,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 resolution \u2014"
+   "text": "— resolution —"
   },
   {
    "type": "display",
@@ -43,7 +43,7 @@
   },
   {
    "type": "divider",
-   "text": "\u2014 memory (ring buffers) \u2014"
+   "text": "— memory (ring buffers) —"
   },
   {
    "type": "display",
@@ -67,7 +67,7 @@
    "buttons": [
     "+",
     "=",
-    "\u2212"
+    "−"
    ],
    "governor": {
     "mode": "add",
@@ -87,5 +87,6 @@
  },
  "summaryExtra": "Accumulator.debugInfo.primeRes",
  "maxHeight": 320,
- "background": null
+ "background": null,
+ "description": "SCREEN RES — ScreenGov, the display truth. Detects the real refresh rate (stable max Hz, not an assumed 60), device pixel ratio, and canvas resolution. Every fps target in the engine derives from what this panel reports. If the phone throttles to 90→60Hz mid-session, the detected Hz follows and so do the targets."
 }
