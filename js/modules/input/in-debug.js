@@ -42,6 +42,7 @@ import { SatBlobs } from '../debug/sat-blobs.js';
 import { SelectionTool } from './in-selection-tool.js';
 import { SelectionPanelExtras } from '../debug/selection-panel-extras.js';
 import { PanelInfo } from '../debug/panel-info.js';
+import { PanelPages } from '../debug/panel-pages.js';
 
 // "Know-it-all" marquee: HOLD-press on EMPTY space (no panel, no slider) in
 // debug+panel mode → a selection rectangle. On release, every panel it caught
@@ -49,6 +50,10 @@ import { PanelInfo } from '../debug/panel-info.js';
 // and early movement cancel it (empty-space presses are otherwise dead in
 // debug: planet planting is off, one-finger camera drag doesn't exist).
 const MARQUEE_HOLD_MS = 350;   // hold this long, still, to activate
+// PAGE SWIPE — screen px a flick must cover horizontally to turn the page.
+// Deliberately generous: it must never be reachable by the small wobble of a
+// tap-to-deselect, and it must not need a broad sweep on a phone.
+const SWIPE_PX = 60;
 const MARQUEE_SLOP    = 8;     // screen px of movement allowed before activation
 
 export const InDebug = {
@@ -910,6 +915,21 @@ export const InDebug = {
           ? DebugRouter.selectInRect(rect)
           : null;
       } else {
+        // ── PAGE SWIPE ─────────────────────────────────────────────────
+        // The marquee only ARMS on press and only ACTIVATES after a hold
+        // (MARQUEE_HOLD_MS). A fast flick on empty panel space therefore
+        // never became a marquee — it just deselected. That gesture was
+        // free, so it is now the page turn (panel-pages.js): flick LEFT for
+        // the next page, RIGHT for the previous. A slow press-and-drag on
+        // empty space is still the marquee, untouched — hold to select,
+        // flick to turn.
+        const dx = e.clientX - m.scx;
+        const dy = e.clientY - m.scy;
+        const flick = Math.abs(dx) > SWIPE_PX && Math.abs(dx) > Math.abs(dy) * 2;
+        if (flick && PanelPages.on && PanelPages.turn(dx < 0 ? 1 : -1)) {
+          this._releaseAll();
+          return true;                  // a page turn is not a deselect
+        }
         DEBUG_STATE.selection = null;   // plain tap on empty space → deselect
       }
       this._releaseAll();

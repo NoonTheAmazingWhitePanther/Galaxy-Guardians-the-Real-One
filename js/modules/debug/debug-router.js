@@ -30,6 +30,10 @@ import { CycleMeter } from '../../core/cycle-meter.js';
 import { Gate } from '../../core/gate.js';
 import { TrajectoryPreview } from '../../core/trajectory-preview.js';
 import { loadPanelConfigs } from '../../core/panel-loader.js';
+import { Paster } from '../../core/paster.js';
+import { PanelTrail } from './panel-trail.js';
+import { PanelPages } from './panel-pages.js';
+import { WorkWheel } from './work-wheel.js';
 import { SelectionVitals } from '../../core/selection-vitals.js';
 import { SelectionTool } from '../input/in-selection-tool.js';
 import { SelectionPanelExtras } from './selection-panel-extras.js';
@@ -74,6 +78,14 @@ export const DebugRouter = {
     GovernorRegistry.register('Gate',             Gate);
     GovernorRegistry.register('TrajectoryPreview', TrajectoryPreview);
     GovernorRegistry.register('SelectionVitals',   SelectionVitals);
+    // THE PASTER — the Paste of Existence. Bound directly (not through
+    // ManualOverrides) ON PURPOSE: loading knobs are boot-time authority and
+    // must never be rotated by the benchmark or the live AutoTuner mid-run,
+    // same exclusion pulseHz gets. See core/paster.js.
+    GovernorRegistry.register('Paster',            Paster);
+    GovernorRegistry.register('PanelTrail',        PanelTrail);
+    GovernorRegistry.register('PanelPages',        PanelPages);
+    GovernorRegistry.register('WorkWheel',         WorkWheel);
     // FIX: both were referenced by planetbrush.json ("PaintingState.enabled",
     // "ColorPalette.current") but never registered — every read/write against
     // either logged "[Governor] resolveVariable: unknown module". PaintingState
@@ -109,27 +121,138 @@ export const DebugRouter = {
       this._config = { panels: [] };
     }
 
-    this.panels = [];
-    for (const panelCfg of this._config.panels) {
-      const panel = new Panel(panelCfg, panelCfg.position?.x, panelCfg.position?.y);
-      this.panels.push(panel);
-    }
+    // ── BOOT PHASE (THE PASTER) ───────────────────────────────────────────
+    // `new Panel()` is not free: it allocates TWO canvases and parses the
+    // whole control tree. ×22 in one synchronous loop is a long block on the
+    // main thread with nothing painted behind it — the browser's punishment
+    // for building all of existence in a single frame. Paster.build() spreads
+    // the exact same construction one-per-frame (bootMode FRAMED) and YIELDS
+    // in between, so the canvas keeps painting through boot. Still awaited:
+    // PrefsStore.init() downstream needs every panel to exist by id.
+    this.panels = (await Paster.build(
+      this._config.panels,
+      (cfg) => new Panel(cfg, cfg.position?.x, cfg.position?.y),
+      'panels',
+    )).filter(Boolean);
 
-    // Starts hidden — Panel's own constructor defaults visible=true for
-    // every panel (there's no JSON field for it), but this one panel
-    // should only ever appear once there's an actual selection to show.
-    // syncSelectionPanel() (called every rAF from main.js) reveals + pins
-    // it the moment SelectionTool has a capture, and hides + unpins it
-    // again once the selection fully clears.
-    const selPanel = this.panels.find(p => p.id === 'selection');
-    if (selPanel) selPanel.visible = false;
+    // Un-admitted until the Paster reveals them. Panel's constructor defaults
+    // visible=true (there's no JSON field for it) — that default is what made
+    // "turn debug on" a 22-panels-in-one-frame cliff. Existence is pasted now:
+    // panel mode admits them ONE AT A TIME, measuring the frame cost of each.
+    // visible=false already excludes a panel from drawAll, updateData, the
+    // AIMS hit-map and the pointer path — no other call site needs changing.
+    for (const p of this.panels) { p.visible = false; p._admitted = false; }
+
+    // EXCEPTIONS — two kinds of panel are never part of the experiment:
+    //   selection — owned entirely by syncSelectionPanel(), appears only when
+    //     SelectionTool has a live capture.
+    //   pinned    — the user's restored tuning surface, which must exist with
+    //     debug OFF. Pasted immediately, not queued.
+    //   paster    — the control surface of the experiment itself. If it were
+    //     staged, MANUAL mode would deadlock: nothing is admitted until you
+    //     press ▶, and ▶ lives on the panel that hasn't been admitted.
+    for (const p of this.panels) {
+      if (p.id === 'selection') { p._admitted = true; continue; }   // stays visible=false
+      if (p.id === 'paster')    { p._admitted = true; continue; }
+      if (p.pinned)             { p._admitted = true; }
+    }
+    // Admitted ≠ visible: PAGES decides what's actually on the surface.
+    // The paster panel lives on the UPDATES page, so it is on-screen exactly
+    // when you're looking at the page that measures things — which is where
+    // you want it. (It is never STAGED, though: MANUAL mode would deadlock,
+    // since ▶ lives on the panel that hasn't been admitted.)
+    this._applyPage();
 
     for (const panel of this.panels) {
       MasterGovernor.register(panel);
     }
     MasterGovernor.lockRatios();
 
+    this._armReveal();
     this._initialized = true;
+  },
+
+  /**
+   * Load the reveal conveyor: one birth per un-admitted panel ON THE CURRENT
+   * PAGE, in manifest order. Nothing moves until Panel Mode arms it — and
+   * every admission gets a measured row in Paster.ledger:
+   *
+   *     frame ms BEFORE this panel existed → frame ms AFTER → its price.
+   *
+   * That ledger is the whole reason for the staging. Staged loading does not
+   * make 22 drawn panels cheaper than 22 drawn panels; it makes the 3 panels
+   * that are actually eating the frame IMPOSSIBLE TO HIDE. Read it with the
+   * LEDGER button in the PASTER panel (console.table, sorted by cost).
+   *
+   * With PAGES ON this becomes seven short ladders instead of one long one —
+   * each page prices only its own panels, which is a cleaner measurement
+   * anyway (fewer panels sharing the frame while any one of them is scored).
+   */
+  _armReveal() {
+    Paster.clear('reveal');
+    for (const p of this.panels) {
+      if (p._admitted) continue;
+      if (!PanelPages.shows(p)) continue;   // not on this page — not this ladder
+      Paster.enqueue('reveal', p.id, () => {
+        p._admitted    = true;
+        p._chromeDirty = true;
+        this._applyPage();
+        PanelTrail.invalidate();
+        try { window._InAims?.syncDebugPanels(); } catch (_) {}
+      });
+    }
+
+    // THE WORK WHEEL's atlas rides the tail of the same conveyor — admitted
+    // LAST, on purpose, exactly like the reserved WASM/Workers slots. Its
+    // bake cost therefore lands in the same ledger as every panel. (Loading
+    // it from the localStorage cache instead of baking scores ~0ms, which is
+    // not the ledger lying — that IS what a cached atlas costs.)
+    if (!WorkWheel._ready) {
+      Paster.enqueue('reveal', 'workWheel:atlas', () => { WorkWheel.prepare(); });
+    }
+  },
+
+  /**
+   * Visibility is a product of TWO gates, never one:
+   *   admitted (the Paster has pasted it into existence) AND
+   *   on-page  (PanelPages says this category is what you're looking at)
+   *
+   * The selection panel is exempt from both — SelectionTool owns it.
+   */
+  _applyPage() {
+    for (const p of this.panels) {
+      if (p.id === 'selection') continue;
+      const want = !!p._admitted && PanelPages.shows(p);
+      if (p.visible !== want) { p.visible = want; p._chromeDirty = true; }
+    }
+  },
+
+  /** PanelPages calls this on every turn. */
+  onPageChange() {
+    this._applyPage();
+    PanelTrail.invalidate();
+    // A page that has never been opened has never been pasted — arm its own
+    // ladder now. A page already fully admitted arms to an empty queue and
+    // completes instantly, which costs nothing.
+    Paster.clear('reveal');
+    this._armReveal();
+    Paster._armed = null;                    // let updateData re-arm on the new page
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}
+  },
+
+  /** Re-run the whole experiment from cold — the PASTER panel's REPASTE button. */
+  repaste() {
+    for (const p of this.panels) {
+      if (p.id === 'selection' || p.id === 'paster') continue;
+      p._admitted    = false;
+      p.visible      = false;
+      p._chromeDirty = true;
+    }
+    Paster.ledger = Paster.ledger.filter(r => r.group !== 'reveal');
+    Paster._armed = null;
+    this._armReveal();
+    PanelTrail.invalidate();
+    try { window._InAims?.syncDebugPanels(); } catch (_) {}
   },
 
   _getDataForPanel(panel) {
@@ -160,7 +283,26 @@ export const DebugRouter = {
 
     const now = performance.now();
 
+    // ── THE PASTER ────────────────────────────────────────────────────────
+    // PANEL MODE ONLY — "Always check for now" (Noon). Console mode draws a
+    // DOM overlay and no panels at all, so admitting them there would paste
+    // existence nobody can see and poison every ledger row with a cost that
+    // was never paid.
+    //
+    // tick() is ALSO the frame-period sampler (true rAF deltas, no smoothing),
+    // so it must run on EVERY frame the panels are live — never behind an
+    // isDue() gate. It is a subtraction and a compare; it costs nothing.
+    if (debugOn && !this._consoleMode) {
+      if (Paster._armed !== 'reveal') Paster.arm('reveal');
+      Paster.tick(now);
+    }
+
     for (const panel of this.panels) {
+      // Un-admitted (not yet pasted) or closed → not drawn, so not computed.
+      // This is the other half of the win: a panel that isn't on screen was
+      // still paying full _getDataForPanel() every refresh tick before.
+      if (!panel.visible && !panel.pinned) continue;
+
       // Debug on → update all panels
       // Tuning on (debug off) → update only pinned panels
       const shouldUpdate = debugOn || (tuningOn && panel.pinned);
@@ -217,6 +359,14 @@ export const DebugRouter = {
 
   drawAll(ctx) {
     if (!this.masterEnabled || !this._initialized) return;
+
+    // THE WORK WHEEL — the pipeline truth meter. Drawn in BOTH debug modes
+    // (before the console-mode return): it is not a panel, it is the witness
+    // that says whether the frames we think we're presenting are real. Raw
+    // device space, anchored under the debug button — never inside the panel
+    // view transform.
+    WorkWheel.render(ctx);
+
     if (this._consoleMode) return;   // Live Text Debug console draws its own DOM overlay instead
 
     // Data already updated by updateData() — just draw.
@@ -227,13 +377,33 @@ export const DebugRouter = {
     const vz = DEBUG_STATE.viewZoom || 1;
     const px = DEBUG_STATE.viewPanX || 0;
     const py = DEBUG_STATE.viewPanY || 0;
+
+    // ── THE PANEL TRAIL ───────────────────────────────────────────────────
+    // One composite surface, one draw call. Panels re-stamp only when they
+    // actually change — which, since the refreshRate clock is the only thing
+    // that changes their numbers, means text is redrawn at ms times and not
+    // at frame times. See panel-trail.js. Knob it to 0 to A/B against the old
+    // per-frame loop below, which is the state that costs 5fps.
+    if (PanelTrail.on) {
+      PanelTrail.draw(ctx, this.panels, (p) => p._cachedData ?? {});
+    } else {
+      ctx.save();
+      if (px || py) ctx.translate(px, py);
+      if (vz !== 1) ctx.scale(vz, vz);
+      for (const panel of this.panels) {
+        if (!panel.visible) continue;
+        DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
+      }
+      ctx.restore();
+    }
+
+    // Everything below is LIVE by design — it animates every frame (marching
+    // ants, the selection band, snap guides) and would force a full trail
+    // rebuild per frame if it were stamped. It draws straight onto the main
+    // canvas, on top of the one blit.
     ctx.save();
     if (px || py) ctx.translate(px, py);
     if (vz !== 1) ctx.scale(vz, vz);
-    for (const panel of this.panels) {
-      if (!panel.visible) continue;
-      DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
-    }
 
     // Snap guides — visual-only alignment lines while a panel title-bar
     // drag is active. FIX: this used to pass window.innerWidth/Height
@@ -376,7 +546,10 @@ export const DebugRouter = {
       const snap = this._preConsoleVisible;
       for (const p of this.panels) {
         const rec = snap?.find(s => s.id === p.id);
-        p.visible = rec ? rec.v : true;
+        // Fallback is NOT `true` anymore: a panel the Paster has not admitted
+        // yet must stay un-pasted through a console-mode round trip, or the
+        // reveal would silently complete itself behind the console.
+        p.visible = rec ? rec.v : (!!p._admitted && p.id !== 'selection');
         p._chromeDirty = true;
       }
       this._preConsoleVisible = null;

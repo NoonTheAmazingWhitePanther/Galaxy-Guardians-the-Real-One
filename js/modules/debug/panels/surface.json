@@ -1,0 +1,235 @@
+{
+ "id": "surface",
+ "title": "SURFACE",
+ "page": "panels",
+ "position": {
+  "x": 16,
+  "y": 300
+ },
+ "refreshRate": 200,
+ "minimized": true,
+ "summaryVariable": "PanelTrail.stamps",
+ "summaryLabel": "stamps/f",
+ "minimizedKnob": {
+  "variable": "PanelPages.index",
+  "min": 0,
+  "max": 6,
+  "step": 1,
+  "label": "",
+  "integer": true
+ },
+ "lines": [
+  {
+   "type": "header",
+   "text": "SURFACE",
+   "value": "PanelPages.pageName",
+   "color": "accent",
+   "bold": true
+  },
+  {
+   "type": "divider",
+   "text": "— the book —"
+  },
+  {
+   "type": "display",
+   "text": "page",
+   "value": "PanelPages.pageNum"
+  },
+  {
+   "type": "buttons",
+   "text": "turn",
+   "variable": "PanelPages.index",
+   "buttons": [
+    "▶",
+    "=",
+    "◀"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 6,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "pages on",
+   "variable": "PanelPages.on",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "wrap",
+   "variable": "PanelPages.wrap",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "divider",
+   "text": "— the trail —"
+  },
+  {
+   "type": "buttons",
+   "text": "trail on",
+   "variable": "PanelTrail.on",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "display",
+   "text": "stamps/frame",
+   "value": "PanelTrail.stamps"
+  },
+  {
+   "type": "display",
+   "text": "draw calls",
+   "value": "PanelTrail.blits"
+  },
+  {
+   "type": "display",
+   "text": "rebuilds",
+   "value": "PanelTrail.rebuilds"
+  },
+  {
+   "type": "display",
+   "text": "stamps total",
+   "value": "PanelTrail.restamps"
+  },
+  {
+   "type": "divider",
+   "text": "— the work wheel —"
+  },
+  {
+   "type": "display",
+   "text": "VERDICT",
+   "value": "WorkWheel.verdict",
+   "color": "accent"
+  },
+  {
+   "type": "display",
+   "text": "drift",
+   "value": "WorkWheel.driftF",
+   "suffix": "f"
+  },
+  {
+   "type": "display",
+   "text": "drift",
+   "value": "WorkWheel.driftDeg",
+   "suffix": "°"
+  },
+  {
+   "type": "display",
+   "text": "mode",
+   "value": "WorkWheel.modeName"
+  },
+  {
+   "type": "buttons",
+   "text": "wheel on",
+   "variable": "WorkWheel.on",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "the law hz",
+   "variable": "WorkWheel.hz",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 24,
+    "max": 240,
+    "step": 6
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "forgive s",
+   "variable": "WorkWheel.resyncSec",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 10,
+    "step": 1
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "size",
+   "variable": "WorkWheel.size",
+   "buttons": [
+    "+",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 20,
+    "max": 96,
+    "step": 4
+   }
+  },
+  {
+   "type": "buttons",
+   "text": "resync now",
+   "variable": "WorkWheel.doSync",
+   "buttons": [
+    "↺",
+    "=",
+    "−"
+   ],
+   "governor": {
+    "mode": "add",
+    "min": 0,
+    "max": 1,
+    "step": 1
+   }
+  }
+ ],
+ "description": "SURFACE — the three laws of the panel layer. THE BOOK: the panel surface is not one table, it is seven pages — RENDERING, PHYSICS, INPUT, UPDATES, CYCLES, CONFIGURATIONS, PANEL SETTINGS. Each panel declares its own page in its own json. Only the current page is visible, laid out, stamped, hit-tested or fed data, so a page of four panels costs four panels and not twenty-three. Flick left or right on empty panel space to turn the page (a slow press on empty space is still the marquee — a fast horizontal flick that catches nothing is a page turn). Pinned panels obey the page inside debug like everything else; outside debug the TuningLayer draws them regardless, which is what pinning always meant. THE TRAIL: one composite offscreen surface holding the whole panel layer with the view transform baked in, blitted to the canvas in ONE draw call. A panel re-stamps into it only when its key changes — position, size, state, scroll, or its data going dirty on the refreshRate clock. Nothing changed means nothing is drawn: the layer persists like a phosphor trail and is only disturbed where something moved. Overlap is handled honestly (a dirty panel clears the union of its old and new rect, and every panel intersecting that hole is restamped in z-order). Stamps/frame at rest should be 0 and draw calls should be 1; a pan or zoom rebuilds the whole surface, which costs exactly what the old per-frame loop cost, so gestures are no worse and everything between them is one blit. Set trail on to 0 to A/B against that old loop. THE WORK WHEEL: two wheels, same size, same place, under the debug button. One steps a single atlas frame per RENDERED frame; the other steps by the WALL CLOCK at the law's hz. Both are born on the same instant, on frame zero, from the same `now`. If the pipeline is truly presenting clean frames at the law, the two are the same wheel and you see ONE. The moment a frame is late, dropped or doubled, the frame counter falls behind the clock and the marker SPLITS — seeing two is wrong, seeing one is one. No average, no smoothing window, nothing that can lie about the last second. FORGIVE s is the resync window: above 0 the clock wheel is quietly pulled back onto the frame wheel each window, so the split shows only current health; at 0 it is DEBT mode and every frame ever dropped stays owed forever, which is the brutal and correct reading. The 60-frame atlas is baked once at boot through the Paster (so its cost lands in the same ledger) and cached to localStorage; it is deliberately asymmetric — one bold marker spoke — because a symmetric wheel would alias every ten frames and read as in-sync while ten frames behind."
+}

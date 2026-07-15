@@ -63,7 +63,19 @@ export const TuningLayer = {
     if (px || py) ctx.translate(px, py);
     if (vz !== 1) ctx.scale(vz, vz);
     for (const panel of this._panels) {
+      // PAGES (panel-pages.js): inside debug a pinned panel obeys the page
+      // like everything else — turn away from its category and it goes with
+      // the page. Out HERE the book has no authority: "keep this on the glass
+      // when debug is off" is what pinning has always meant, and that is
+      // exactly why you pinned it. panel.visible carries the page's verdict,
+      // so the pin overrides it for the length of this draw and it is put
+      // straight back. (_admitted is still respected: a panel the Paster has
+      // never brought into existence has nothing to draw.)
+      if (panel._admitted === false) continue;
+      const wasVisible = panel.visible;
+      panel.visible = true;
       DebugRenderer.renderPanel(ctx, panel, panel._cachedData ?? {});
+      panel.visible = wasVisible;
     }
     ctx.restore();
 

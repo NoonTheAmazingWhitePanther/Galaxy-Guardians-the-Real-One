@@ -1,4 +1,5 @@
 [
+ "paster.json",
  "governor.json",
  "fps.json",
  "drawcalls.json",
@@ -20,5 +21,6 @@
  "selection.json",
  "fields.json",
  "nova.json",
- "pulse.json"
+ "pulse.json",
+ "surface.json"
 ]
